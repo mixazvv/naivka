@@ -541,6 +541,16 @@ function pxNode(cx, cy, size, ic, color, cls) {
     icon(ic, cx, cy, size * 0.5, 'currentColor'));
 }
 
+// «Провод» как в схемах из блоков: только прямые углы по сетке. Каждая ветвь выходит из узла
+// своим рядом (y0) и поворачивает в своём столбце (rank), поэтому провода не пересекаются и не сливаются.
+function circuitLane(y0, ny, rank, xs, xe) {
+  const G = 8, snap = v => Math.round(v / G) * G;
+  const cl = snap(176 + rank * 16), cr = snap(824 - rank * 16);
+  const a = snap(y0), b = snap(ny);
+  if (a === b) return { d: `M${xs} ${a}H${xe}`, corners: [] };
+  return { d: `M${xs} ${a}H${cl}V${b}H${cr}V${a}H${xe}`, corners: [[cl, a], [cl, b], [cr, b], [cr, a]] };
+}
+
 // Ступенчатая ветвь: та же кривая, но из горизонтальных и вертикальных отрезков по сетке, как пиксельная линия.
 function mcStepPath(x0, y0, nx, ny, x1, y1, G) {
   const a = x0 + (nx - x0) * 0.5, b = nx + (x1 - nx) * 0.5;

@@ -4,6 +4,7 @@ Copyright 2021 The Onest Project Authors (https://github.com/simpals/onest)
 Copyright 2022 The Unbounded Project Authors (https://github.com/googlefonts/unbounded)
 Copyright 2019 The Jura Project Authors (https://github.com/ossobuffo/jura)
 Copyright 2013 The Exo 2 Project Authors (https://github.com/googlefonts/Exo-2.0) Exo2-Italic[wght].ttf: Copyright 2013 The Exo 2 Project Authors (https://github.com/googlefonts/Exo-2.0)
+Copyright 2012 The Press Start 2P Project Authors (cody@zone38.net), with Reserved Font Name "Press Start 2P".
 Copyright 2021 The Pixelify Sans Project Authors (https://github.com/eifetx/Pixelify-Sans)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
