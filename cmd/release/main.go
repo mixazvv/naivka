@@ -40,6 +40,7 @@ func main() {
 	go120 := flag.String("go120", os.Getenv("GO120"), "папка Go 1.20 для сборки под Windows 7/8 (можно через переменную GO120)")
 	notes := flag.String("notes", "CHANGES.md", "файл со списком изменений")
 	publish := flag.Bool("publish", false, "сразу опубликовать релиз через GitHub CLI (gh)")
+	winget := flag.Bool("winget", true, "подготовить манифест для winget (в dist/<версия>-winget)")
 	flag.Parse()
 
 	if _, err := os.Stat("go.mod"); err != nil {
@@ -88,6 +89,16 @@ func main() {
 		fmt.Println("  Windows 7/8 пропущена: не задан GO120 (папка Go 1.20). У старых пользователей версия не обновится.")
 	}
 
+	if sg := newSigner(); sg != nil {
+		step("Подпись exe (Authenticode)")
+		exes, _ := filepath.Glob(filepath.Join(out, "*.exe"))
+		for _, f := range exes {
+			sg.sign(f)
+		}
+	} else {
+		fmt.Println("\n  exe не подписаны сертификатом — Windows SmartScreen будет предупреждать при первом запуске.\n  Чтобы подписать, задайте NAIVKA_SIGN_CERT (+ NAIVKA_SIGN_PASS) или NAIVKA_SIGN_CMD — см. cmd/release/sign.go.")
+	}
+
 	step("Список изменений")
 	changes := "Naivka " + *version
 	if b, err := os.ReadFile(*notes); err == nil {
@@ -114,6 +125,13 @@ func main() {
 		"Naivka/Naivka-data/core/LICENSE-sing-box.txt": core["LICENSE"],
 	}
 	writeZip(filepath.Join(out, "Naivka-portable.zip"), portable)
+	if *winget {
+		writeZip(filepath.Join(out, "Naivka-winget.zip"), map[string][]byte{
+			"Naivka/Naivka.exe":       portable["Naivka/Naivka.exe"],
+			"Naivka/Naivka-debug.exe": portable["Naivka/Naivka-debug.exe"],
+			"Naivka/README.txt":       crlf(strings.ReplaceAll(readmeWinget, "{V}", *version)),
+		})
+	}
 	if win7 {
 		w7 := map[string][]byte{}
 		for arch, dir := range map[string]string{"amd64": "Naivka-win7-64", "386": "Naivka-win7-32"} {
@@ -150,6 +168,14 @@ func main() {
 	must(os.WriteFile(filepath.Join(out, "SHA256SUMS.sig"), []byte(sig+"\n"), 0o644))
 	if !ed25519.Verify(pub, sums.Bytes(), ed25519.Sign(priv, sums.Bytes())) {
 		die("подпись не сходится — ключи повреждены")
+	}
+
+	if *winget {
+		step("winget")
+		wingetFiles(cfg.Repo, *version, filepath.Join(out, "Naivka-winget.zip"), out+"-winget")
+		fmt.Println("  После публикации релиза отправьте манифест в microsoft/winget-pkgs:\n" +
+			"    wingetcreate submit " + filepath.Join(out+"-winget", "manifests") + "\n" +
+			"  (или pull request вручную). Проверка Microsoft занимает от нескольких часов до пары дней.")
 	}
 
 	if *publish {
@@ -324,6 +350,15 @@ Naivka {V} — для Windows 10 и 11 (64 бита)
 Новые версии Naivka предложит сама: «Настройки» → «О программе».
 Все данные лежат в Naivka-data: папку можно переносить на флешке.
 sing-box — GPL-3.0, https://github.com/SagerNet/sing-box (лицензия в Naivka-data\core).
+`
+
+const readmeWinget = `
+Naivka {V} — установлена через winget
+
+Запуск: naivka (или Naivka.exe). Настройки и серверы хранятся в %APPDATA%\Naivka,
+ядро sing-box Naivka скачает сама: «Настройки» → «Скачать ядро».
+Обновление: winget upgrade Naivka (или кнопкой в «Настройки» → «О программе»).
+sing-box — GPL-3.0, https://github.com/SagerNet/sing-box.
 `
 
 const readmeLegacy = `
