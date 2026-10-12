@@ -114,6 +114,14 @@ function flowsEnd(prefix) {
 
 function particleEl(f) {
   const r = f.size;
+  if (document.documentElement.dataset.skin === 'blocks') {
+    // «Блоки»: квадратные пиксельные частицы без свечения.
+    const q = (k, cls) => s('rect', { x: -r * k, y: -r * k, width: 2 * r * k, height: 2 * r * k, class: cls });
+    const g = s('g', { class: 'pt', style: `color:${f.color}` }, q(0.7, 'pt-tail'), q(0.8, 'pt-tail'), q(1.15, 'pt-core'));
+    g.children[0].dataset.k = 3; g.children[1].dataset.k = 2;
+    f.layer.append(g);
+    return g;
+  }
   const g = s('g', { class: 'pt', style: `color:${f.color}` },
     s('circle', { r: r * 2.6, class: 'pt-glow' }),
     s('circle', { r: r * 0.75, class: 'pt-tail', 'data-k': 3 }),
@@ -171,8 +179,14 @@ function fxFrame(now) {
       p.el.style.opacity = Math.min(1, p.t * 12, (1 - p.t) * 12).toFixed(2);
       for (const tail of p.el.querySelectorAll('.pt-tail')) {
         const pt = at(p.t - lag * tail.dataset.k);
-        tail.setAttribute('cx', (pt.x - head.x).toFixed(1));
-        tail.setAttribute('cy', (pt.y - head.y).toFixed(1));
+        if (tail.tagName === 'rect') {
+          const w = +tail.getAttribute('width');
+          tail.setAttribute('x', (pt.x - head.x - w / 2).toFixed(1));
+          tail.setAttribute('y', (pt.y - head.y - w / 2).toFixed(1));
+        } else {
+          tail.setAttribute('cx', (pt.x - head.x).toFixed(1));
+          tail.setAttribute('cy', (pt.y - head.y).toFixed(1));
+        }
       }
       return true;
     });
@@ -182,14 +196,6 @@ function fxFrame(now) {
 }
 
 // ---------- кнопка питания ----------
-// Шестиугольник с вершиной вверху — для темы «Чёрное золото» (там круги спрятаны, видны шестиугольники).
-function hexPoints(r) {
-  return Array.from({ length: 6 }, (_, i) => {
-    const a = Math.PI / 180 * (60 * i - 90);
-    return `${(60 + r * Math.cos(a)).toFixed(2)},${(60 + r * Math.sin(a)).toFixed(2)}`;
-  }).join(' ');
-}
-
 function powerButton(id, size) {
   return h('button', { class: 'power' + (size ? ' ' + size : ''), id, type: 'button', onclick: toggleConnect, 'aria-label': 'Подключить' },
     s('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true' },
@@ -197,10 +203,11 @@ function powerButton(id, size) {
       s('circle', { class: 'pw-track pw-c', cx: 60, cy: 60, r: 52 }),
       s('circle', { class: 'pw-ring pw-c', cx: 60, cy: 60, r: 52, pathLength: 100 }),
       s('circle', { class: 'pw-core pw-c', cx: 60, cy: 60, r: 45 }),
-      s('polygon', { class: 'pw-halo pw-h', points: hexPoints(59) }),
-      s('polygon', { class: 'pw-track pw-h', points: hexPoints(54) }),
-      s('polygon', { class: 'pw-ring pw-h', points: hexPoints(54), pathLength: 100 }),
-      s('polygon', { class: 'pw-core pw-h', points: hexPoints(46) }),
+      // Квадратный вариант — для тем «Никогда не проси об этом» и «Блоки» (круги там спрятаны).
+      s('rect', { class: 'pw-track pw-h', x: 9, y: 9, width: 102, height: 102 }),
+      s('rect', { class: 'pw-ring pw-h', x: 9, y: 9, width: 102, height: 102, pathLength: 100 }),
+      s('rect', { class: 'pw-core pw-h', x: 18, y: 18, width: 84, height: 84 }),
+      s('path', { class: 'pw-ticks pw-h', d: 'M1 17V1h16M103 1h16v16M119 103v16h-16M17 119H1v-16' }),
       s('path', { class: 'pw-icon', d: 'M60 37v21M46 44.5a21 21 0 1 0 28 0' })));
 }
 
@@ -294,7 +301,7 @@ function mapTarget(box, ends) {
   span = Math.min(span, 330 * MAP_K);
   const vh = span * H / W;
   // Слева на карте — кнопка и текст, поэтому середина маршрута смещена вправо.
-  const shift = W <= 640 ? 0.5 : mapClose(ends) ? 0.68 : 0.77;
+  const shift = 0.5; // карта стоит отдельным блоком в «Сводке», маршрут — по центру
   return [cx - span * shift, cy - vh / 2, span, vh];
 }
 

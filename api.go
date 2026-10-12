@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"runtime"
@@ -24,6 +25,8 @@ type apiFunc func(r *http.Request) (any, error)
 func (a *App) routes() http.Handler {
 	mux := http.NewServeMux()
 
+	// Шрифты интерфейса: в старых Windows тип .woff2 может быть не зарегистрирован.
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
 	sub, _ := fs.Sub(webFS, "web")
 	static := http.FileServer(http.FS(sub))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -309,6 +312,22 @@ func (a *App) routes() http.Handler {
 			return nil, errors.New("Сначала включите tg-ws-proxy")
 		}
 		openURL(tgLink(a.settingsCopy()))
+		return nil, nil
+	})
+	// Внешние ссылки открываются в браузере, а не в окне Naivka. Только из списка: страница не может
+	// попросить открыть произвольный адрес или программу.
+	api("POST", "/api/open", func(r *http.Request) (any, error) {
+		var req struct {
+			Link string `json:"link"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		u, ok := externalLinks[req.Link]
+		if !ok {
+			return nil, errors.New("неизвестная ссылка")
+		}
+		openURL(u)
 		return nil, nil
 	})
 	api("POST", "/api/core/download", func(*http.Request) (any, error) { return nil, a.core.StartDownload() })

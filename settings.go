@@ -178,7 +178,7 @@ type Settings struct {
 	Watchdog        bool             `json:"watchdog"`
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
-	Theme           string           `json:"theme"`       // system | dark | light | gold («Чёрное золото»)
+	Theme           string           `json:"theme"`       // system | dark | light | gold («Никогда не проси об этом») | blocks («Блоки»)
 	Accent          string           `json:"accent"`      // акцентный цвет: indigo | violet | orchid
 	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
 	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
@@ -230,6 +230,9 @@ func DefaultSettings() *Settings {
 		Share:          ShareSettings{Port: 2090, Auth: true, Username: "naivka"},
 	}
 }
+
+// externalLinks — адреса, которые интерфейс может открыть в браузере (POST /api/open).
+var externalLinks = map[string]string{"feedback": "https://t.me/mixazvv"}
 
 // accents — акцентные цвета интерфейса (сами цвета — в web/app.css).
 var accents = map[string]bool{"indigo": true, "violet": true, "orchid": true}
@@ -393,7 +396,7 @@ func (s *Settings) normalize() {
 		s.Telegram.Secret = randHex(16)
 	}
 	switch s.Theme {
-	case "system", "dark", "light", "gold":
+	case "system", "dark", "light", "gold", "blocks":
 	default:
 		s.Theme = "dark"
 	}

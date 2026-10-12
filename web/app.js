@@ -16,6 +16,7 @@ Element.prototype.replaceChildren = function (...kids) {
   return nativeReplace.apply(this, kids.flat(Infinity).filter(k => k !== null && k !== undefined && k !== false));
 };
 const main = $('#main');
+const drawerBody = $('#drawerBody');
 
 let S = null;   // настройки
 let ST = null;  // состояние ядра
@@ -24,7 +25,7 @@ let PXAt = 0;
 let STATS = null;
 let STATSAt = 0;
 let view = sessionStorage.getItem('naivka-view') || 'overview';
-let diagTab = sessionStorage.getItem('naivka-diag') || 'conns';
+let diagTab = sessionStorage.getItem('naivka-diag') || 'now';
 let busy = false;
 let elevating = false;
 let updating = false;
@@ -183,14 +184,15 @@ let themeSent = '';
 function applyTheme() {
   // «Чёрное золото» — тёмная тема со своей палитрой и геометрией (срезанные углы, шестиугольники).
   const gold = !!S && S.theme === 'gold';
-  const t = gold ? 'dark' : S && S.theme === 'system' ? (darkQuery.matches ? 'dark' : 'light') : (S ? S.theme : 'dark');
+  const blocks = !!S && S.theme === 'blocks';
+  const t = gold || blocks ? 'dark' : S && S.theme === 'system' ? (darkQuery.matches ? 'dark' : 'light') : (S ? S.theme : 'dark');
   const root = document.documentElement;
   root.dataset.theme = t;
-  if (gold) root.dataset.skin = 'gold'; else delete root.dataset.skin;
-  root.dataset.accent = gold ? 'gold' : (S && S.accent) || 'indigo';
-  if (S && S.oled && t === 'dark' && !gold) root.dataset.oled = ''; else delete root.dataset.oled;
-  // Сплошной фон: в OLED и «Чёрном золоте» полупрозрачный Mica не нужен.
-  if (gold || root.dataset.oled !== undefined) root.dataset.solid = ''; else delete root.dataset.solid;
+  if (gold || blocks) root.dataset.skin = gold ? 'gold' : 'blocks'; else delete root.dataset.skin;
+  root.dataset.accent = gold || blocks ? root.dataset.skin : (S && S.accent) || 'indigo';
+  if (S && S.oled && t === 'dark' && !root.dataset.skin) root.dataset.oled = ''; else delete root.dataset.oled;
+  // Сплошной фон: в OLED и тематических стилях полупрозрачный Mica не нужен.
+  if (root.dataset.skin || root.dataset.oled !== undefined) root.dataset.solid = ''; else delete root.dataset.solid;
   if (themeSent !== t) { themeSent = t; api('/api/window/theme', { dark: t === 'dark' }).catch(() => { themeSent = ''; }); }
 }
 darkQuery.addEventListener('change', () => { if (S && S.theme === 'system') applyTheme(); });
@@ -267,7 +269,7 @@ async function refreshProxies() {
 
 async function refreshStats() {
   try { STATS = await api('/api/stats?n=120'); STATSAt = Date.now(); } catch (_) { return; }
-  if (view === 'overview') renderOverviewLive();
+  renderOverviewLive();
   if (view === 'servers') renderServers();
   if (view === 'rules') renderRules();
 }
@@ -341,13 +343,13 @@ async function tick() {
   try {
     await refreshState();
     const running = ST && ST.running;
-    if (running && Date.now() - PXAt > 3000 && (view === 'overview' || view === 'servers')) await refreshProxies();
+    if (running && Date.now() - PXAt > 3000) await refreshProxies();
     if (!running && PX) { PX = null; updateStatus(); }
-    if (view === 'overview' || (view === 'rules' && tickN % 5 === 0) || (view === 'servers' && tickN % 10 === 0)) await refreshStats();
-    if (view === 'overview') refreshIP(false);
+    if (!document.hidden || tickN % 5 === 0) await refreshStats();
+    refreshIP(false);
     if (view === 'diag' && diagTab === 'conns' && running) await refreshConns();
     if (view === 'diag' && diagTab === 'logs') await refreshLogs();
-    if (view === 'bypass' || (view === 'overview' && tickN % 4 === 0) || tickN % 15 === 1) await refreshAddons();
+    if (view === 'bypass' || tickN % 4 === 0) await refreshAddons();
     if (S && S.wl && S.wl.enabled && (view === 'servers' ? tickN % 3 === 0 : tickN % 20 === 2)) { await refreshWL(); if (view === 'servers') renderServers(); }
     if (tickN % 30 === 3 || (view === 'settings' && SELF && SELF.busy)) { await refreshSelf(); if (view === 'settings') patch('selfBox', JSON.stringify(SELF), selfBox); }
     if (view === 'diag' && diagTab === 'speed') await refreshSpeed();
@@ -405,10 +407,12 @@ function updateStatus() {
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
+  const xp = $('#hbXp');
+  if (xp) xp.style.width = (Math.min(1, Math.log10(kb + 1) / 4) * 100).toFixed(1) + '%';
   const tbs = $('#tbStatus');
   if (tbs) tbs.textContent = TITLES[p] + (p === 'on' ? ' · ' + cs.name : '');
 
-  if (view === 'overview' && $('#statusTitle')) {
+  if ($('#statusTitle')) {
     $('#statusTitle').textContent = TITLES[p];
     let sub = 'Трафик идёт как обычно, без сервера.';
     if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - ST.startedAt)}`;
@@ -420,8 +424,7 @@ function updateStatus() {
     btn.disabled = p === 'wait';
     btn.setAttribute('aria-label', powerLabel(p));
     btn.title = powerLabel(p);
-    renderHeroChips();
-    renderMap();
+    renderTiles();
     const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok')].join('|');
     patch('notices', n, buildNotices);
     renderLanes();
@@ -538,31 +541,48 @@ async function elevate() {
 
 // ---------- навигация ----------
 function go(v) {
-  // Плавная смена раздела (View Transitions API), если система не просит обойтись без анимации.
-  if (v !== view && document.startViewTransition && !REDUCE.matches && main.firstChild && !document.hidden) {
-    document.startViewTransition(() => goNow(v));
-    return;
-  }
-  goNow(v);
+  goNow(VIEWS[v] ? v : 'overview');
 }
 
+// Главный экран («сцена» с ветвями) всегда на месте; разделы открываются панелью справа поверх него.
 function goNow(v) {
+  const was = view;
   view = v;
   sessionStorage.setItem('naivka-view', v);
-  document.querySelectorAll('.nav-item').forEach(b => {
+  document.querySelectorAll('.nav-item, .brand').forEach(b => {
     if (b.dataset.view === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
   Object.keys(sigs).forEach(k => delete sigs[k]);
-  main.replaceChildren(VIEWS[v]());
-  main.scrollTop = 0;
-  decodeTitle(main.querySelector('h1'));
+  const drawer = $('#drawer');
+  if (v === 'overview') {
+    drawer.classList.remove('open');
+    $('#scrim').hidden = true;
+    setTimeout(() => { if (view === 'overview') { drawer.hidden = true; drawerBody.replaceChildren(); } }, 260);
+    main.removeAttribute('inert');
+  } else {
+    drawerBody.replaceChildren(VIEWS[v]());
+    drawerBody.scrollTop = 0;
+    drawer.hidden = false;
+    $('#scrim').hidden = false;
+    requestAnimationFrame(() => drawer.classList.add('open'));
+    main.setAttribute('inert', '');
+    decodeTitle(drawerBody.querySelector('h1'));
+    if (was === 'overview') setTimeout(() => $('#drawerClose').focus({ preventScroll: true }), 50);
+  }
   updateStatus();
-  if (v === 'overview') { renderOverviewLive(); renderIP(); refreshIP(false); refreshServerGeo(false); refreshStats(); }
-  if (v === 'servers') { renderServers(); refreshProxies(); refreshServerGeo(false); refreshStats(); }
-  if (v === 'rules') { renderRules(); refreshStats(); renderLists(); }
+  renderOverviewLive(); renderIP(); refreshIP(false); refreshServerGeo(false); refreshStats();
+  if (v === 'servers') { renderServers(); refreshProxies(); }
+  if (v === 'own') renderOwn();
+  if (v === 'rules') { renderRules(); renderLists(); }
   if (v === 'bypass') refreshAddons();
   if (v === 'settings') { shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify(SELF), selfBox)); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
+}
+
+function openDiag(tab) {
+  diagTab = tab;
+  sessionStorage.setItem('naivka-diag', tab);
+  go('diag');
 }
 
 // ---------- элементы форм ----------
@@ -664,63 +684,56 @@ function openDialog(...content) {
 
 // ---------- обзор ----------
 function viewOverview() {
-  return h('div', { class: 'view' },
-    h('section', { class: 'hero', id: 'hero' },
-      h('div', { class: 'hero-map', id: 'heroMap' }),
-      h('div', { class: 'hero-body' },
-        powerButton('connectBtn'),
-        h('div', { class: 'hero-text' },
-          h('div', { class: 'status-title', id: 'statusTitle' }, '…'),
-          h('div', { class: 'sub', id: 'statusSub' }),
-          h('div', { class: 'hero-chips', id: 'heroChips' }),
-          h('div', { class: 'sysline', id: 'sysLine' })))),
-    h('div', { id: 'notices' }),
-    h('div', { class: 'card lanes-card', id: 'lanesCard', 'data-tag': 'маршруты' }, h('div', { id: 'lanesSvg' }), h('div', { class: 'lanes-legend', id: 'lanesLegend' })),
-    h('div', { class: 'quick' },
+  return h('div', { class: 'stage-inner' },
+    h('div', { class: 'stage-head' },
+      h('div', { class: 'stage-status' },
+        h('div', { class: 'status-title', id: 'statusTitle' }, '…'),
+        h('div', { class: 'sub', id: 'statusSub' })),
+      h('div', { class: 'sysline', id: 'sysLine' })),
+    h('div', { id: 'notices', class: 'stage-notices' }),
+    h('div', { class: 'lanes-stage', id: 'lanesCard' },
+      h('div', { class: 'lanes-box', id: 'lanesBox' }, h('div', { id: 'lanesSvg' }), powerButton('connectBtn')),
+      h('div', { class: 'lanes-legend', id: 'lanesLegend' })),
+    h('div', { class: 'stage-controls' },
       h('label', null, 'Перехват', segmented([['proxy', 'Системный прокси'], ['tun', 'Весь трафик (TUN)']], () => S.mode, v => { S.mode = v; save(); updateStatus(); }, 'Перехват')),
       h('label', null, 'Маршрут', segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); updateStatus(); }, 'Маршрут'))),
-    h('div', { class: 'grid-main' },
-      h('section', { class: 'card' },
-        h('div', { class: 'card-head' }, h('h3', null, 'Скорость'), h('small', null, 'последние 2 минуты')),
-        h('div', { id: 'chartBox' }),
-        h('div', { class: 'legend', id: 'chartLegend' })),
-      h('section', { class: 'card' },
-        h('div', { class: 'card-head' }, h('h3', null, 'Сейчас активны'), h('small', { id: 'topNote' })),
-        h('div', { class: 'top-list', id: 'topList' }))),
-    h('div', { class: 'grid-main' },
-      h('section', { class: 'card' },
-        h('div', { class: 'card-head' }, h('h3', null, 'Сеанс'), h('small', { id: 'sessionNote' })),
-        h('div', { class: 'facts', id: 'facts' })),
-      h('section', { class: 'card' },
-        h('div', { class: 'card-head' }, h('h3', null, 'События')),
-        h('div', { class: 'events', id: 'events' }))),
-    h('section', { class: 'card ipcard mt', id: 'ipCard' }));
+    h('div', { class: 'stage-tiles' },
+      h('button', { class: 'tile', type: 'button', id: 'tileSpeed', onclick: () => openDiag('now'), title: 'График скорости и активные сайты' }),
+      h('button', { class: 'tile', type: 'button', id: 'tileIp', onclick: () => openDiag('now'), title: 'Как вас видят сайты и карта' }),
+      h('button', { class: 'tile', type: 'button', id: 'tileSession', onclick: () => openDiag('traffic'), title: 'История трафика' })));
 }
 
-// Под статусом: выбранный сервер (щелчок — к списку серверов) и скорость сейчас.
-function renderHeroChips() {
-  const box = $('#heroChips');
-  if (!box || !S || !ST) return;
+// Плитки под схемой: скорость, как вас видят сайты, сеанс. Щелчок открывает подробности.
+function renderTiles() {
+  const t1 = $('#tileSpeed');
+  if (!t1 || !S || !ST) return;
   const p = phase();
-  const cs = currentServer();
-  const g = cs.id && srvGeo[cs.id] && srvGeo[cs.id].info;
-  const d = cs.id ? delayFor(cs.id) : null;
+  const on = p === 'on';
   const sp = lastSpeeds();
-  const chips = [h('button', { class: 'hchip', type: 'button', onclick: () => go('servers'), title: 'Выбрать сервер' },
-    flag(cs.cc || (g && g.countryCode)),
-    h('span', { class: 'hchip-name' }, cs.auto ? cs.name + ' · авто' : cs.name),
-    d && (d.ms || d.error) ? pingBars(d) : null,
-    btnIcon('chevron'))];
-  if (p === 'on') {
-    chips.push(h('span', { class: 'hchip' }, h('span', { class: 'hint' }, '↓'), tnum('h-down', sp.pd + sp.dd + sp.zd + sp.td, fmtSpeed)),
-      h('span', { class: 'hchip' }, h('span', { class: 'hint' }, '↑'), tnum('h-up', sp.pu + sp.du + sp.zu + sp.tu, fmtSpeed)));
-  }
-  box.replaceChildren(...chips);
+  const cs = currentServer();
+  const d = cs.id ? delayFor(cs.id) : null;
+  t1.replaceChildren(h('span', { class: 'tile-k' }, 'Скорость'),
+    h('span', { class: 'tile-v' }, h('span', { class: 'hint' }, '↓ '), tnum('t-down', on ? sp.pd + sp.dd + sp.zd + sp.td : 0, fmtSpeed),
+      h('span', { class: 'hint' }, '   ↑ '), tnum('t-up', on ? sp.pu + sp.du + sp.zu + sp.tu : 0, fmtSpeed)),
+    h('span', { class: 'tile-spark' }, speedSpark()));
+  const t2 = $('#tileIp');
+  const dd = ip.data;
+  const g = dd && ((dd.proxy && dd.proxy.info) || (dd.direct && dd.direct.info));
+  t2.replaceChildren(h('span', { class: 'tile-k' }, 'Сайты видят'),
+    !S.showIp ? h('span', { class: 'tile-v muted' }, 'проверка IP выключена')
+      : !g ? (ip.loading ? h('span', { class: 'skel', style: 'width:70%;height:18px' }) : h('span', { class: 'tile-v muted' }, 'не определено'))
+      : h('span', { class: 'tile-v' }, flag(g.countryCode), g.ip),
+    g ? h('span', { class: 'tile-sub' }, [g.city || g.country, g.isp].filter(Boolean).join(', ')) : null);
+  const t = (STATS && STATS.totals) || [0, 0];
+  const t3 = $('#tileSession');
+  t3.replaceChildren(h('span', { class: 'tile-k' }, 'Сеанс'),
+    h('span', { class: 'tile-v' }, on ? fmtDur(Date.now() / 1000 - ST.startedAt) : 'не подключено'),
+    h('span', { class: 'tile-sub' }, on ? `через сервер ${fmtBytes(t[0] + t[1])}` : 'щёлкните, чтобы открыть историю трафика'));
   const sl = $('#sysLine');
   if (sl) {
     const word = { on: 'защищён', off: 'открыт', wait: 'синхронизация…', err: 'сбой', blocked: 'заблокирован' }[p];
     sl.replaceChildren(h('span', { class: 'sl-key' }, 'Канал /'), h('b', { class: 'sl-val ' + p }, word),
-      p === 'on' && d && d.ms ? h('span', { class: 'sl-ms' }, `· ${d.ms} мс`) : null);
+      on && d && d.ms ? h('span', { class: 'sl-ms' }, `· ${cs.name} · ${d.ms} мс`) : on ? h('span', { class: 'sl-ms' }, `· ${cs.name}`) : null);
   }
 }
 
@@ -788,7 +801,7 @@ function renderLanes() {
   const lanes = laneList();
   const total = lanes.reduce((a, l) => a + l.speed, 0);
   const n = lanes.length;
-  const W = 1000, top = 58, bottom = n > 2 ? 70 + 82 * (n - 1) : 236, H = bottom + 62;
+  const W = 1000, top = 58, bottom = n > 2 ? 70 + 82 * (n - 1) : 236, H = bottom + 92;
   const Y0 = (top + bottom) / 2;
   const nodeX = { proxy: 500, tg: 405, zapret: 595, direct: 500 };
   const geo = lanes.map((l, i) => ({ ...l, ny: n === 1 ? Y0 : top + i * (bottom - top) / (n - 1), nx: nodeX[l.key] }));
@@ -814,7 +827,8 @@ function renderLanes() {
       if (l.active) binds.push([l.key, line, Math.min(4.5, 2.2 + l.w / 4), l.color]);
       if (l.node) {
         const x = l.nx, y = l.ny;
-        nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node' + (l.active ? ' on' : ''), style: `stroke:${l.color}` }));
+        nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node clickable' + (l.active ? ' on' : ''), style: `stroke:${l.color}`,
+          onclick: () => go(l.key === 'proxy' ? 'servers' : 'bypass') }, s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»')));
         nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
         nodes.push(s('text', { x, y: y - 40, 'text-anchor': 'middle', class: 'lbl halo' }, l.node.title));
         nodes.push(s('text', { x, y: y - 25, 'text-anchor': 'middle', class: 'sub-lbl halo' },
@@ -824,16 +838,22 @@ function renderLanes() {
         nodes.push(s('text', { x: l.nx, y: l.ny + 26, 'text-anchor': 'middle', class: 'sub-lbl halo', style: `fill:${l.color}` }, 'напрямую'));
       }
     });
-    const end = (x, ic, title, sub) => [
+    // Узел «Компьютер» — сама кнопка подключения (HTML поверх схемы), здесь только подписи.
+    const end = (x, ic, title, sub) => ic === 'pc' ? [
+      s('text', { x, y: Y0 + 74, 'text-anchor': 'middle', class: 'lbl halo' }, title),
+      s('text', { x, y: Y0 + 90, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)] : [
       s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }),
       icon(ic, x, Y0, 24, 'var(--ink)'),
       s('text', { x, y: Y0 + 46, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 62, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)];
     return s('svg', { class: 'lanes', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Схема маршрутов трафика' },
       defs, ...paths, dots, ...nodes,
-      ...end(95, 'pc', 'Компьютер', S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`),
+      ...end(95, 'pc', 'Компьютер', phase() === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : 'нажмите, чтобы подключить'),
       ...end(905, 'globe', 'Интернет', ROUTING[S.routing]));
   });
+  // Кнопка подключения стоит точно на месте узла «Компьютер».
+  const lb = $('#lanesBox');
+  if (lb) { lb.style.setProperty('--pcx', (95 / W * 100) + '%'); lb.style.setProperty('--pcy', (Y0 / H * 100) + '%'); }
   // Частицы продолжают бег по новой схеме с того же места.
   if (binds) {
     const layer = $('#lanesSvg .lane-pts');
@@ -965,8 +985,7 @@ function renderEvents() {
 }
 
 function renderOverviewLive() {
-  if (view !== 'overview') return;
-  renderHeroChips();
+  renderTiles();
   renderMap();
   renderLanes();
   renderChart();
@@ -1016,7 +1035,8 @@ function renderIP() {
   } else cols = h('div', { class: 'ipcols' }, ipColumn('Сейчас', d.direct, 'Подключитесь, чтобы сайты видели адрес сервера.'));
   card.classList.toggle('loading', ip.loading);
   card.replaceChildren(head, cols);
-  if (view === 'overview') renderMap();
+  renderMap();
+  renderTiles();
 }
 // ---------- диагностика ----------
 function routeOf(c) {
@@ -1072,7 +1092,26 @@ let lastCheck = null;
 function viewDiag() {
   const body = h('div', { id: 'diagBody' });
   const render = () => {
-    if (diagTab === 'conns') {
+    if (diagTab === 'now') {
+      body.replaceChildren(
+        h('div', { class: 'grid-main' },
+          h('section', { class: 'card' },
+            h('div', { class: 'card-head' }, h('h3', null, 'Скорость'), h('small', null, 'последние 2 минуты')),
+            h('div', { id: 'chartBox' }), h('div', { class: 'legend', id: 'chartLegend' })),
+          h('section', { class: 'card' },
+            h('div', { class: 'card-head' }, h('h3', null, 'Сейчас активны'), h('small', { id: 'topNote' })),
+            h('div', { class: 'top-list', id: 'topList' }))),
+        h('div', { class: 'grid-main' },
+          h('section', { class: 'card' },
+            h('div', { class: 'card-head' }, h('h3', null, 'Сеанс'), h('small', { id: 'sessionNote' })),
+            h('div', { class: 'facts', id: 'facts' })),
+          h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'События')), h('div', { class: 'events', id: 'events' }))),
+        h('section', { class: 'card ipcard mt', id: 'ipCard' }),
+        h('div', { class: 'card mapcard mt' }, h('div', { class: 'map-box', id: 'heroMap' })));
+      MAP.key = '';
+      renderOverviewLive();
+      renderIP();
+    } else if (diagTab === 'conns') {
       body.replaceChildren(
         h('p', { class: 'sub' }, 'Что сейчас открыто и каким маршрутом идёт. Под адресом — правило, которое сработало.'),
         h('div', { class: 'row' },
@@ -1105,11 +1144,11 @@ function viewDiag() {
       refreshLogs();
     }
   };
-  const tabs = segmented([['conns', 'Соединения'], ['traffic', 'Трафик'], ['check', 'Проверить сайт'], ['speed', 'Скорость'], ['logs', 'Журнал']], () => diagTab, v => {
+  const tabs = segmented([['now', 'Сейчас'], ['conns', 'Соединения'], ['traffic', 'Трафик'], ['check', 'Проверить сайт'], ['speed', 'Скорость'], ['logs', 'Журнал']], () => diagTab, v => {
     diagTab = v; sessionStorage.setItem('naivka-diag', v); render();
   }, 'Раздел диагностики');
   render();
-  return h('div', { class: 'view', style: 'max-width:none' }, h('div', { class: 'title-row' }, h('h1', null, 'Диагностика'), tabs), body);
+  return h('div', { class: 'view', style: 'max-width:none' }, h('div', { class: 'title-row' }, h('h1', null, 'Сводка'), tabs), body);
 }
 
 function viewCheck() {
@@ -1184,21 +1223,13 @@ function viewServers() {
   return h('div', { class: 'view' },
     h('div', { class: 'title-row' }, h('h1', null, 'Серверы'),
       h('div', { class: 'row' },
-        ST && ST.install ? h('button', { class: 'btn', onclick: () => installServerDialog() }, 'Свой сервер') : null,
         h('button', { class: 'btn', onclick: importLinksDialog }, 'Вставить ссылки'),
         h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
     h('div', { class: 'scards', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
     h('div', { class: 'row mt' },
       h('button', { class: 'btn small', id: 'testAll', onclick: () => testServers('') }, 'Проверить все'),
       h('span', { class: 'hint' }, 'Без подключения проверяется TLS-рукопожатие, после — настоящий запрос через сервер. Линия — задержка за последний час. Карточки можно перетаскивать, звёздочка поднимает сервер наверх.')),
-    h('div', { id: 'wlBox' }),
-    h('div', { id: 'panelsBox' }),
-    h('h2', null, 'Телефон'),
-    h('div', { class: 'card' },
-      h('p', null, 'Те же серверы, режим маршрутов и ваши правила — на iPhone или Android. Профиль открывается в приложении sing-box, его понимают и другие клиенты на sing-box.'),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn primary', onclick: phoneDialog }, 'Профиль для телефона'),
-        h('span', { class: 'hint' }, 'Для одного сервера можно показать QR-код ссылки — кнопка «QR» в строке сервера.'))));
+    h('div', { id: 'wlBox' }));
 }
 
 // Серверы — карточками: избранные первыми, порядок меняется перетаскиванием.
@@ -1262,7 +1293,7 @@ function srvCardBase(id, cls, kids, opts = {}) {
 function renderServers(force) {
   const list = $('#srvList');
   if (!list || (dragId && !force)) return;
-  patch('panelsBox', JSON.stringify(S.panels || []), panelsBox);
+  renderOwn();
   const running = ST && ST.running;
   const nowTag = PX && running ? (PX.selected === 'auto' ? PX.autoNow : PX.selected) : '';
   const noNaive = ST && ST.core && ST.core.present && !ST.core.naive;
@@ -1734,6 +1765,35 @@ function installServerDialog(prev) {
 }
 
 // ---------- панели ----------
+// ---------- свой сервер ----------
+function viewOwn() {
+  const can = ST && ST.install;
+  const proto = (name, what) => h('div', { class: 'own-proto' }, h('b', null, name), h('span', null, what));
+  return h('div', { class: 'view' },
+    h('h1', null, 'Свой сервер'),
+    h('p', { class: 'sub' }, 'Naivka сама поставит протоколы и панель управления на ваш VPS по SSH (Debian или Ubuntu) и добавит готовые серверы в список.'),
+    h('div', { class: 'card own-hero' },
+      h('div', { class: 'own-protos' },
+        proto('VLESS Reality', 'основной: маскируется под чужой сайт, ставится всегда'),
+        proto('Hysteria2', 'быстрый запасной по UDP'),
+        proto('NaiveProxy', 'HTTPS как у браузера, нужен свой домен'),
+        proto('Панель 3X-UI или s-ui', 'пользователи, лимиты, подписки — по желанию')),
+      h('div', { class: 'row mt' },
+        h('button', { class: 'btn primary', disabled: !can, onclick: () => installServerDialog() }, 'Начать установку'),
+        h('span', { class: 'hint' }, can ? 'Перед началом Naivka покажет, что именно сделает на сервере, и попросит подтвердить.' : 'Недоступно в этой сборке (Windows 7).'))),
+    h('h2', null, 'Панели'),
+    h('div', { id: 'panelsBox' }),
+    h('h2', null, 'Телефон'),
+    h('div', { class: 'card' },
+      h('p', null, 'Те же серверы, режим маршрутов и ваши правила — на iPhone или Android. Профиль открывается в приложении sing-box, его понимают и другие клиенты на sing-box.'),
+      h('button', { class: 'btn primary', onclick: phoneDialog }, 'Профиль для телефона')));
+}
+
+function renderOwn() {
+  patch('panelsBox', JSON.stringify(S.panels || []), () => (S.panels || []).length ? panelsBox()
+    : h('p', { class: 'hint' }, 'Панелей пока нет. Её можно поставить вместе с протоколами — отметьте панель в окне установки.'));
+}
+
 function panelsBox() {
   const list = S.panels || [];
   if (!list.length) return null;
@@ -2252,10 +2312,13 @@ function viewSettings() {
 
     h('h2', null, 'О программе'),
     h('div', { id: 'selfBox' }),
+    h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: openFeedback }, 'Написать автору в Telegram'),
+      h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
 
     h('h2', null, 'Внешний вид'),
-    segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows'], ['gold', 'Чёрное золото']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
-    h('p', { class: 'hint gold-only' }, 'Игровое меню: вкладки сверху, плитки над живыми огнями (они разгораются от трафика), выбранное — золотом. Клавиши 1–6 переключают разделы, Ctrl+Enter подключает. Акцентный цвет и OLED в этой теме свои.'),
+    segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows'], ['gold', 'Никогда не проси об этом'], ['blocks', 'Блоки']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
+    h('p', { class: 'hint gold-only' }, 'Чёрное с золотом, тонкие заглавные, огни на фоне разгораются от трафика, заголовки «расшифровываются». Акцентный цвет и OLED в этой теме свои.'),
+    h('p', { class: 'hint blocks-only' }, 'Пиксельный шрифт, каменные кнопки, земля и трава, полоска опыта внизу растёт со скоростью. Акцентный цвет и OLED в этой теме свои.'),
     h('div', { class: 'accent-row' }, h('span', { class: 'hint' }, 'Акцент'),
       h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Акцентный цвет' },
         ...ACCENTS.map(([id, name]) => h('button', {
@@ -2423,13 +2486,22 @@ function restoreBackup() {
 }
 
 const ACCENTS = [['indigo', 'Индиго'], ['violet', 'Фиолетовый'], ['orchid', 'Орхидея']];
-const VIEWS = { overview: viewOverview, servers: viewServers, rules: viewRules, bypass: viewBypass, diag: viewDiag, settings: viewSettings };
+// Обратная связь — в Telegram автора. Ссылку открывает Naivka в браузере (в своём окне её открывать нельзя).
+async function openFeedback() {
+  try { await api('/api/open', { link: 'feedback' }); toast('Открываю Telegram @mixazvv'); }
+  catch (_) { window.open('https://t.me/mixazvv', '_blank', 'noopener'); }
+}
+
+const VIEWS = { overview: () => h('div'), own: viewOwn, servers: viewServers, rules: viewRules, bypass: viewBypass, diag: viewDiag, settings: viewSettings };
 
 // ---------- старт ----------
 async function boot() {
   setupChrome();
   if (MINI) { miniBoot(); return; }
-  document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));
+  document.querySelectorAll('.nav-item, .brand').forEach(b => b.addEventListener('click', () => go(b.dataset.view === view ? 'overview' : b.dataset.view)));
+  $('#drawerClose').addEventListener('click', () => go('overview'));
+  $('#scrim').addEventListener('click', () => go('overview'));
+  $('#feedbackBtn').addEventListener('click', openFeedback);
   try { S = await api('/api/settings'); }
   catch (e) { setOffline(true); setOffline(true); setOffline(true); return; }
   applyTheme();
@@ -2440,21 +2512,25 @@ async function boot() {
   };
   window.addEventListener('focus', resync);
   // Клавиши: 1–6 — разделы, Ctrl+Enter — подключить или отключить.
-  const ORDER = ['overview', 'servers', 'bypass', 'rules', 'diag', 'settings'];
+  const ORDER = ['overview', 'servers', 'own', 'bypass', 'rules', 'diag', 'settings'];
   document.addEventListener('keydown', e => {
     if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    if (e.key === 'Escape' && view !== 'overview') { e.preventDefault(); go('overview'); return; }
     const t = e.target;
     const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
     if (e.ctrlKey && e.key === 'Enter' && !typing) { e.preventDefault(); toggleConnect(); return; }
     if (typing || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-    const i = /^Digit[1-6]$/.test(e.code) ? +e.code.slice(5) - 1 : -1;
+    const i = /^Digit[1-7]$/.test(e.code) ? +e.code.slice(5) - 1 : -1;
     if (i >= 0) { e.preventDefault(); go(ORDER[i]); }
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { resync(); refreshState(); } });
   await refreshState();
   if (view === 'conns' || view === 'logs') { diagTab = view; view = 'diag'; }
   if (!VIEWS[view]) view = 'overview';
-  go(view);
+  main.replaceChildren(viewOverview());
+  const first = view;
+  view = 'overview';
+  go(first);
   tick();
 }
 
