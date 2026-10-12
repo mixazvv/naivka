@@ -566,7 +566,7 @@ function goNow(v) {
     drawerBody.scrollTop = 0;
     drawer.hidden = false;
     $('#scrim').hidden = false;
-    requestAnimationFrame(() => { drawer.classList.add('open'); setTimeout(() => chunkReveal(drawer, '#8B8B8B'), 30); });
+    requestAnimationFrame(() => { drawer.classList.add('open'); setTimeout(() => chunkReveal(drawer, 'var(--bg)'), 30); });
     main.setAttribute('inert', '');
     decodeTitle(drawerBody.querySelector('h1'));
     if (was === 'overview') setTimeout(() => $('#drawerClose').focus({ preventScroll: true }), 50);
@@ -833,7 +833,7 @@ function renderLanes() {
         const open = () => go(l.key === 'proxy' ? 'servers' : 'bypass');
         const tip = s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»');
         // «Блоки»: сервер — алмазная руда, zapret — красная руда, Telegram — лазурит.
-        if (mc) nodes.push(s('g', { class: 'lane-cube clickable' + (l.active ? ' on' : ''), onclick: open }, tip, mcCube(x, y, 40, { proxy: 'diamond', zapret: 'redstone', tg: 'lapis' }[l.key] || 'stone')));
+        if (mc) nodes.push(s('g', { class: 'clickable' + (l.active ? ' on' : ''), onclick: open }, tip, pxNode(x, y, 40, l.node.icon, l.active ? l.color : 'var(--faint)', l.active ? 'on' : '')));
         else {
           nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node clickable' + (l.active ? ' on' : ''), style: `stroke:${l.color}`, onclick: open }, tip));
           nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
@@ -851,7 +851,7 @@ function renderLanes() {
     const end = (x, ic, title, sub) => ic === 'pc' ? [
       s('text', { x, y: Y0 + 74, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 90, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)] : [
-      ...(mc ? [mcCube(x, Y0, 52, 'grass')] : [s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }), icon(ic, x, Y0, 24, 'var(--ink)')]),
+      ...(mc ? [pxNode(x, Y0, 50, ic, 'var(--ink)', 'end')] : [s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }), icon(ic, x, Y0, 24, 'var(--ink)')]),
       s('text', { x, y: Y0 + 46, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 62, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)];
     return s('svg', { class: 'lanes', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Схема маршрутов трафика' },
@@ -2324,9 +2324,9 @@ function viewSettings() {
       h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
 
     h('h2', null, 'Внешний вид'),
-    segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows'], ['gold', 'Никогда не проси об этом'], ['blocks', 'Блоки']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
+    segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows'], ['gold', 'Никогда не проси об этом'], ['blocks', 'Пиксели']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
     h('p', { class: 'hint gold-only' }, 'Чёрное с золотом, тонкие заглавные, огни на фоне разгораются от трафика, заголовки «расшифровываются». Акцентный цвет и OLED в этой теме свои.'),
-    h('p', { class: 'hint blocks-only' }, 'Пиксельный шрифт, каменные кнопки, земля и трава, полоска опыта внизу растёт со скоростью. Акцентный цвет и OLED в этой теме свои.'),
+    h('p', { class: 'hint blocks-only' }, 'Тёмный интерфейс с пиксельными акцентами: рамки «ступеньками», крупные пиксельные цифры, кольцо из делений, экраны проступают мозаикой. Акцентный цвет и OLED в этой теме свои.'),
     h('div', { class: 'accent-row' }, h('span', { class: 'hint' }, 'Акцент'),
       h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Акцентный цвет' },
         ...ACCENTS.map(([id, name]) => h('button', {
