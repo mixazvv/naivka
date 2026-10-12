@@ -171,6 +171,9 @@ func classify(chains []string) (route string, direct bool) {
 		if c == tagDirect {
 			return tagDirect, true
 		}
+		if c == tagTwitch {
+			return tagTwitch, false
+		}
 	}
 	if len(chains) > 0 {
 		return chains[0], false

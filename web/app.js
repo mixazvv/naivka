@@ -757,7 +757,7 @@ function renderChart() {
     h('span', null, h('i', { style: 'background:none;border-top:1.5px dashed var(--muted);border-radius:0;height:0;vertical-align:3px' }), 'Отдача', h('b', null, fmtSpeed(l.pu + l.du + l.zu + l.tu))));
 }
 
-const ROUTE_STYLE = { direct: ['direct', 'напрямую'], zapret: ['zapret', 'через zapret'], telegram: ['tg', 'tg-ws-proxy'] };
+const ROUTE_STYLE = { direct: ['direct', 'напрямую'], zapret: ['zapret', 'через zapret'], telegram: ['tg', 'tg-ws-proxy'], 'twitch-adfree': ['proxy', 'Twitch без рекламы'] };
 
 function renderTop() {
   const list = $('#topList');
@@ -881,6 +881,7 @@ function routeOf(c) {
   const srv = chains.find(t => t.startsWith('s-') || t.startsWith('w-'));
   if (srv) { const sv = serverByTag(srv); return { cls: 'proxy', text: sv ? sv.name : srv }; }
   if (chains.includes('direct')) return { cls: 'direct', text: 'Напрямую' };
+  if (chains.includes('twitch-adfree')) return { cls: 'proxy', text: 'Twitch без рекламы' };
   if (chains.length) return { cls: 'proxy', text: chains[0] };
   return { cls: 'block', text: '—' };
 }
@@ -1331,7 +1332,8 @@ function viewRules() {
       check('blockQuic', 'Блокировать QUIC', 'Naive передаёт только TCP. Без QUIC браузеры сами перейдут на обычный HTTPS, и он пойдёт через сервер.', refreshSpecialNote),
       check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки пойдут мимо сервера: через Naive UDP всё равно не проходит.', refreshSpecialNote),
       check('udpProxy', 'UDP через сервер VLESS — голос Discord, игры', 'Naive передаёт только TCP, а VLESS (ваш Reality или подписка) — и UDP. Тогда UDP, который по правилам должен идти через сервер, пойдёт через VLESS. Работает в режиме TUN: в режиме прокси программы отправляют UDP мимо Naivka.', refreshSpecialNote),
-      check('adBlock', 'Блокировать рекламу и трекеры', 'По готовому списку для sing-box (geosite category-ads-all, обновляется раз в сутки). Если какой-то сайт сломается — добавьте его правилом «Напрямую» или «Через сервер».', refreshSpecialNote)),
+      check('adBlock', 'Блокировать рекламу и трекеры', 'По готовому списку для sing-box (geosite category-ads-all, обновляется раз в сутки): баннеры, счётчики, рекламные сети. Видеорекламу YouTube так не убрать — она идёт с тех же серверов, что и само видео; для неё нужен uBlock Origin в браузере. Если какой-то сайт сломается — добавьте его правилом «Напрямую» или «Через сервер».', refreshSpecialNote),
+      check('twitchAdFree', 'Twitch без рекламы', 'Twitch вставляет рекламу в трансляцию в зависимости от страны, откуда запрошен плейлист. Naivka запрашивает плейлисты через прокси проекта TTV LOL PRO в стране без рекламы, а само видео идёт как обычно. Прокси видит только то, что вы смотрите Twitch, но не какой канал. Работает для трансляций, не для записей; баннеры на сайте остаются. Если трансляции перестали открываться — выключите.', refreshSpecialNote)),
     more('Правила sing-box вручную', S.extraRules.trim() ? 'есть свои правила' : 'для опытных',
       h('p', { class: 'hint' }, 'JSON-массив для route.rules, вставляется сразу после ваших правил. Можно ссылаться на outbound proxy, direct, auto и на свои outbounds из настроек.'),
       jsonArea('extraRules', '[\n  { "domain_keyword": ["openai"], "outbound": "proxy" }\n]', true)));
@@ -1344,7 +1346,7 @@ const MODE_DESC = {
 };
 
 function specialNote() {
-  const on = [S.adBlock && 'реклама блокируется', S.ruInsideDirect && 'российские сервисы напрямую', S.blockQuic && 'QUIC блокируется', S.udpProxy ? 'UDP через VLESS' : S.udpDirect && 'UDP напрямую'].filter(Boolean);
+  const on = [S.adBlock && 'реклама блокируется', S.twitchAdFree && 'Twitch без рекламы', S.ruInsideDirect && 'российские сервисы напрямую', S.blockQuic && 'QUIC блокируется', S.udpProxy ? 'UDP через VLESS' : S.udpDirect && 'UDP напрямую'].filter(Boolean);
   return on.length ? on.join(', ') : 'всё выключено';
 }
 function refreshSpecialNote() {
@@ -1362,7 +1364,7 @@ const CATS = [
 
 function ruleCategory(rule) {
   if (rule === 'final') return 'final';
-  if (/inbound=\[?probe/.test(rule) || rule.includes('ip_is_private') || rule.includes('network=udp') || rule.includes('protocol=dns')) return null;
+  if (/inbound=\[?probe/.test(rule) || rule.includes('twitch-adfree') || rule.includes('ttvnw') || rule.includes('ip_is_private') || rule.includes('network=udp') || rule.includes('protocol=dns')) return null;
   if (rule.includes('ru-blocked')) return 'blocked';
   if (rule.includes('ru-inside')) return 'inside';
   if (rule.includes('category-ru') || rule.includes('geoip-ru') || /domain_suffix=\[?ru\b/.test(rule)) return 'ru';

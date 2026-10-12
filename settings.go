@@ -132,7 +132,8 @@ type Settings struct {
 	WL             WLSettings       `json:"wl"`
 	Share          ShareSettings    `json:"share"`
 	AdBlock        bool             `json:"adBlock"`
-	UDPProxy       bool             `json:"udpProxy"` // UDP (голос Discord, игры) — через сервер VLESS
+	TwitchAdFree   bool             `json:"twitchAdFree"` // плейлисты Twitch — через прокси без рекламы
+	UDPProxy       bool             `json:"udpProxy"`     // UDP (голос Discord, игры) — через сервер VLESS
 	LogLevel       string           `json:"logLevel"`
 	AutoConnect    bool             `json:"autoConnect"`
 	ExitWithWindow bool             `json:"exitWithWindow"`
