@@ -253,10 +253,16 @@ func (a *App) routes() http.Handler {
 		}
 		return map[string]string{"config": string(b)}, nil
 	})
-	api("GET", "/api/backup", func(*http.Request) (any, error) {
+	api("POST", "/api/backup", func(r *http.Request) (any, error) {
+		var req struct {
+			Password string `json:"password"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
 		s := a.settingsCopy()
 		s.Window = nil
-		return map[string]any{"format": "naivka-backup", "version": 1, "created": time.Now().Format(time.RFC3339), "settings": s}, nil
+		return makeBackup(s, req.Password)
 	})
 	api("POST", "/api/restore", a.apiRestore)
 	api("GET", "/api/addons", func(r *http.Request) (any, error) {
@@ -594,7 +600,8 @@ func (a *App) applyAutostart(prev, ns *Settings) error {
 
 func (a *App) apiRestore(r *http.Request) (any, error) {
 	var req struct {
-		Text string `json:"text"`
+		Text     string `json:"text"`
+		Password string `json:"password"`
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
@@ -603,8 +610,11 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 		Format   string          `json:"format"`
 		Settings json.RawMessage `json:"settings"`
 	}
-	raw := []byte(req.Text)
-	if json.Unmarshal(raw, &wrap) == nil && wrap.Format == "naivka-backup" {
+	raw, err := openBackup([]byte(req.Text), req.Password)
+	if err != nil {
+		return nil, err
+	}
+	if json.Unmarshal(raw, &wrap) == nil && wrap.Format == backupFormat {
 		raw = wrap.Settings
 	}
 	// Принимаем только копию Naivka или её settings.json: в любом другом JSON
@@ -628,7 +638,7 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 	ns.Window = a.settings.Window
 	prev := a.settings.clone()
 	a.settings = ns
-	err := SaveSettings(a.dir, ns)
+	err = SaveSettings(a.dir, ns)
 	a.mu.Unlock()
 	if err != nil {
 		return nil, err

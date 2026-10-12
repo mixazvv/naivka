@@ -1631,18 +1631,11 @@ function viewSettings() {
     check('updateCheck', 'Проверять обновления', 'Раз в 12 часов Naivka смотрит новые версии ядра, zapret и tg-ws-proxy на GitHub и сообщает о них. Устанавливаются они только по вашей кнопке.'),
 
     h('h2', null, 'Резервная копия'),
-    h('p', { class: 'hint' }, ST && ST.secrets
-      ? 'Пароли серверов в настройках зашифрованы средствами Windows и откроются только у вас на этом компьютере. В файле резервной копии они хранятся открытым текстом — держите его в надёжном месте.'
-      : 'В файле резервной копии пароли серверов хранятся открытым текстом — держите его в надёжном месте.'),
+    h('p', { class: 'hint' }, (ST && ST.secrets
+      ? 'Пароли серверов в настройках зашифрованы средствами Windows и откроются только у вас на этом компьютере. '
+      : '') + 'Копию можно зашифровать паролем — тогда без него из файла ничего не достать. Пароль не восстановить: забудете — копия бесполезна.'),
     h('div', { class: 'row' },
-      h('button', { class: 'btn', onclick: async () => {
-        await saveNow();
-        try {
-          const b = await api('/api/backup');
-          download(`naivka-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(b, null, 2), 'application/json');
-          toast('Копия сохранена в «Загрузки»');
-        } catch (e) { toast(e.message, true); }
-      } }, 'Сохранить копию'),
+      h('button', { class: 'btn', onclick: backupDialog }, 'Сохранить копию'),
       h('button', { class: 'btn', onclick: restoreBackup }, 'Восстановить из копии')),
 
     h('div', { class: 'mt-lg' }),
@@ -1688,6 +1681,55 @@ function viewSettings() {
       } }, 'Выйти из Naivka')));
 }
 
+function backupDialog() {
+  const p1 = h('input', { type: 'password', placeholder: 'Пароль, от 8 символов', autocomplete: 'new-password' });
+  const p2 = h('input', { type: 'password', placeholder: 'Ещё раз', autocomplete: 'new-password' });
+  const err = h('div', { class: 'err-text' });
+  const plain = h('input', { type: 'checkbox' });
+  const pass = h('div', { class: 'grid2' }, p1, p2);
+  plain.addEventListener('change', () => { pass.hidden = plain.checked; err.textContent = ''; });
+  const dlg = openDialog(
+    h('h2', null, 'Резервная копия'),
+    h('p', { class: 'hint' }, 'В копии все серверы с паролями, правила и настройки. С паролем файл зашифрован (AES-256): открыть его можно только в Naivka и только зная пароль.'),
+    pass,
+    h('label', { class: 'check mt' }, plain, h('span', null, h('b', null, 'Без пароля'), h('small', null, 'Пароли серверов будут в файле открытым текстом — любой, кто получит файл, сможет пользоваться вашими серверами.'))),
+    err,
+    h('div', { class: 'row end mt' },
+      h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'),
+      h('button', { class: 'btn primary', onclick: async () => {
+        err.textContent = '';
+        if (!plain.checked && p1.value !== p2.value) { err.textContent = 'Пароли не совпадают'; return; }
+        if (!plain.checked && p1.value.length < 8) { err.textContent = 'Пароль должен быть не короче 8 символов'; return; }
+        await saveNow();
+        try {
+          const b = await api('/api/backup', { password: plain.checked ? '' : p1.value });
+          const day = new Date().toISOString().slice(0, 10);
+          download(`naivka-backup-${day}${plain.checked ? '' : '-encrypted'}.json`, JSON.stringify(b, null, 2), 'application/json');
+          dlg.close();
+          toast('Копия сохранена в «Загрузки»');
+        } catch (e) { err.textContent = e.message; }
+      } }, 'Сохранить')));
+  p1.focus();
+}
+
+function askBackupPassword(wrong) {
+  return new Promise(resolve => {
+    const inp = h('input', { type: 'password', placeholder: 'Пароль копии', autocomplete: 'current-password' });
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); dlg.close(); } };
+    const dlg = openDialog(
+      h('h2', null, 'Копия зашифрована'),
+      wrong ? h('p', { class: 'err-text' }, 'Пароль не подошёл.') : h('p', { class: 'hint' }, 'Введите пароль, который задали при сохранении копии.'),
+      inp,
+      h('div', { class: 'row end mt' },
+        h('button', { class: 'btn', onclick: () => finish(null) }, 'Отмена'),
+        h('button', { class: 'btn primary', onclick: () => finish(inp.value) }, 'Открыть')));
+    dlg.addEventListener('close', () => finish(null));
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') finish(inp.value); });
+    inp.focus();
+  });
+}
+
 function restoreBackup() {
   const input = $('#fileInput');
   input.value = '';
@@ -1696,12 +1738,20 @@ function restoreBackup() {
     if (!f) return;
     const text = await f.text();
     if (!confirm('Заменить текущие серверы, правила и настройки содержимым копии?')) return;
-    try {
-      S = await api('/api/restore', { text });
-      applyTheme();
-      toast('Настройки восстановлены');
-      go('settings');
-    } catch (e) { toast(e.message, true); }
+    let password = '';
+    for (let attempt = 0; ; attempt++) {
+      try {
+        S = await api('/api/restore', { text, password });
+        applyTheme();
+        toast('Настройки восстановлены');
+        go('settings');
+        return;
+      } catch (e) {
+        if (e.message !== 'needPassword') { toast(e.message, true); return; }
+        password = await askBackupPassword(attempt > 0);
+        if (password === null) return;
+      }
+    }
   };
   input.click();
 }
