@@ -178,7 +178,7 @@ type Settings struct {
 	Watchdog        bool             `json:"watchdog"`
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
-	Theme           string           `json:"theme"`       // system | dark | light
+	Theme           string           `json:"theme"`       // system | dark | light | gold («Чёрное золото»)
 	Accent          string           `json:"accent"`      // акцентный цвет: indigo | violet | orchid
 	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
 	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
@@ -393,7 +393,7 @@ func (s *Settings) normalize() {
 		s.Telegram.Secret = randHex(16)
 	}
 	switch s.Theme {
-	case "system", "dark", "light":
+	case "system", "dark", "light", "gold":
 	default:
 		s.Theme = "dark"
 	}

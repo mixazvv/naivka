@@ -181,11 +181,16 @@ document.addEventListener('contextmenu', e => {
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
 let themeSent = '';
 function applyTheme() {
-  const t = S && S.theme === 'system' ? (darkQuery.matches ? 'dark' : 'light') : (S ? S.theme : 'dark');
+  // «Чёрное золото» — тёмная тема со своей палитрой и геометрией (срезанные углы, шестиугольники).
+  const gold = !!S && S.theme === 'gold';
+  const t = gold ? 'dark' : S && S.theme === 'system' ? (darkQuery.matches ? 'dark' : 'light') : (S ? S.theme : 'dark');
   const root = document.documentElement;
   root.dataset.theme = t;
-  root.dataset.accent = (S && S.accent) || 'indigo';
-  if (S && S.oled && t === 'dark') root.dataset.oled = ''; else delete root.dataset.oled;
+  if (gold) root.dataset.skin = 'gold'; else delete root.dataset.skin;
+  root.dataset.accent = gold ? 'gold' : (S && S.accent) || 'indigo';
+  if (S && S.oled && t === 'dark' && !gold) root.dataset.oled = ''; else delete root.dataset.oled;
+  // Сплошной фон: в OLED и «Чёрном золоте» полупрозрачный Mica не нужен.
+  if (gold || root.dataset.oled !== undefined) root.dataset.solid = ''; else delete root.dataset.solid;
   if (themeSent !== t) { themeSent = t; api('/api/window/theme', { dark: t === 'dark' }).catch(() => { themeSent = ''; }); }
 }
 darkQuery.addEventListener('change', () => { if (S && S.theme === 'system') applyTheme(); });
@@ -667,7 +672,8 @@ function renderHeroChips() {
   const chips = [h('button', { class: 'hchip', type: 'button', onclick: () => go('servers'), title: 'Выбрать сервер' },
     flag(cs.cc || (g && g.countryCode)),
     h('span', { class: 'hchip-name' }, cs.auto ? cs.name + ' · авто' : cs.name),
-    d && (d.ms || d.error) ? pingBars(d) : null)];
+    d && (d.ms || d.error) ? pingBars(d) : null,
+    btnIcon('chevron'))];
   if (p === 'on') {
     chips.push(h('span', { class: 'hchip' }, h('span', { class: 'hint' }, '↓'), tnum('h-down', sp.pd + sp.dd + sp.zd + sp.td, fmtSpeed)),
       h('span', { class: 'hchip' }, h('span', { class: 'hint' }, '↑'), tnum('h-up', sp.pu + sp.du + sp.zu + sp.tu, fmtSpeed)));
@@ -1255,12 +1261,13 @@ function renderServers(force) {
           star),
         h('div', { class: 'scard-mid' },
           h('div', { class: 'scard-delay' }, pingBars(d), delayEl(sv.id)),
+          nowTag === 's-' + sv.id ? h('span', { class: 'live-tag' }, 'сейчас') : null,
           h('div', { class: 'scard-spark' }, spark(hist, 130, 26))),
         note ? h('div', { class: 'scard-sub trunc', title: note }, note) : null,
         h('div', { class: 'scard-actions' },
-          h('button', { class: 'btn small ghost', type: 'button', onclick: () => testServers(sv.id) }, 'Проверить'),
-          h('button', { class: 'btn small ghost', type: 'button', onclick: () => qrDialog(sv) }, 'QR'),
-          h('button', { class: 'btn small ghost', type: 'button', onclick: () => editServer(sv) }, 'Изменить'))],
+          h('button', { class: 'btn small ghost', type: 'button', onclick: () => testServers(sv.id) }, btnIcon('test'), 'Проверить'),
+          h('button', { class: 'btn small ghost', type: 'button', onclick: () => qrDialog(sv) }, btnIcon('qr'), 'QR'),
+          h('button', { class: 'btn small ghost', type: 'button', onclick: () => editServer(sv) }, btnIcon('edit'), 'Изменить'))],
       { drag: true, off, live: nowTag === 's-' + sv.id }));
     }
     if (S.wl.enabled) {
@@ -2204,7 +2211,8 @@ function viewSettings() {
     h('div', { id: 'selfBox' }),
 
     h('h2', null, 'Внешний вид'),
-    segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
+    segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows'], ['gold', 'Чёрное золото']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
+    h('p', { class: 'hint gold-only' }, 'Чёрный с золотом, срезанные углы и шестиугольники — по мотивам интерфейсов киберпанка. Акцентный цвет и OLED в этой теме свои.'),
     h('div', { class: 'accent-row' }, h('span', { class: 'hint' }, 'Акцент'),
       h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Акцентный цвет' },
         ...ACCENTS.map(([id, name]) => h('button', {
@@ -2216,7 +2224,7 @@ function viewSettings() {
           },
         }))),
       h('span', { class: 'hint' }, 'Им же на схемах и графиках показан трафик через сервер.')),
-    check('oled', 'Чистый чёрный (OLED)', 'Тёмная тема на чёрном фоне: контрастнее и бережёт заряд на OLED-экранах.', applyTheme),
+    h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', 'Тёмная тема на чёрном фоне: контрастнее и бережёт заряд на OLED-экранах.', applyTheme)),
     window.NAIVKA_HOST ? check('trayMini', 'Мини-окно по щелчку в трее', 'Маленькое окно у часов: подключение, сервер, скорость. Если выключить, щелчок сразу открывает главное окно.') : null,
     window.NAIVKA_HOST ? check('nativeFrame', 'Классическое окно Windows', 'Обычная строка заголовка и фон без Mica (полупрозрачный фон есть в Windows 11). Применится после перезапуска Naivka.') : null,
 

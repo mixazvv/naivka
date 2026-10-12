@@ -182,14 +182,37 @@ function fxFrame(now) {
 }
 
 // ---------- кнопка питания ----------
+// Шестиугольник с вершиной вверху — для темы «Чёрное золото» (там круги спрятаны, видны шестиугольники).
+function hexPoints(r) {
+  return Array.from({ length: 6 }, (_, i) => {
+    const a = Math.PI / 180 * (60 * i - 90);
+    return `${(60 + r * Math.cos(a)).toFixed(2)},${(60 + r * Math.sin(a)).toFixed(2)}`;
+  }).join(' ');
+}
+
 function powerButton(id, size) {
   return h('button', { class: 'power' + (size ? ' ' + size : ''), id, type: 'button', onclick: toggleConnect, 'aria-label': 'Подключить' },
     s('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true' },
-      s('circle', { class: 'pw-halo', cx: 60, cy: 60, r: 57 }),
-      s('circle', { class: 'pw-track', cx: 60, cy: 60, r: 52 }),
-      s('circle', { class: 'pw-ring', cx: 60, cy: 60, r: 52, pathLength: 100 }),
-      s('circle', { class: 'pw-core', cx: 60, cy: 60, r: 45 }),
+      s('circle', { class: 'pw-halo pw-c', cx: 60, cy: 60, r: 57 }),
+      s('circle', { class: 'pw-track pw-c', cx: 60, cy: 60, r: 52 }),
+      s('circle', { class: 'pw-ring pw-c', cx: 60, cy: 60, r: 52, pathLength: 100 }),
+      s('circle', { class: 'pw-core pw-c', cx: 60, cy: 60, r: 45 }),
+      s('polygon', { class: 'pw-halo pw-h', points: hexPoints(59) }),
+      s('polygon', { class: 'pw-track pw-h', points: hexPoints(54) }),
+      s('polygon', { class: 'pw-ring pw-h', points: hexPoints(54), pathLength: 100 }),
+      s('polygon', { class: 'pw-core pw-h', points: hexPoints(46) }),
       s('path', { class: 'pw-icon', d: 'M60 37v21M46 44.5a21 21 0 1 0 28 0' })));
+}
+
+// Маленькие значки на кнопках: так сразу видно, что это кнопка и что она делает.
+const BTN_ICONS = {
+  test: 'M3 12h4l3-7 4 14 3-7h4',
+  qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2',
+  edit: 'M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4',
+  chevron: 'M9 6l6 6-6 6',
+};
+function btnIcon(name) {
+  return s('svg', { viewBox: '0 0 24 24', class: 'bi', 'aria-hidden': 'true' }, s('path', { d: BTN_ICONS[name] }));
 }
 
 function powerLabel(p) {
