@@ -179,10 +179,14 @@ document.addEventListener('contextmenu', e => {
 
 // ---------- тема ----------
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+let themeSent = '';
 function applyTheme() {
   const t = S && S.theme === 'system' ? (darkQuery.matches ? 'dark' : 'light') : (S ? S.theme : 'dark');
-  document.documentElement.dataset.theme = t;
-  api('/api/window/theme', { dark: t === 'dark' }).catch(() => {});
+  const root = document.documentElement;
+  root.dataset.theme = t;
+  root.dataset.accent = (S && S.accent) || 'indigo';
+  if (S && S.oled && t === 'dark') root.dataset.oled = ''; else delete root.dataset.oled;
+  if (themeSent !== t) { themeSent = t; api('/api/window/theme', { dark: t === 'dark' }).catch(() => { themeSent = ''; }); }
 }
 darkQuery.addEventListener('change', () => { if (S && S.theme === 'system') applyTheme(); });
 
@@ -318,6 +322,14 @@ async function refreshServerGeo(force) {
   updateStatus();
 }
 
+// skeletonCol — серая «заготовка» колонки, пока данные грузятся.
+function skeletonCol() {
+  return h('div', { class: 'ipcol' }, h('div', { class: 'skel', style: 'width:38%;height:12px' }),
+    h('div', { class: 'skel', style: 'width:64%;height:22px;margin-top:8px' }),
+    h('div', { class: 'skel', style: 'width:52%;height:12px;margin-top:10px' }),
+    h('div', { class: 'skel', style: 'width:70%;height:12px;margin-top:8px' }));
+}
+
 let tickN = 0;
 async function tick() {
   tickN++;
@@ -380,6 +392,8 @@ function updateStatus() {
   $('#navTitle').textContent = TITLES[p];
   const cs = currentServer();
   $('#navSub').textContent = p === 'on' ? (cs.auto ? `${cs.name}, авто` : cs.name) : (ST.mode === 'tun' || S.mode === 'tun' ? 'режим TUN' : '');
+  const tbs = $('#tbStatus');
+  if (tbs) tbs.textContent = TITLES[p] + (p === 'on' ? ' · ' + cs.name : '');
 
   if (view === 'overview' && $('#statusTitle')) {
     $('#statusTitle').textContent = TITLES[p];
@@ -391,8 +405,10 @@ function updateStatus() {
     $('#statusSub').textContent = sub;
     const btn = $('#connectBtn');
     btn.disabled = p === 'wait';
-    btn.textContent = (p === 'on' || p === 'blocked') ? 'Отключить' : p === 'wait' ? 'Подключение…' : 'Подключить';
-    btn.classList.toggle('off', p === 'on' || p === 'blocked');
+    btn.setAttribute('aria-label', powerLabel(p));
+    btn.title = powerLabel(p);
+    renderHeroChips();
+    renderMap();
     const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok')].join('|');
     patch('notices', n, buildNotices);
     renderLanes();
@@ -482,6 +498,15 @@ async function elevate() {
 
 // ---------- навигация ----------
 function go(v) {
+  // Плавная смена раздела (View Transitions API), если система не просит обойтись без анимации.
+  if (v !== view && document.startViewTransition && !REDUCE.matches && main.firstChild && !document.hidden) {
+    document.startViewTransition(() => goNow(v));
+    return;
+  }
+  goNow(v);
+}
+
+function goNow(v) {
   view = v;
   sessionStorage.setItem('naivka-view', v);
   document.querySelectorAll('.nav-item').forEach(b => {
@@ -599,11 +624,14 @@ function openDialog(...content) {
 // ---------- обзор ----------
 function viewOverview() {
   return h('div', { class: 'view' },
-    h('div', { class: 'hero-row' },
-      h('div', null,
-        h('div', { class: 'status-title', id: 'statusTitle' }, '…'),
-        h('div', { class: 'sub', id: 'statusSub', style: 'margin:6px 0 0' })),
-      h('button', { class: 'btn primary connect', id: 'connectBtn', onclick: toggleConnect }, 'Подключить')),
+    h('section', { class: 'hero', id: 'hero' },
+      h('div', { class: 'hero-map', id: 'heroMap' }),
+      h('div', { class: 'hero-body' },
+        powerButton('connectBtn'),
+        h('div', { class: 'hero-text' },
+          h('div', { class: 'status-title', id: 'statusTitle' }, '…'),
+          h('div', { class: 'sub', id: 'statusSub' }),
+          h('div', { class: 'hero-chips', id: 'heroChips' })))),
     h('div', { id: 'notices' }),
     h('div', { class: 'card lanes-card', id: 'lanesCard' }, h('div', { id: 'lanesSvg' }), h('div', { class: 'lanes-legend', id: 'lanesLegend' })),
     h('div', { class: 'quick' },
@@ -625,6 +653,26 @@ function viewOverview() {
         h('div', { class: 'card-head' }, h('h3', null, 'События')),
         h('div', { class: 'events', id: 'events' }))),
     h('section', { class: 'card ipcard mt', id: 'ipCard' }));
+}
+
+// Под статусом: выбранный сервер (щелчок — к списку серверов) и скорость сейчас.
+function renderHeroChips() {
+  const box = $('#heroChips');
+  if (!box || !S || !ST) return;
+  const p = phase();
+  const cs = currentServer();
+  const g = cs.id && srvGeo[cs.id] && srvGeo[cs.id].info;
+  const d = cs.id ? delayFor(cs.id) : null;
+  const sp = lastSpeeds();
+  const chips = [h('button', { class: 'hchip', type: 'button', onclick: () => go('servers'), title: 'Выбрать сервер' },
+    flag(cs.cc || (g && g.countryCode)),
+    h('span', { class: 'hchip-name' }, cs.auto ? cs.name + ' · авто' : cs.name),
+    d && (d.ms || d.error) ? pingBars(d) : null)];
+  if (p === 'on') {
+    chips.push(h('span', { class: 'hchip' }, h('span', { class: 'hint' }, '↓'), tnum('h-down', sp.pd + sp.dd + sp.zd + sp.td, fmtSpeed)),
+      h('span', { class: 'hchip' }, h('span', { class: 'hint' }, '↑'), tnum('h-up', sp.pu + sp.du + sp.zu + sp.tu, fmtSpeed)));
+  }
+  box.replaceChildren(...chips);
 }
 
 const ZERO = { pd: 0, pu: 0, dd: 0, du: 0, zd: 0, zu: 0, td: 0, tu: 0 };
@@ -652,14 +700,6 @@ function icon(name, cx, cy, size, color) {
     s('path', { d: ICONS[name] }));
 }
 
-// Скорость → длительность пробега частицы и сколько их на полосе (ступенями, чтобы анимация не дёргалась).
-function flowParams(speed) {
-  if (speed < 50) return null;
-  const kb = speed / 1024;
-  const dur = kb > 2048 ? 1.4 : kb > 512 ? 2 : kb > 64 ? 2.8 : kb > 8 ? 3.8 : 5;
-  const n = kb > 1024 ? 4 : kb > 128 ? 3 : kb > 8 ? 2 : 1;
-  return { dur, n };
-}
 
 function lanePath(x0, y0, nx, ny, x1, y1) {
   const a = x0 + (nx - x0) * 0.5, b = nx + (x1 - nx) * 0.5;
@@ -706,25 +746,23 @@ function renderLanes() {
   geo.forEach(l => {
     const share = total > 0 ? l.speed / total : 0;
     l.w = !l.active ? 2.5 : total > 0 ? Math.round(3 + 9 * share) : 3.5;
-    l.flow = l.active ? flowParams(l.speed) : null;
+    l.flow = l.active && l.speed >= 50;
   });
   const sig = JSON.stringify([phase(), S.mode, S.mixedPort, S.routing, geo.map(l => [l.key, l.w, l.flow, l.active, l.node && [l.node.title, l.node.sub, l.node.cc]])]);
+  let binds = null;
   patch('lanesSvg', sig, () => {
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    binds = [];
     const defs = s('defs', null, s('filter', { id: 'laneGlow', x: '-20%', y: '-50%', width: '140%', height: '200%' },
       s('feGaussianBlur', { stdDeviation: 5 })));
-    const paths = [], dots = [], nodes = [];
+    const paths = [], nodes = [];
+    const dots = s('g', { class: 'lane-pts' });
     geo.forEach(l => {
       const d = lanePath(95, Y0, l.nx, l.ny, 905, Y0);
       paths.push(s('path', { d, class: 'lane-track', 'stroke-width': 14 }));
-      if (l.active && l.flow) paths.push(s('path', { d, class: 'lane-glow', style: `stroke:${l.color}`, 'stroke-width': l.w + 6, filter: 'url(#laneGlow)' }));
-      paths.push(s('path', { d, class: 'lane-line' + (l.active ? '' : ' idle'), style: `stroke:${l.color}`, 'stroke-width': l.w }));
-      if (l.flow && !reduce) {
-        for (let i = 0; i < l.flow.n; i++) {
-          dots.push(s('circle', { r: Math.min(4.5, 2.2 + l.w / 4), class: 'lane-dot', style: `fill:${l.color};color:${l.color}` },
-            s('animateMotion', { dur: l.flow.dur + 's', repeatCount: 'indefinite', begin: (-i * l.flow.dur / l.flow.n).toFixed(2) + 's', path: d })));
-        }
-      }
+      if (l.flow) paths.push(s('path', { d, class: 'lane-glow', style: `stroke:${l.color}`, 'stroke-width': l.w + 6, filter: 'url(#laneGlow)' }));
+      const line = s('path', { d, class: 'lane-line' + (l.active ? '' : ' idle'), style: `stroke:${l.color}`, 'stroke-width': l.w });
+      paths.push(line);
+      if (l.active) binds.push([l.key, line, Math.min(4.5, 2.2 + l.w / 4), l.color]);
       if (l.node) {
         const x = l.nx, y = l.ny;
         nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node' + (l.active ? ' on' : ''), style: `stroke:${l.color}` }));
@@ -743,10 +781,18 @@ function renderLanes() {
       s('text', { x, y: Y0 + 46, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 62, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)];
     return s('svg', { class: 'lanes', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Схема маршрутов трафика' },
-      defs, ...paths, ...dots, ...nodes,
+      defs, ...paths, dots, ...nodes,
       ...end(95, 'pc', 'Компьютер', S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`),
       ...end(905, 'globe', 'Интернет', ROUTING[S.routing]));
   });
+  // Частицы продолжают бег по новой схеме с того же места.
+  if (binds) {
+    const layer = $('#lanesSvg .lane-pts');
+    flowsBegin('lane:');
+    for (const [key, line, size, color] of binds) flowBind('lane:' + key, line, layer, color, size);
+    flowsEnd('lane:');
+  }
+  for (const l of lanes) flowSpeed('lane:' + l.key, l.active ? l.speed : 0);
   // Легенда обновляется каждую секунду отдельно — анимацию схемы это не трогает.
   const leg = $('#lanesLegend');
   if (leg) leg.replaceChildren(...lanes.map(l => {
@@ -754,7 +800,7 @@ function renderLanes() {
     return h('div', { class: 'leg-chip' + (l.active ? '' : ' off') },
       h('span', { class: 'leg-dot', style: `background:${l.color};color:${l.color}` }),
       h('span', { class: 'leg-name' }, l.name),
-      h('b', { class: 'num' }, !l.active ? 'выключено' : l.unmeasured ? (l.key === 'zapret' ? 'работает' : 'всё остальное') : fmtSpeed(l.speed)),
+      h('b', null, !l.active ? 'выключено' : l.unmeasured ? (l.key === 'zapret' ? 'работает' : 'всё остальное') : tnum('lane-' + l.key, l.speed, fmtSpeed)),
       share ? h('span', { class: 'leg-share num' }, share + '%') : null);
   }));
 }
@@ -767,7 +813,7 @@ function renderChart() {
   const pts = smp.slice(-N).map(p => ({ ...ZERO, ...p }));
   const pad = N - pts.length;
   // снизу вверх: напрямую, zapret, Telegram, через сервер
-  const layers = [['dd', 'var(--direct)'], ['zd', 'var(--warn)'], ['td', 'var(--tg)'], ['pd', 'var(--tunnel)']];
+  const layers = [['dd', 'var(--chart-direct)'], ['zd', 'var(--warn)'], ['td', 'var(--tg)'], ['pd', 'var(--chart-tunnel)']];
   let max = 64 * 1024;
   for (const p of pts) max = Math.max(max, p.dd + p.zd + p.td + p.pd, p.du + p.zu + p.tu + p.pu);
   max *= 1.15;
@@ -794,11 +840,11 @@ function renderChart() {
     up ? s('path', { d: up, class: 'line-up', 'vector-effect': 'non-scaling-stroke' }) : null,
     s('text', { x: 4, y: top - 3 }, fmtSpeed(max))));
   const l = lastSpeeds();
-  const leg = [['Через сервер', 'var(--tunnel)', l.pd], ['Напрямую', 'var(--direct)', l.dd]];
+  const leg = [['Через сервер', 'var(--chart-tunnel)', l.pd], ['Напрямую', 'var(--chart-direct)', l.dd]];
   if (zapretOn()) leg.push(['zapret', 'var(--warn)', l.zd]);
   if (tgOn()) leg.push(['Telegram', 'var(--tg)', l.td]);
   $('#chartLegend').replaceChildren(
-    ...leg.map(([n, c, v]) => h('span', null, h('i', { style: 'background:' + c }), n, h('b', null, fmtSpeed(v)))),
+    ...leg.map(([n, c, v]) => h('span', null, h('i', { style: 'background:' + c }), n, h('b', null, tnum('c-' + n, v, fmtSpeed)))),
     h('span', null, h('i', { style: 'background:none;border-top:1.5px dashed var(--muted);border-radius:0;height:0;vertical-align:3px' }), 'Отдача', h('b', null, fmtSpeed(l.pu + l.du + l.zu + l.tu))));
 }
 
@@ -853,8 +899,8 @@ function renderFacts() {
     h('div', { class: 'fact' }, h('b', null, running ? fmtDur(Date.now() / 1000 - ST.startedAt) : '—'), h('span', null, 'на связи')),
     h('div', { class: 'fact' }, h('b', { class: health === 'fail' ? 'delay bad' : '' }, !running ? '—' : d && d.ms ? `${d.ms} мс` : health === 'fail' ? 'нет связи' : '…'),
       h('span', null, 'задержка до сервера')),
-    h('div', { class: 'fact' }, h('b', null, fmtBytes(t[0] + t[1])), h('span', null, 'через сервер')),
-    h('div', { class: 'fact' }, h('b', null, fmtBytes(t[2] + t[3])), h('span', null, 'напрямую')),
+    h('div', { class: 'fact' }, h('b', null, tnum('f-proxy', t[0] + t[1], fmtBytes)), h('span', null, 'через сервер')),
+    h('div', { class: 'fact' }, h('b', null, tnum('f-direct', t[2] + t[3], fmtBytes)), h('span', null, 'напрямую')),
     zapretOn() && running ? h('div', { class: 'fact' }, h('b', null, fmtBytes((t[4] || 0) + (t[5] || 0))), h('span', null, 'через zapret')) : null,
     tgOn() ? h('div', { class: 'fact' }, h('b', null, fmtBytes((t[6] || 0) + (t[7] || 0))), h('span', null, 'Telegram')) : null,
     hist && hist.length > 1 ? h('div', { class: 'fact wide' }, h('span', null, 'Задержка за последний час'), spark(hist, 400, 34)) : null);
@@ -871,6 +917,8 @@ function renderEvents() {
 
 function renderOverviewLive() {
   if (view !== 'overview') return;
+  renderHeroChips();
+  renderMap();
   renderLanes();
   renderChart();
   renderTop();
@@ -910,7 +958,7 @@ function renderIP() {
     h('h3', null, 'Как вас видят сайты'),
     h('button', { class: 'btn small', disabled: ip.loading, onclick: () => refreshIP(true) }, ip.loading ? 'Определяю…' : 'Обновить'));
   let cols;
-  if (!d && ip.loading) cols = h('div', { class: 'cell-sub' }, 'Определяю адрес…');
+  if (!d && ip.loading) cols = h('div', { class: 'ipcols', 'aria-label': 'Определяю адрес…' }, skeletonCol(), skeletonCol());
   else if (!d) cols = h('div', { class: 'cell-sub' }, ip.error || '');
   else if (d.running && d.proxy) {
     cols = h('div', { class: 'ipcols' },
@@ -919,6 +967,7 @@ function renderIP() {
   } else cols = h('div', { class: 'ipcols' }, ipColumn('Сейчас', d.direct, 'Подключитесь, чтобы сайты видели адрес сервера.'));
   card.classList.toggle('loading', ip.loading);
   card.replaceChildren(head, cols);
+  if (view === 'overview') renderMap();
 }
 // ---------- диагностика ----------
 function routeOf(c) {
@@ -1089,10 +1138,10 @@ function viewServers() {
         ST && ST.install ? h('button', { class: 'btn', onclick: () => installServerDialog() }, 'Свой сервер') : null,
         h('button', { class: 'btn', onclick: importLinksDialog }, 'Вставить ссылки'),
         h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
-    h('div', { class: 'panel', id: 'srvList' }),
+    h('div', { class: 'scards', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
     h('div', { class: 'row mt' },
       h('button', { class: 'btn small', id: 'testAll', onclick: () => testServers('') }, 'Проверить все'),
-      h('span', { class: 'hint' }, 'Без подключения проверяется TLS-рукопожатие, после — настоящий запрос через сервер. Линия — задержка за последний час.')),
+      h('span', { class: 'hint' }, 'Без подключения проверяется TLS-рукопожатие, после — настоящий запрос через сервер. Линия — задержка за последний час. Карточки можно перетаскивать, звёздочка поднимает сервер наверх.')),
     h('div', { id: 'wlBox' }),
     h('div', { id: 'panelsBox' }),
     h('h2', null, 'Телефон'),
@@ -1103,52 +1152,127 @@ function viewServers() {
         h('span', { class: 'hint' }, 'Для одного сервера можно показать QR-код ссылки — кнопка «QR» в строке сервера.'))));
 }
 
-function renderServers() {
+// Серверы — карточками: избранные первыми, порядок меняется перетаскиванием.
+let dragId = null;
+
+function serverOrder() {
+  return [...S.servers.filter(x => x.fav), ...S.servers.filter(x => !x.fav)];
+}
+
+async function selectServer(id) {
+  S.selected = id;
+  renderServers();
+  try { await api('/api/select', { id }); PXAt = 0; updateStatus(); } catch (e) { toast(e.message, true); }
+}
+
+// moveServer ставит сервер from перед to или после него (в том порядке, который видно на экране).
+function moveServer(from, to, after) {
+  const order = serverOrder();
+  const item = order.find(x => x.id === from);
+  const target = order.find(x => x.id === to);
+  if (!item || !target || item === target) return;
+  if (item.fav !== target.fav) item.fav = target.fav; // перетащили в другую группу
+  const rest = order.filter(x => x !== item);
+  rest.splice(rest.indexOf(target) + (after ? 1 : 0), 0, item);
+  S.servers = rest;
+  save();
+  renderServers(true);
+}
+
+function srvCardBase(id, cls, kids, opts = {}) {
+  const sel = S.selected === id || (id === 'wl' && S.selected.startsWith('w-'));
+  const card = h('div', {
+    class: 'scard ' + cls + (sel ? ' sel' : '') + (opts.live ? ' live' : ''), role: 'radio', tabindex: 0, 'aria-checked': sel ? 'true' : 'false',
+    'data-id': id, style: opts.off ? 'opacity:.55' : '',
+    onclick: e => { if (!e.target.closest('button, a, input')) selectServer(id); },
+    onkeydown: e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === card) { e.preventDefault(); selectServer(id); } },
+  }, ...kids);
+  if (opts.drag) {
+    card.draggable = true;
+    card.addEventListener('dragstart', e => { dragId = id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); card.classList.add('dragging'); });
+    card.addEventListener('dragend', () => { dragId = null; document.querySelectorAll('.scard').forEach(c => c.classList.remove('dragging', 'drop-before', 'drop-after')); });
+    card.addEventListener('dragover', e => {
+      if (!dragId || dragId === id) return;
+      e.preventDefault();
+      const r = card.getBoundingClientRect();
+      const after = e.clientX > r.left + r.width / 2;
+      card.classList.toggle('drop-after', after);
+      card.classList.toggle('drop-before', !after);
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('drop-before', 'drop-after'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      const after = card.classList.contains('drop-after');
+      card.classList.remove('drop-before', 'drop-after');
+      if (dragId) moveServer(dragId, id, after);
+    });
+  }
+  return card;
+}
+
+function renderServers(force) {
   const list = $('#srvList');
-  if (!list) return;
+  if (!list || (dragId && !force)) return;
   patch('panelsBox', JSON.stringify(S.panels || []), panelsBox);
-  const radio = id => h('input', {
-    type: 'radio', name: 'srvSel', checked: S.selected === id, 'aria-label': 'Использовать',
-    onchange: async () => { S.selected = id; try { await api('/api/select', { id }); PXAt = 0; updateStatus(); } catch (e) { toast(e.message, true); } },
-  });
-  let autoNote = 'Самый быстрый рабочий сервер, в том числе другого протокола. Переключается сам, если текущий перестал отвечать.';
-  if (PX && PX.autoNow) { const sv = serverByTag(PX.autoNow); if (sv) autoNote = `Сейчас: ${sv.name}. ` + autoNote; }
-  const rows = [];
-  if (S.servers.length > 1 || S.selected === 'auto') {
-    rows.push(h('label', { class: 'srv' }, radio('auto'), h('span', { class: 'cc-slot' }),
-      h('div', null, h('div', { class: 'cell-main' }, 'Автовыбор'), h('div', { class: 'cell-sub' }, autoNote)), h('span'), h('span'), h('span')));
-  }
+  const running = ST && ST.running;
+  const nowTag = PX && running ? (PX.selected === 'auto' ? PX.autoNow : PX.selected) : '';
   const noNaive = ST && ST.core && ST.core.present && !ST.core.naive;
-  for (const sv of S.servers) {
-    const geo = srvGeo[sv.id] && srvGeo[sv.id].info;
-    const where = geo ? [geo.city || geo.country, geo.isp].filter(Boolean).join(', ') : '';
-    const hist = STATS && STATS.delays && STATS.delays[sv.id];
-    const off = noNaive && sv.type === 'naive';
-    rows.push(h('label', { class: 'srv', style: off ? 'opacity:.5' : '' }, radio(sv.id),
-      h('span', { class: 'cc-slot' }, cc(geo && geo.countryCode)),
-      h('div', { class: 'srv-main' },
-        h('div', { class: 'cell-main trunc' }, sv.name, h('span', { class: 'proto' + (sv.type !== 'naive' ? ' vless' : '') }, protoName(sv))),
-        h('div', { class: 'cell-sub trunc' }, off ? 'Naive не поддерживается этим ядром'
-          : sv.transport === 'xhttp' && !xrayReady() ? 'нужен Xray — установите его в «Обходе» → «Версии»'
-          : `${sv.host}:${sv.port}` + (where ? `, ${where}` : ''))),
-      h('div', { class: 'spark-cell' }, spark(hist, 130, 28)),
-      h('div', { class: 'delay-cell' }, delayEl(sv.id)),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn small', onclick: e => { e.preventDefault(); testServers(sv.id); } }, 'Проверить'),
-        h('button', { class: 'btn small', onclick: e => { e.preventDefault(); qrDialog(sv); } }, 'QR'),
-        h('button', { class: 'btn small', onclick: e => { e.preventDefault(); editServer(sv); } }, 'Изменить'))));
-  }
-  if (S.wl.enabled) {
-    const now = PX && PX.wlNow ? serverByTag(PX.wlNow) : null;
-    const wlRadio = radio('wl');
-    if (S.selected && S.selected.startsWith('w-')) wlRadio.checked = true;
-    rows.push(h('label', { class: 'srv' }, wlRadio, h('span', { class: 'cc-slot' }, h('span', { class: 'cc', style: 'background:var(--warn-soft);color:var(--warn)' }, 'WL')),
-      h('div', { class: 'srv-main' }, h('div', { class: 'cell-main' }, 'Белые списки', h('span', { class: 'proto' }, 'подписка')),
-        wlNowLine()),
-      h('span'), h('span'), h('span')));
-  }
-  if (!S.servers.length && !S.wl.enabled) rows.push(h('div', { class: 'empty' }, 'Серверов пока нет. Добавьте вручную или вставьте ссылки naive+https://… или vless://…'));
-  list.replaceChildren(...rows);
+  const xr = xrayReady();
+  // Перерисовываем, только если что-то видимое изменилось: иначе сбивались бы наведение и фокус.
+  const sig = JSON.stringify([S.servers, S.selected, S.wl.enabled, nowTag, delays, PX && PX.delays, PX && PX.wlNow, srvGeo,
+    STATS && STATS.delays, noNaive, xr, WL && [WL.used, WL.active]]);
+  patch('srvList', sig, () => {
+    const cards = [];
+    if (S.servers.length > 1 || S.selected === 'auto') {
+      const now = PX && PX.autoNow ? serverByTag(PX.autoNow) : null;
+      cards.push(srvCardBase('auto', 'wide', [
+        h('div', { class: 'scard-top' },
+          h('span', { class: 'scard-ico' }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: 'M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4' }))),
+          h('div', { class: 'scard-title' }, h('b', null, 'Автовыбор'),
+            h('small', null, now ? `Сейчас: ${now.name}` : 'Самый быстрый рабочий сервер'))),
+        h('div', { class: 'scard-sub' }, 'Берёт самый быстрый сервер, в том числе другого протокола, и переключается сам, если текущий перестал отвечать.')],
+      { live: running && PX && PX.selected === 'auto' }));
+    }
+    for (const sv of serverOrder()) {
+      const geo = srvGeo[sv.id] && srvGeo[sv.id].info;
+      const where = geo ? [geo.city || geo.country, geo.isp].filter(Boolean).join(', ') : '';
+      const hist = STATS && STATS.delays && STATS.delays[sv.id];
+      const off = noNaive && sv.type === 'naive';
+      const d = delayFor(sv.id);
+      const note = off ? 'Naive не поддерживается этим ядром'
+        : sv.transport === 'xhttp' && !xr ? 'нужен Xray — установите его в «Обходе» → «Версии»' : where;
+      const star = h('button', {
+        class: 'star' + (sv.fav ? ' on' : ''), type: 'button', title: sv.fav ? 'Убрать из избранного' : 'В избранное',
+        'aria-label': sv.fav ? 'Убрать из избранного' : 'В избранное', 'aria-pressed': sv.fav ? 'true' : 'false',
+        onclick: () => { sv.fav = !sv.fav; save(); renderServers(true); },
+      }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z' })));
+      cards.push(srvCardBase(sv.id, '', [
+        h('span', { class: 'scard-grip', title: 'Перетащите, чтобы поменять порядок', 'aria-hidden': 'true' }, '⋮⋮'),
+        h('div', { class: 'scard-top' },
+          h('span', { class: 'scard-flag' }, geo && geo.countryCode ? flag(geo.countryCode, true) : h('span', { class: 'scard-ico' }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: ICONS.globe })))),
+          h('div', { class: 'scard-title' }, h('b', { title: sv.name }, sv.name),
+            h('small', null, h('span', { class: 'proto' + (sv.type !== 'naive' ? ' vless' : '') }, protoName(sv)), ` ${sv.host}:${sv.port}`)),
+          star),
+        h('div', { class: 'scard-mid' },
+          h('div', { class: 'scard-delay' }, pingBars(d), delayEl(sv.id)),
+          h('div', { class: 'scard-spark' }, spark(hist, 130, 26))),
+        note ? h('div', { class: 'scard-sub trunc', title: note }, note) : null,
+        h('div', { class: 'scard-actions' },
+          h('button', { class: 'btn small ghost', type: 'button', onclick: () => testServers(sv.id) }, 'Проверить'),
+          h('button', { class: 'btn small ghost', type: 'button', onclick: () => qrDialog(sv) }, 'QR'),
+          h('button', { class: 'btn small ghost', type: 'button', onclick: () => editServer(sv) }, 'Изменить'))],
+      { drag: true, off, live: nowTag === 's-' + sv.id }));
+    }
+    if (S.wl.enabled) {
+      cards.push(srvCardBase('wl', 'wide', [
+        h('div', { class: 'scard-top' },
+          h('span', { class: 'cc', style: 'background:var(--warn-soft);color:var(--warn)' }, 'WL'),
+          h('div', { class: 'scard-title' }, h('b', null, 'Белые списки', h('span', { class: 'proto' }, 'подписка')), wlNowLine()))],
+      { live: running && (PX && (PX.selected === 'wl' || (PX.selected || '').startsWith('w-'))) }));
+    }
+    if (!S.servers.length && !S.wl.enabled) cards.push(h('div', { class: 'empty wide' }, 'Серверов пока нет. Добавьте вручную или вставьте ссылки naive+https://… или vless://…'));
+    return cards;
+  });
   patch('wlBox', JSON.stringify([WL, S.wl, S.selected, PX && PX.delays, PX && PX.wlNow, AD && AD.updates && AD.updates.xray]), wlCard);
 }
 
@@ -2081,6 +2205,20 @@ function viewSettings() {
 
     h('h2', null, 'Внешний вид'),
     segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
+    h('div', { class: 'accent-row' }, h('span', { class: 'hint' }, 'Акцент'),
+      h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Акцентный цвет' },
+        ...ACCENTS.map(([id, name]) => h('button', {
+          class: 'swatch', type: 'button', role: 'radio', 'data-accent': id, title: name, 'aria-label': name,
+          'aria-checked': S.accent === id ? 'true' : 'false',
+          onclick: e => {
+            S.accent = id; save(); applyTheme();
+            e.currentTarget.parentNode.querySelectorAll('.swatch').forEach(b => b.setAttribute('aria-checked', b.dataset.accent === id ? 'true' : 'false'));
+          },
+        }))),
+      h('span', { class: 'hint' }, 'Им же на схемах и графиках показан трафик через сервер.')),
+    check('oled', 'Чистый чёрный (OLED)', 'Тёмная тема на чёрном фоне: контрастнее и бережёт заряд на OLED-экранах.', applyTheme),
+    window.NAIVKA_HOST ? check('trayMini', 'Мини-окно по щелчку в трее', 'Маленькое окно у часов: подключение, сервер, скорость. Если выключить, щелчок сразу открывает главное окно.') : null,
+    window.NAIVKA_HOST ? check('nativeFrame', 'Классическое окно Windows', 'Обычная строка заголовка и фон без Mica (полупрозрачный фон есть в Windows 11). Применится после перезапуска Naivka.') : null,
 
     h('h2', null, 'Перехват трафика'),
     choices('mode', [
@@ -2233,14 +2371,24 @@ function restoreBackup() {
   input.click();
 }
 
+const ACCENTS = [['indigo', 'Индиго'], ['violet', 'Фиолетовый'], ['orchid', 'Орхидея']];
 const VIEWS = { overview: viewOverview, servers: viewServers, rules: viewRules, bypass: viewBypass, diag: viewDiag, settings: viewSettings };
 
 // ---------- старт ----------
 async function boot() {
+  setupChrome();
+  if (MINI) { miniBoot(); return; }
   document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));
   try { S = await api('/api/settings'); }
   catch (e) { setOffline(true); setOffline(true); setOffline(true); return; }
   applyTheme();
+  // Сервер могли сменить в мини-окне или меню трея — подтягиваем настройки, когда окно снова на экране.
+  const resync = async () => {
+    if (savePending || document.hidden) return;
+    try { const fresh = await api('/api/settings'); if (!savePending) { S = fresh; applyTheme(); updateStatus(); if (view === 'servers') renderServers(); } } catch (_) { /* не важно */ }
+  };
+  window.addEventListener('focus', resync);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { resync(); refreshState(); } });
   await refreshState();
   if (view === 'conns' || view === 'logs') { diagTab = view; view = 'diag'; }
   if (!VIEWS[view]) view = 'overview';
@@ -2561,7 +2709,10 @@ async function refreshTraffic() {
 function viewTraffic() {
   return h('div', null,
     h('p', { class: 'sub' }, 'Сколько прошло через сервер и мимо него — по дням. Это счётчики Naivka: хостинг и оператор насчитают немного больше (шифрование, служебные данные).'),
-    h('div', { id: 'trafficBox' }, h('p', { class: 'hint' }, 'Загружаю…')),
+    h('div', { id: 'trafficBox', 'aria-label': 'Загружаю…' },
+      h('div', { class: 'skel', style: 'width:180px;height:12px' }),
+      h('div', { class: 'skel', style: 'width:240px;height:30px;margin-top:8px' }),
+      h('div', { class: 'skel', style: 'width:100%;height:180px;margin-top:18px;border-radius:12px' })),
     h('h2', { class: 'mt-lg' }, 'Лимит'),
     h('p', { class: 'hint' }, 'Если у сервера или у мобильного тарифа есть лимит — Naivka предупредит на 80% и 100% (уведомлением Windows). Считается только трафик через сервер.'),
     h('div', { class: 'grid2' },
@@ -2582,7 +2733,7 @@ function renderTraffic() {
   const pct = limit ? used / limit * 100 : 0;
   const head = h('div', { class: 'traffic-head' },
     h('div', null, h('div', { class: 'hint' }, `Через сервер с ${fmtDayLong(t.period)}`),
-      h('div', { class: 'hero-num' }, fmtBytes(used), h('small', null, `↓ ${fmtBytes(t.periodDown)} · ↑ ${fmtBytes(t.periodUp)}`))),
+      h('div', { class: 'hero-num' }, tnum('tr-used', used, fmtBytes), h('small', null, `↓ ${fmtBytes(t.periodDown)} · ↑ ${fmtBytes(t.periodUp)}`))),
     limit ? h('div', { class: 'limit-meter' + (pct >= 100 ? ' over' : pct >= 80 ? ' warn' : '') },
       h('div', { class: 'hint' }, pct >= 100 ? 'Лимит превышен' : pct >= 80 ? 'Лимит почти исчерпан' : 'Лимит'),
       h('div', { class: 'score-bar', role: 'meter', 'aria-valuenow': Math.round(pct), 'aria-valuemin': 0, 'aria-valuemax': 100 },

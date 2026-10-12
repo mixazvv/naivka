@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,14 +17,16 @@ import (
 
 // GeoInfo — что внешний мир знает об адресе.
 type GeoInfo struct {
-	IP          string `json:"ip"`
-	Country     string `json:"country"`
-	CountryCode string `json:"countryCode"`
-	City        string `json:"city"`
-	ISP         string `json:"isp"`
-	ASN         string `json:"asn"`
-	Hosting     *bool  `json:"hosting,omitempty"` // адрес дата-центра (nil — неизвестно)
-	Source      string `json:"source"`
+	IP          string  `json:"ip"`
+	Country     string  `json:"country"`
+	CountryCode string  `json:"countryCode"`
+	City        string  `json:"city"`
+	ISP         string  `json:"isp"`
+	ASN         string  `json:"asn"`
+	Hosting     *bool   `json:"hosting,omitempty"` // адрес дата-центра (nil — неизвестно)
+	Lat         float64 `json:"lat,omitempty"`     // примерные координаты (для карты в интерфейсе)
+	Lon         float64 `json:"lon,omitempty"`
+	Source      string  `json:"source"`
 }
 
 type geoProvider struct {
@@ -32,7 +35,7 @@ type geoProvider struct {
 	parse func([]byte) (*GeoInfo, error)
 }
 
-const ipAPIFields = "status,message,country,countryCode,city,isp,org,as,query,hosting"
+const ipAPIFields = "status,message,country,countryCode,city,lat,lon,isp,org,as,query,hosting"
 
 // Сначала сервисы с HTTPS: запрос с вашим IP и адресами серверов не идёт открытым текстом.
 // ip-api.com бесплатно отвечает только по HTTP, поэтому он последний запасной.
@@ -42,12 +45,14 @@ var geoProviders = []geoProvider{
 		url:  func(ip string) string { return "https://ipwho.is/" + url.PathEscape(ip) + "?lang=ru" },
 		parse: func(b []byte) (*GeoInfo, error) {
 			var v struct {
-				Success     bool   `json:"success"`
-				Message     string `json:"message"`
-				IP          string `json:"ip"`
-				Country     string `json:"country"`
-				CountryCode string `json:"country_code"`
-				City        string `json:"city"`
+				Success     bool    `json:"success"`
+				Message     string  `json:"message"`
+				IP          string  `json:"ip"`
+				Country     string  `json:"country"`
+				CountryCode string  `json:"country_code"`
+				City        string  `json:"city"`
+				Latitude    float64 `json:"latitude"`
+				Longitude   float64 `json:"longitude"`
 				Connection  struct {
 					ASN json.Number `json:"asn"`
 					Org string      `json:"org"`
@@ -60,7 +65,7 @@ var geoProviders = []geoProvider{
 			if !v.Success {
 				return nil, errors.New(v.Message)
 			}
-			g := &GeoInfo{IP: v.IP, Country: v.Country, CountryCode: v.CountryCode, City: v.City, ISP: v.Connection.ISP}
+			g := &GeoInfo{IP: v.IP, Country: v.Country, CountryCode: v.CountryCode, City: v.City, ISP: v.Connection.ISP, Lat: v.Latitude, Lon: v.Longitude}
 			if g.ISP == "" {
 				g.ISP = v.Connection.Org
 			}
@@ -83,6 +88,7 @@ var geoProviders = []geoProvider{
 				IP      string `json:"ip"`
 				City    string `json:"city"`
 				Country string `json:"country"`
+				Loc     string `json:"loc"` // «52.3740,4.8897»
 				Org     string `json:"org"` // «AS13335 Cloudflare, Inc.»
 			}
 			if err := json.Unmarshal(b, &v); err != nil {
@@ -92,6 +98,10 @@ var geoProviders = []geoProvider{
 				return nil, errors.New("пустой ответ")
 			}
 			g := &GeoInfo{IP: v.IP, CountryCode: v.Country, City: v.City, ISP: v.Org}
+			if la, lo, ok := strings.Cut(v.Loc, ","); ok {
+				g.Lat, _ = strconv.ParseFloat(la, 64)
+				g.Lon, _ = strconv.ParseFloat(lo, 64)
+			}
 			if strings.HasPrefix(v.Org, "AS") {
 				if i := strings.IndexByte(v.Org, ' '); i > 0 {
 					g.ASN, g.ISP = v.Org[:i], v.Org[i+1:]
@@ -111,16 +121,18 @@ var geoProviders = []geoProvider{
 
 func parseIPAPI(b []byte) (*GeoInfo, error) {
 	var v struct {
-		Status      string `json:"status"`
-		Message     string `json:"message"`
-		Query       string `json:"query"`
-		Country     string `json:"country"`
-		CountryCode string `json:"countryCode"`
-		City        string `json:"city"`
-		ISP         string `json:"isp"`
-		Org         string `json:"org"`
-		AS          string `json:"as"` // «AS13335 Cloudflare, Inc.»
-		Hosting     *bool  `json:"hosting"`
+		Status      string  `json:"status"`
+		Message     string  `json:"message"`
+		Query       string  `json:"query"`
+		Country     string  `json:"country"`
+		CountryCode string  `json:"countryCode"`
+		City        string  `json:"city"`
+		Lat         float64 `json:"lat"`
+		Lon         float64 `json:"lon"`
+		ISP         string  `json:"isp"`
+		Org         string  `json:"org"`
+		AS          string  `json:"as"` // «AS13335 Cloudflare, Inc.»
+		Hosting     *bool   `json:"hosting"`
 	}
 	if err := json.Unmarshal(b, &v); err != nil {
 		return nil, err
@@ -131,7 +143,7 @@ func parseIPAPI(b []byte) (*GeoInfo, error) {
 		}
 		return nil, errors.New(v.Message)
 	}
-	g := &GeoInfo{IP: v.Query, Country: v.Country, CountryCode: v.CountryCode, City: v.City, ISP: v.ISP, Hosting: v.Hosting}
+	g := &GeoInfo{IP: v.Query, Country: v.Country, CountryCode: v.CountryCode, City: v.City, ISP: v.ISP, Hosting: v.Hosting, Lat: v.Lat, Lon: v.Lon}
 	if g.ISP == "" {
 		g.ISP = v.Org
 	}

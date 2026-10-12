@@ -8,10 +8,24 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body data-state="off">
+  <header class="titlebar" id="titlebar" hidden>
+    <div class="tb-drag" id="tbDrag">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="7"/><path d="M6 16h20" stroke="#fff" stroke-width="2.4"/><circle cx="6.5" cy="16" r="3.2" class="logo-bg" stroke="#fff" stroke-width="2.2"/><circle cx="25.5" cy="16" r="3.2" class="logo-bg" stroke="#fff" stroke-width="2.2"/><circle cx="16" cy="16" r="5" fill="#fff"/></svg>
+      <span class="tb-name">Naivka</span>
+      <span class="tb-status"><span class="led"></span><span id="tbStatus">Отключено</span></span>
+    </div>
+    <div class="tb-buttons">
+      <button class="tb-btn" data-cmd="min" aria-label="Свернуть" title="Свернуть"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></button>
+      <button class="tb-btn" data-cmd="max" id="tbMax" aria-label="Развернуть" title="Развернуть"><svg viewBox="0 0 10 10"><rect class="tb-max" x=".5" y=".5" width="9" height="9" rx="1"/><path class="tb-restore" d="M2.5 2.5V1.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1M.5 3.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1z"/></svg></button>
+      <button class="tb-btn close" data-cmd="close" aria-label="Закрыть" title="Закрыть"><svg viewBox="0 0 10 10"><path d="M.5.5l9 9M9.5.5l-9 9"/></svg></button>
+    </div>
+    <div class="tb-edge n" data-edge="n"></div><div class="tb-edge nw" data-edge="nw"></div><div class="tb-edge ne" data-edge="ne"></div>
+  </header>
   <div class="shell">
+    <div class="ambient" aria-hidden="true"></div>
     <nav class="nav" aria-label="Разделы">
       <div class="brand">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#3146C6"/><path d="M6 16h20" stroke="#fff" stroke-width="2.4"/><circle cx="6.5" cy="16" r="3.2" fill="#3146C6" stroke="#fff" stroke-width="2.2"/><circle cx="25.5" cy="16" r="3.2" fill="#3146C6" stroke="#fff" stroke-width="2.2"/><circle cx="16" cy="16" r="5" fill="#fff"/></svg>
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="7"/><path d="M6 16h20" stroke="#fff" stroke-width="2.4"/><circle cx="6.5" cy="16" r="3.2" class="logo-bg" stroke="#fff" stroke-width="2.2"/><circle cx="25.5" cy="16" r="3.2" class="logo-bg" stroke="#fff" stroke-width="2.2"/><circle cx="16" cy="16" r="5" fill="#fff"/></svg>
         Naivka
       </div>
       <button class="nav-item" data-view="overview"><svg viewBox="0 0 24 24"><polyline points="3 12 7 12 10 5 14 19 17 12 21 12"/></svg>Обзор</button>
@@ -32,7 +46,10 @@
     </div>
   </div>
   <input type="file" id="fileInput" accept=".json,.txt,.list,.conf,.lst,text/plain,application/json" hidden>
+  <div class="mini" id="mini" hidden></div>
   <script src="qrcode.js"></script>
+  <script src="worldmap.js"></script>
+  <script src="design.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

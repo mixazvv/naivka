@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +65,8 @@ type Server struct {
 	// Hysteria2, TUIC, Trojan, AnyTLS: свой сертификат сервера, проверяемый по SHA-256 открытого ключа
 	// (base64) вместо удостоверяющего центра — так ставит серверы «Свой сервер» в Naivka.
 	PinSHA256 string `json:"pinSHA256,omitempty"`
+
+	Fav bool `json:"fav,omitempty"` // избранный: выше в списках и в мини-окне
 }
 
 // Panel — веб-панель на своём сервере (3X-UI или s-ui). Пароль панели шифруется DPAPI, как пароли серверов;
@@ -175,7 +178,11 @@ type Settings struct {
 	Watchdog        bool             `json:"watchdog"`
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
-	Theme           string           `json:"theme"` // system | dark | light
+	Theme           string           `json:"theme"`       // system | dark | light
+	Accent          string           `json:"accent"`      // акцентный цвет: indigo | violet | orchid
+	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
+	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
+	NativeFrame     bool             `json:"nativeFrame"` // обычная рамка Windows вместо своей строки заголовка
 	Window          *WindowGeom      `json:"window,omitempty"`
 	Zapret          ZapretSettings   `json:"zapret"`
 	Telegram        TelegramSettings `json:"telegram"`
@@ -214,6 +221,8 @@ func DefaultSettings() *Settings {
 		Watchdog:       true,
 		Notify:         true,
 		Theme:          "dark",
+		Accent:         "indigo",
+		TrayMini:       true,
 		UpdateCheck:    true,
 		Zapret:         ZapretSettings{Strategy: "general", GameFilter: "off", IPSet: "none", RouteDirect: true, Fallback: true},
 		Telegram:       TelegramSettings{Port: 1443},
@@ -221,6 +230,9 @@ func DefaultSettings() *Settings {
 		Share:          ShareSettings{Port: 2090, Auth: true, Username: "naivka"},
 	}
 }
+
+// accents — акцентные цвета интерфейса (сами цвета — в web/app.css).
+var accents = map[string]bool{"indigo": true, "violet": true, "orchid": true}
 
 func newID() string {
 	b := make([]byte, 4)
@@ -278,7 +290,12 @@ func (s *Settings) fingerprint() string {
 	c.AutoConnect = false
 	c.ExitWithWindow = false
 	c.Window = nil
-	c.Theme = ""
+	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame = "", "", false, false, false
+	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
+	for i := range c.Servers {
+		c.Servers[i].Fav = false
+	}
+	sort.Slice(c.Servers, func(i, j int) bool { return c.Servers[i].ID < c.Servers[j].ID })
 	c.Notify, c.ShowIP, c.Watchdog, c.KillSwitch, c.AutoStart = false, false, false, false, false
 	c.UpdateCheck = false
 	c.TrafficLimitGB, c.TrafficResetDay = 0, 0
@@ -379,6 +396,9 @@ func (s *Settings) normalize() {
 	case "system", "dark", "light":
 	default:
 		s.Theme = "dark"
+	}
+	if !accents[s.Accent] {
+		s.Accent = d.Accent
 	}
 	for i := range s.Servers {
 		sv := &s.Servers[i]
