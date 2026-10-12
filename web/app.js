@@ -808,15 +808,9 @@ function renderLanes() {
   const nodeX = { proxy: 500, tg: 405, zapret: 595, direct: 500 };
   const mc = document.documentElement.dataset.skin === 'blocks';
   const geo = lanes.map((l, i) => ({ ...l, ny: n === 1 ? Y0 : top + i * (bottom - top) / (n - 1), nx: nodeX[l.key] }));
-  // «Пиксели»: ряд выхода и столбец поворота для каждого провода (верхние поворачивают раньше снизу вверх, нижние — наоборот).
-  geo.forEach((l, i) => {
-    l.y0 = Y0 + (i - (n - 1) / 2) * 12;
-    const ups = geo.filter((g, j) => j <= i && g.ny < Y0 - 4).length, downs = geo.filter((g, j) => j >= i && g.ny > Y0 + 4).length;
-    l.rank = l.ny < Y0 - 4 ? ups - 1 : downs - 1;
-  });
   geo.forEach(l => {
     const share = total > 0 ? l.speed / total : 0;
-    l.w = mc ? (l.active ? 4 : 2) : !l.active ? 2.5 : total > 0 ? Math.round(3 + 9 * share) : 3.5;
+    l.w = !l.active ? 2.5 : total > 0 ? Math.round(3 + 9 * share) : 3.5;
     l.flow = l.active && l.speed >= 50;
   });
   const sig = JSON.stringify([mc, phase(), S.mode, S.mixedPort, S.routing, geo.map(l => [l.key, l.w, l.flow, l.active, l.node && [l.node.title, l.node.sub, l.node.cc]])]);
@@ -828,35 +822,34 @@ function renderLanes() {
     const paths = [], nodes = [];
     const dots = s('g', { class: 'lane-pts' });
     geo.forEach(l => {
-      const wire = mc ? circuitLane(l.y0, l.ny, Math.max(0, l.rank), 152, 878) : null;
-      const d = mc ? wire.d : lanePath(95, Y0, l.nx, l.ny, 905, Y0);
-      paths.push(s('path', { d, class: 'lane-track', 'stroke-width': 14 }));
-      if (l.flow) paths.push(s('path', { d, class: 'lane-glow', style: `stroke:${l.color}`, 'stroke-width': l.w + 6, filter: 'url(#laneGlow)' }));
-      const line = s('path', { d, class: 'lane-line' + (l.active ? '' : ' idle'), style: `stroke:${l.color}`, 'stroke-width': l.w });
-      paths.push(line);
-      if (l.active) binds.push([l.key, line, mc ? 3.2 : Math.min(4.5, 2.2 + l.w / 4), l.color]);
-      // узелки на поворотах провода
-      if (mc) for (const [cx, cy] of wire.corners) paths.push(s('rect', { x: cx - 4, y: cy - 4, width: 8, height: 8, class: 'wire-joint' + (l.active ? '' : ' idle'), style: `fill:${l.color}` }));
+      const d = lanePath(95, Y0, l.nx, l.ny, 905, Y0);
+      let line;
+      if (mc) {
+        // «Пиксели»: та же кривая, растрированная по клеткам 6×6; частицы бегут по невидимой исходной кривой.
+        paths.push(s('path', { d: pxLaneCells(95, Y0, l.nx, l.ny, 905, Y0, 6, l.w > 7 ? 2 : 1), class: 'px-lane' + (l.active ? '' : ' idle'), style: `fill:${l.color}` }));
+        line = s('path', { d, class: 'lane-motion' });
+        paths.push(line);
+      } else {
+        paths.push(s('path', { d, class: 'lane-track', 'stroke-width': 14 }));
+        if (l.flow) paths.push(s('path', { d, class: 'lane-glow', style: `stroke:${l.color}`, 'stroke-width': l.w + 6, filter: 'url(#laneGlow)' }));
+        line = s('path', { d, class: 'lane-line' + (l.active ? '' : ' idle'), style: `stroke:${l.color}`, 'stroke-width': l.w });
+        paths.push(line);
+      }
+      if (l.active) binds.push([l.key, line, mc ? 3 : Math.min(4.5, 2.2 + l.w / 4), l.color]);
       if (l.node) {
         const x = l.nx, y = l.ny;
         const open = () => go(l.key === 'proxy' ? 'servers' : 'bypass');
         const tip = s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»');
-        // «Блоки»: сервер — алмазная руда, zapret — красная руда, Telegram — лазурит.
-        if (mc) {
-          const tile = pxNode(x, y, 40, l.node.icon, l.active ? l.color : 'var(--faint)', l.active ? 'on' : '');
-          const fl = l.node.cc && flagInSvg(l.node.cc, x - 12, y - 8, 24);
-          if (fl) { tile.querySelector('.lane-icon').remove(); tile.append(fl); }
-          nodes.push(s('g', { class: 'clickable' + (l.active ? ' on' : ''), onclick: open }, tip, tile));
-        }
+        // «Пиксели»: тот же круг радиусом 19, растрированный.
+        if (mc) nodes.push(s('g', { class: 'clickable' + (l.active ? ' on' : ''), onclick: open }, tip, pxNode(x, y, 19, l.node.icon, l.active ? l.color : 'var(--faint)', l.active ? 'on' : '')));
         else {
           nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node clickable' + (l.active ? ' on' : ''), style: `stroke:${l.color}`, onclick: open }, tip));
           nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
         }
-        const lift = mc ? 6 : 0;
-        nodes.push(s('text', { x, y: y - 40 - lift, 'text-anchor': 'middle', class: 'lbl halo' }, l.node.title));
-        nodes.push(s('text', { x, y: y - 25 - lift, 'text-anchor': 'middle', class: 'sub-lbl halo' },
+        nodes.push(s('text', { x, y: y - 40, 'text-anchor': 'middle', class: 'lbl halo' }, l.node.title));
+        nodes.push(s('text', { x, y: y - 25, 'text-anchor': 'middle', class: 'sub-lbl halo' },
           !flagShapes((l.node.cc || '').toUpperCase()) && l.node.cc ? s('tspan', { class: 'cc-text' }, l.node.cc + '  ') : null, l.node.sub));
-        if (l.node.cc && !mc) nodes.push(flagInSvg(l.node.cc, x - 19 - 32, y - 8, 24));
+        if (l.node.cc) nodes.push(flagInSvg(l.node.cc, x - 19 - 32, y - 8, 24));
       } else {
         nodes.push(s('text', { x: l.nx, y: l.ny + 26, 'text-anchor': 'middle', class: 'sub-lbl halo', style: `fill:${l.color}` }, 'напрямую'));
       }
@@ -865,7 +858,7 @@ function renderLanes() {
     const end = (x, ic, title, sub) => ic === 'pc' ? [
       s('text', { x, y: Y0 + 74, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 90, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)] : [
-      ...(mc ? [pxNode(x, Y0, 50, ic, 'var(--ink)', 'end')] : [s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }), icon(ic, x, Y0, 24, 'var(--ink)')]),
+      ...(mc ? [pxNode(x, Y0, 25, ic, 'var(--ink)', 'end')] : [s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }), icon(ic, x, Y0, 24, 'var(--ink)')]),
       s('text', { x, y: Y0 + 46, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 62, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)];
     return s('svg', { class: 'lanes', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Схема маршрутов трафика' },

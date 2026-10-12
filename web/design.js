@@ -136,7 +136,7 @@ function flowBind(key, path, layer, color, size) {
   let f = FX.flows.get(key);
   if (!f) { f = { rate: 0, tps: 0.2, target: 0, acc: 0, parts: [] }; FX.flows.set(key, f); }
   const moved = f.layer !== layer || f.size !== size || f.color !== color;
-  Object.assign(f, { path, layer, color, size, len: path.getTotalLength(), stale: false });
+  Object.assign(f, { path, layer, color, size, len: path.getTotalLength(), stale: false, grid: document.documentElement.dataset.skin === 'blocks' ? 6 : 0 });
   if (moved) f.parts.forEach(p => { p.el.remove(); p.el = particleEl(f); });
   return f;
 }
@@ -174,6 +174,7 @@ function fxFrame(now) {
       if (p.t >= 1) { p.el.remove(); return false; }
       const at = t => f.path.getPointAtLength(Math.max(0, t) * f.len);
       const head = at(p.t);
+      if (f.grid) { head.x = Math.floor(head.x / f.grid) * f.grid + f.grid / 2; head.y = Math.floor(head.y / f.grid) * f.grid + f.grid / 2; }
       p.el.setAttribute('transform', `translate(${head.x.toFixed(1)} ${head.y.toFixed(1)})`);
       // Появляется и гаснет у концов пути, чтобы не «выпрыгивать» из узлов.
       p.el.style.opacity = Math.min(1, p.t * 12, (1 - p.t) * 12).toFixed(2);
@@ -208,10 +209,7 @@ function powerButton(id, size) {
       s('rect', { class: 'pw-ring pw-h', x: 9, y: 9, width: 102, height: 102, pathLength: 100 }),
       s('rect', { class: 'pw-core pw-h', x: 18, y: 18, width: 84, height: 84 }),
       s('path', { class: 'pw-ticks pw-h', d: 'M1 17V1h16M103 1h16v16M119 103v16h-16M17 119H1v-16' }),
-      // «Пиксели»: кольцо из квадратных делений (как шкала), внутри — пиксельная плитка.
-      s('g', { class: 'pw-px' },
-        ...Array.from({ length: 28 }, (_, i) => s('rect', { x: 57, y: 3, width: 6, height: 9, class: 'pw-dash', transform: `rotate(${i * 360 / 28} 60 60)`, style: `--i:${i}` })),
-        s('path', { d: pxFramePath(26, 26, 68, 68, 6), class: 'pw-tile' })),
+      pxPowerParts(),
       s('path', { class: 'pw-icon', d: 'M60 37v21M46 44.5a21 21 0 1 0 28 0' })));
 }
 
@@ -528,43 +526,57 @@ function pingBars(d) {
 // ---------- «Пиксели»: плитки с пиксельной рамкой, ступенчатые ветви, мозаичная прогрузка ----------
 function mcRand(seed) { let x = seed; return () => (x = (x * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; }
 
-// Контур квадрата со «ступенчатыми» углами (шаг st) — пиксельная плитка.
-function pxFramePath(x, y, w, hh, st) {
-  return `M${x + 2 * st} ${y}H${x + w - 2 * st}v${st}h${st}v${st}h${st}V${y + hh - 2 * st}h${-st}v${st}h${-st}v${st}H${x + 2 * st}v${-st}h${-st}v${-st}h${-st}V${y + 2 * st}h${st}v${-st}h${st}z`;
+// Растр: фигура обычной темы (те же кривые и круги, та же геометрия), закрашенная клетками сетки G.
+function pxCellsPath(cells, G) {
+  let d = '';
+  for (const k of cells) { const [cx, cy] = k.split(',').map(Number); d += `M${cx * G} ${cy * G}h${G}v${G}h${-G}z`; }
+  return d;
 }
 
-// Узел схемы в «Пикселях»: тёмная плитка со ступенчатой рамкой и значком.
-function pxNode(cx, cy, size, ic, color, cls) {
-  const x = cx - size / 2, y = cy - size / 2;
-  return s('g', { class: 'px-node ' + (cls || ''), style: `color:${color}` },
-    s('path', { d: pxFramePath(x, y, size, size, size / 12), class: 'px-node-bg' }),
-    icon(ic, cx, cy, size * 0.5, 'currentColor'));
-}
-
-// «Провод» как в схемах из блоков: только прямые углы по сетке. Каждая ветвь выходит из узла
-// своим рядом (y0) и поворачивает в своём столбце (rank), поэтому провода не пересекаются и не сливаются.
-function circuitLane(y0, ny, rank, xs, xe) {
-  const G = 8, snap = v => Math.round(v / G) * G;
-  const cl = snap(176 + rank * 16), cr = snap(824 - rank * 16);
-  const a = snap(y0), b = snap(ny);
-  if (a === b) return { d: `M${xs} ${a}H${xe}`, corners: [] };
-  return { d: `M${xs} ${a}H${cl}V${b}H${cr}V${a}H${xe}`, corners: [[cl, a], [cl, b], [cr, b], [cr, a]] };
-}
-
-// Ступенчатая ветвь: та же кривая, но из горизонтальных и вертикальных отрезков по сетке, как пиксельная линия.
-function mcStepPath(x0, y0, nx, ny, x1, y1, G) {
+// Ветвь — та же кривая Безье, что в обычной теме (lanePath), толщиной thick клеток.
+function pxLaneCells(x0, y0, nx, ny, x1, y1, G, thick) {
   const a = x0 + (nx - x0) * 0.5, b = nx + (x1 - nx) * 0.5;
   const bez = (p0, p1, p2, p3, t) => { const u = 1 - t; return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3; };
-  const pts = [];
-  for (let i = 0; i <= 60; i++) { const t = i / 60; pts.push([bez(x0, a, a, nx, t), bez(y0, y0, ny, ny, t)]); }
-  for (let i = 1; i <= 60; i++) { const t = i / 60; pts.push([bez(nx, b, b, x1, t), bez(ny, ny, y1, y1, t)]); }
-  const snap = v => Math.round(v / G) * G;
-  let d = `M${x0} ${snap(y0)}`, cy = snap(y0);
-  for (const [x, y] of pts) {
-    const sx = snap(x), sy = snap(y);
-    if (sy !== cy) { d += `H${sx}V${sy}`; cy = sy; }
+  const cells = new Set();
+  const add = (x, y) => { const cx = Math.floor(x / G), cy = Math.floor(y / G); for (let k = 0; k < thick; k++) cells.add(`${cx},${cy + k - (thick >> 1)}`); };
+  for (let i = 0; i <= 400; i++) { const t = i / 400; add(bez(x0, a, a, nx, t), bez(y0, y0, ny, ny, t)); add(bez(nx, b, b, x1, t), bez(ny, ny, y1, y1, t)); }
+  return pxCellsPath(cells, G);
+}
+
+// Кольцо (или круг, если r0 < 0) по клеткам: берутся клетки, центр которых между r0 и r1.
+function pxRingCells(cx, cy, r0, r1, G) {
+  const cells = [];
+  for (let gy = Math.floor((cy - r1) / G); gy <= Math.ceil((cy + r1) / G); gy++) {
+    for (let gx = Math.floor((cx - r1) / G); gx <= Math.ceil((cx + r1) / G); gx++) {
+      const d = Math.hypot(gx * G + G / 2 - cx, gy * G + G / 2 - cy);
+      if (d <= r1 && d > r0) cells.push([gx, gy, Math.atan2(gx * G + G / 2 - cx, -(gy * G + G / 2 - cy))]);
+    }
   }
-  return d + `H${x1}V${y1}`;
+  return cells;
+}
+
+// Узел схемы в «Пикселях»: круг обычной темы (тот же радиус), растрированный, со значком.
+function pxNode(cx, cy, r, ic, color, cls) {
+  const G = 3;
+  const ring = pxRingCells(cx, cy, r - 3, r + 1, G), core = pxRingCells(cx, cy, -1, r - 3, G);
+  return s('g', { class: 'px-node ' + (cls || ''), style: `color:${color}` },
+    s('path', { d: pxCellsPath(core.map(c => c[0] + ',' + c[1]), G), class: 'px-node-bg' }),
+    s('path', { d: pxCellsPath(ring.map(c => c[0] + ',' + c[1]), G), class: 'px-node-ring' }),
+    icon(ic, cx, cy, r * 1.05, 'currentColor'));
+}
+
+// Кнопка подключения в «Пикселях»: те же круги, что у обычной кнопки (ореол, дорожка, ядро, значок), по клеткам 4×4.
+function pxPowerParts() {
+  const G = 4, path = cells => pxCellsPath(cells.map(c => c[0] + ',' + c[1]), G);
+  const ring = pxRingCells(60, 60, 50, 56, G); // как обводка r=52 у обычной кнопки; ядро r≤41 — с зазором в 2 клетки
+  // значок питания: вертикальная черта и дуга с разрывом сверху
+  const icon = pxRingCells(60, 60, 17, 23, G).filter(c => Math.abs(c[2]) > 0.75);
+  for (let gy = 9; gy <= 14; gy++) for (const gx of [14]) icon.push([gx, gy]);
+  return s('g', { class: 'pw-px' },
+    s('path', { d: path(pxRingCells(60, 60, 57, 61, G)), class: 'pw-px-halo' }),
+    ...ring.sort((p, q) => p[2] - q[2]).map((c, i, arr) => s('rect', { x: c[0] * G, y: c[1] * G, width: G, height: G, class: 'pw-px-ring', style: `--i:${Math.round(i / arr.length * 28)}` })),
+    s('path', { d: path(pxRingCells(60, 60, -1, 41, G)), class: 'pw-px-core' }),
+    s('path', { d: path(icon), class: 'pw-px-icon' }));
 }
 
 // Мозаика: новый экран проступает квадратами в случайном порядке, как прогрузка мира в кубической игре.
