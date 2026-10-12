@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Naivka</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%233146C6%22/%3E%3Cpath d=%22M6 16h20%22 stroke=%22white%22 stroke-width=%222.4%22/%3E%3Ccircle cx=%226.5%22 cy=%2216%22 r=%223.2%22 fill=%22%233146C6%22 stroke=%22white%22 stroke-width=%222.2%22/%3E%3Ccircle cx=%2225.5%22 cy=%2216%22 r=%223.2%22 fill=%22%233146C6%22 stroke=%22white%22 stroke-width=%222.2%22/%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%225%22 fill=%22white%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body data-state="off">
+  <div class="shell">
+    <nav class="nav" aria-label="Разделы">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#3146C6"/><path d="M6 16h20" stroke="#fff" stroke-width="2.4"/><circle cx="6.5" cy="16" r="3.2" fill="#3146C6" stroke="#fff" stroke-width="2.2"/><circle cx="25.5" cy="16" r="3.2" fill="#3146C6" stroke="#fff" stroke-width="2.2"/><circle cx="16" cy="16" r="5" fill="#fff"/></svg>
+        Naivka
+      </div>
+      <button class="nav-item" data-view="overview"><svg viewBox="0 0 24 24"><polyline points="3 12 7 12 10 5 14 19 17 12 21 12"/></svg>Обзор</button>
+      <button class="nav-item" data-view="servers"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>Серверы</button>
+      <button class="nav-item" data-view="bypass"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>Обход<span class="nav-badge" id="navBadge" hidden></span></button>
+      <button class="nav-item" data-view="rules"><svg viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M6 13c0-3 2-4 5-4h5"/></svg>Правила</button>
+      <button class="nav-item" data-view="diag"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h1.5l1-2.5 1.5 5 1-2.5H14"/></svg>Диагностика</button>
+      <button class="nav-item" data-view="settings"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Настройки</button>
+      <div class="nav-foot"><div class="pill" id="navStatus"><span class="led"></span><span><span id="navTitle">Отключено</span><small id="navSub"></small></span></div></div>
+    </nav>
+    <main class="main" id="main" tabindex="-1"></main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="offline" id="offline" hidden>
+    <div>
+      <h2>Naivka не отвечает</h2>
+      <p id="offlineText">Приложение закрыто или перезапускается. Запустите Naivka снова, и окно откроется.</p>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept=".json,.txt,.list,.conf,.lst,text/plain,application/json" hidden>
+  <script src="qrcode.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
