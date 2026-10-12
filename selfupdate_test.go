@@ -44,3 +44,20 @@ func TestVerifySums(t *testing.T) {
 		t.Error("ожидалась ошибка для отсутствующего файла")
 	}
 }
+
+// Номер версии в подписанном SHA256SUMS: старый релиз под новым тегом не принимается.
+func TestCheckSumsVersion(t *testing.T) {
+	sums := []byte("# naivka v1.2.0\nabc123  Naivka.exe\n")
+	if err := checkSumsVersion(sums, "v1.2.0"); err != nil {
+		t.Fatalf("верная версия отклонена: %v", err)
+	}
+	if checkSumsVersion(sums, "v1.3.0") == nil {
+		t.Error("старый релиз под новым тегом принят")
+	}
+	if checkSumsVersion([]byte("abc123  Naivka.exe\n"), "v1.2.0") == nil {
+		t.Error("список без номера версии принят")
+	}
+	if h, err := sumFor(sums, "Naivka.exe"); err != nil || h != "abc123" {
+		t.Errorf("строка версии мешает sumFor: %q %v", h, err)
+	}
+}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -35,14 +34,9 @@ type geoProvider struct {
 
 const ipAPIFields = "status,message,country,countryCode,city,isp,org,as,query,hosting"
 
+// Сначала сервисы с HTTPS: запрос с вашим IP и адресами серверов не идёт открытым текстом.
+// ip-api.com бесплатно отвечает только по HTTP, поэтому он последний запасной.
 var geoProviders = []geoProvider{
-	{
-		name: "ip-api.com",
-		url: func(ip string) string {
-			return "http://ip-api.com/json/" + url.PathEscape(ip) + "?lang=ru&fields=" + ipAPIFields
-		},
-		parse: parseIPAPI,
-	},
 	{
 		name: "ipwho.is",
 		url:  func(ip string) string { return "https://ipwho.is/" + url.PathEscape(ip) + "?lang=ru" },
@@ -105,6 +99,13 @@ var geoProviders = []geoProvider{
 			}
 			return g, nil
 		},
+	},
+	{
+		name: "ip-api.com",
+		url: func(ip string) string {
+			return "http://ip-api.com/json/" + url.PathEscape(ip) + "?lang=ru&fields=" + ipAPIFields
+		},
+		parse: parseIPAPI,
 	},
 }
 
@@ -240,7 +241,7 @@ func (a *App) apiServerGeo(*http.Request) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
-	// Хосты без свежего кэша: определяем IP и одним пакетом спрашиваем ip-api.
+	// Хосты без свежего кэша: определяем IP и спрашиваем сервисы геолокации.
 	type job struct{ host, ip string }
 	var jobs []job
 	seen := map[string]bool{}
@@ -264,24 +265,22 @@ func (a *App) apiServerGeo(*http.Request) (any, error) {
 	}
 	if len(jobs) > 0 {
 		hc := geoClient(directPort)
-		ips := make([]string, len(jobs))
-		for i, j := range jobs {
-			ips[i] = j.ip
+		sem := make(chan struct{}, 4) // не больше 4 запросов разом: у бесплатных сервисов есть лимиты
+		var wg sync.WaitGroup
+		for _, j := range jobs {
+			wg.Add(1)
+			go func(j job) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				if g, err := lookupGeo(ctx, hc, j.ip); err == nil {
+					a.geo.put(j.host, geoResult{Info: g})
+				} else {
+					a.geo.put(j.host, geoResult{Error: "не удалось определить страну", Info: &GeoInfo{IP: j.ip}})
+				}
+			}(j)
 		}
-		batch, berr := ipAPIBatch(ctx, hc, ips)
-		for i, j := range jobs {
-			var g *GeoInfo
-			if berr == nil && batch[i] != nil {
-				g = batch[i]
-			} else if gg, err := lookupGeo(ctx, hc, j.ip); err == nil {
-				g = gg
-			}
-			if g != nil {
-				a.geo.put(j.host, geoResult{Info: g})
-			} else {
-				a.geo.put(j.host, geoResult{Error: "не удалось определить страну", Info: &GeoInfo{IP: j.ip}})
-			}
-		}
+		wg.Wait()
 	}
 
 	out := map[string]geoResult{}
@@ -315,33 +314,4 @@ func resolveHost(ctx context.Context, host string) (string, error) {
 		}
 	}
 	return ips[0].String(), nil
-}
-
-func ipAPIBatch(ctx context.Context, hc *http.Client, ips []string) ([]*GeoInfo, error) {
-	body, _ := json.Marshal(ips)
-	req, _ := http.NewRequestWithContext(ctx, "POST", "http://ip-api.com/batch?lang=ru&fields="+ipAPIFields, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, errors.New(resp.Status)
-	}
-	var raw []json.RawMessage
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&raw); err != nil {
-		return nil, err
-	}
-	out := make([]*GeoInfo, len(ips))
-	for i := range raw {
-		if i >= len(out) {
-			break
-		}
-		if g, err := parseIPAPI(raw[i]); err == nil {
-			g.Source = "ip-api.com"
-			out[i] = g
-		}
-	}
-	return out, nil
 }

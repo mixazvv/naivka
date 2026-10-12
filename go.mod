@@ -1,6 +1,6 @@
 module naivka
 
-go 1.22
+go 1.24
 
 // Зеркало golang.org/x/sys на GitHub: так сборка не зависит от proxy.golang.org.
 replace golang.org/x/sys => github.com/golang/sys v0.30.0

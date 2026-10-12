@@ -191,6 +191,9 @@ func (a *App) applySelf() error {
 	if err := verifySums(sums, sig); err != nil {
 		return fail(err)
 	}
+	if err := checkSumsVersion(sums, tag); err != nil {
+		return fail(err)
+	}
 	want, err := sumFor(sums, selfAsset())
 	if err != nil {
 		return fail(err)
@@ -234,6 +237,22 @@ func verifySums(sums, sig []byte) error {
 		return errors.New("подпись релиза не прошла проверку — обновление отменено. Файлы в репозитории могли подменить")
 	}
 	return nil
+}
+
+// checkSumsVersion: версия, записанная в подписанном SHA256SUMS, должна совпадать с тегом релиза.
+// Иначе это старый подписанный релиз, перевыложенный под новым номером (откат на версию с уязвимостью).
+func checkSumsVersion(sums []byte, tag string) error {
+	sc := bufio.NewScanner(strings.NewReader(string(sums)))
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) == 3 && f[0] == "#" && f[1] == "naivka" {
+			if f[2] == tag {
+				return nil
+			}
+			return fmt.Errorf("релиз %s подписан как %s — похоже на подмену старой версией, обновление отменено", tag, f[2])
+		}
+	}
+	return fmt.Errorf("в подписанном списке файлов релиза %s нет номера версии — обновление отменено", tag)
 }
 
 func sumFor(sums []byte, name string) (string, error) {

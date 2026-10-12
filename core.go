@@ -581,7 +581,8 @@ func (c *Core) download() (string, error) {
 		suffix = "-legacy-windows-7"
 		want = []string{"sing-box.exe"}
 	}
-	asset := fmt.Sprintf("%s/releases/download/%s/sing-box-%s-windows-%s%s.zip", singboxRepo, tag, ver, runtime.GOARCH, suffix)
+	name := fmt.Sprintf("sing-box-%s-windows-%s%s.zip", ver, runtime.GOARCH, suffix)
+	asset := fmt.Sprintf("%s/releases/download/%s/%s", singboxRepo, tag, name)
 
 	hc := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := hc.Get(asset)
@@ -606,6 +607,11 @@ func (c *Core) download() (string, error) {
 		return "", err
 	}
 	tmp.Close()
+	if ok, err := verifyAsset(strings.TrimPrefix(singboxRepo, "https://github.com/"), tag, name, tmp.Name()); err != nil {
+		return "", err
+	} else if !ok {
+		c.logs.Add("[naivka] GitHub не сообщил контрольную сумму ядра, архив получен только по HTTPS")
+	}
 
 	if err := os.MkdirAll(c.coreDir(), 0o755); err != nil {
 		return "", err

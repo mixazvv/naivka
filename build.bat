@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 rem Сборка Naivka. Все зависимости лежат в папке vendor — интернет не нужен.
-rem   build.bat          — Windows 10/11, 64 бита (Go 1.22 или новее)
+rem   build.bat          — Windows 10/11, 64 бита (Go 1.24 или новее)
 rem   build.bat debug    — то же, но с консолью для отладки
 rem   build.bat win7     — Windows 7/8, 64 и 32 бита (нужен Go 1.20.x, путь к нему в GO120)
 set FLAGS=-trimpath -ldflags "-H windowsgui -s -w"

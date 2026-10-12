@@ -138,6 +138,9 @@ func main() {
 	}
 	sort.Strings(names)
 	var sums bytes.Buffer
+	// Номер версии внутри подписанного файла: так старый подписанный релиз нельзя выдать
+	// за новый, перевыложив его под свежим тегом. Старые Naivka эту строку пропускают.
+	fmt.Fprintf(&sums, "# naivka %s\n", *version)
 	for _, n := range names {
 		h := sha256.Sum256(read(filepath.Join(out, n)))
 		fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(h[:]), n)

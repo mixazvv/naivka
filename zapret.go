@@ -141,6 +141,11 @@ func (z *Zapret) install() error {
 		return err
 	}
 	defer os.Remove(zipPath)
+	if ok, err := verifyAsset(zapretRepo, tag, "zapret-discord-youtube-"+tag+".zip", zipPath); err != nil {
+		return err
+	} else if !ok {
+		z.a.mon.Event("info", "zapret: GitHub не сообщил контрольную сумму, архив получен только по HTTPS", false)
+	}
 	tmp := filepath.Join(z.dir(), tag+".new")
 	_ = os.RemoveAll(tmp)
 	if err := extractZip(zipPath, tmp); err != nil {

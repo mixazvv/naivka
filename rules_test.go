@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestPuny(t *testing.T) {
 	for in, want := range map[string]string{"рф": "p1ai", "рус": "p1acf", "пример": "e1afmkfd", "москва": "80adxhks", "bücher": "bcher-kva"} {
@@ -76,6 +79,25 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+func geoProviderNamed(name string) geoProvider {
+	for _, p := range geoProviders {
+		if p.name == name {
+			return p
+		}
+	}
+	panic("нет провайдера " + name)
+}
+
+// HTTPS-сервисы опрашиваются раньше ip-api.com, который отвечает только по HTTP.
+func TestGeoProvidersHTTPSFirst(t *testing.T) {
+	last := len(geoProviders) - 1
+	for i, p := range geoProviders {
+		if u := p.url("1.2.3.4"); !strings.HasPrefix(u, "https://") && i != last {
+			t.Errorf("%s (%s) без HTTPS стоит не последним", p.name, u)
+		}
+	}
+}
+
 func TestParseIPAPI(t *testing.T) {
 	g, err := parseIPAPI([]byte(`{"status":"success","country":"Нидерланды","countryCode":"NL","city":"Амстердам","isp":"Hetzner","org":"","as":"AS24940 Hetzner Online GmbH","query":"1.2.3.4","hosting":true}`))
 	if err != nil || g.ASN != "AS24940" || g.Hosting == nil || !*g.Hosting || g.CountryCode != "NL" {
@@ -84,11 +106,11 @@ func TestParseIPAPI(t *testing.T) {
 	if _, err := parseIPAPI([]byte(`{"status":"fail","message":"private range"}`)); err == nil {
 		t.Error("expected error")
 	}
-	g2, err := geoProviders[2].parse([]byte(`{"ip":"5.6.7.8","city":"Moscow","country":"RU","org":"AS12389 Rostelecom"}`))
+	g2, err := geoProviderNamed("ipinfo.io").parse([]byte(`{"ip":"5.6.7.8","city":"Moscow","country":"RU","org":"AS12389 Rostelecom"}`))
 	if err != nil || g2.ASN != "AS12389" || g2.ISP != "Rostelecom" {
 		t.Errorf("%+v %v", g2, err)
 	}
-	g3, err := geoProviders[1].parse([]byte(`{"success":true,"ip":"5.6.7.8","country":"Россия","country_code":"RU","city":"Москва","connection":{"asn":12389,"org":"PJSC Rostelecom","isp":"Rostelecom"}}`))
+	g3, err := geoProviderNamed("ipwho.is").parse([]byte(`{"success":true,"ip":"5.6.7.8","country":"Россия","country_code":"RU","city":"Москва","connection":{"asn":12389,"org":"PJSC Rostelecom","isp":"Rostelecom"}}`))
 	if err != nil || g3.ASN != "AS12389" || g3.ISP != "Rostelecom" {
 		t.Errorf("%+v %v", g3, err)
 	}
