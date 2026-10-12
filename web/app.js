@@ -991,6 +991,9 @@ function viewDiag() {
     } else if (diagTab === 'speed') {
       body.replaceChildren(viewSpeed());
       refreshSpeed();
+    } else if (diagTab === 'traffic') {
+      body.replaceChildren(viewTraffic());
+      refreshTraffic();
     } else {
       const box = h('pre', { class: 'log', id: 'logBox' }, logBuf.map(logLine));
       body.replaceChildren(
@@ -1004,7 +1007,7 @@ function viewDiag() {
       refreshLogs();
     }
   };
-  const tabs = segmented([['conns', 'Соединения'], ['check', 'Проверить сайт'], ['speed', 'Скорость'], ['logs', 'Журнал']], () => diagTab, v => {
+  const tabs = segmented([['conns', 'Соединения'], ['traffic', 'Трафик'], ['check', 'Проверить сайт'], ['speed', 'Скорость'], ['logs', 'Журнал']], () => diagTab, v => {
     diagTab = v; sessionStorage.setItem('naivka-diag', v); render();
   }, 'Раздел диагностики');
   render();
@@ -1314,7 +1317,7 @@ function editServer(srv) {
           inp('shortId', 'Short ID (sid)')),
         more('Дополнительно', 'SNI, отпечаток',
           h('div', { class: 'grid2' }, inp('sni', 'SNI', { placeholder: 'как домен' }), inp('fingerprint', 'Отпечаток браузера', { placeholder: 'chrome' }))));
-    } else {
+    } else if (d.type === 'naive') {
       fields.replaceChildren(
         h('div', { class: 'grid2' },
           inp('name', 'Название', { placeholder: 'Нидерланды' }),
@@ -1543,8 +1546,8 @@ function addListDialog() {
   const dlg = openDialog(
     h('h2', null, 'Добавить список'),
     h('h3', null, 'Готовые'),
-    h('div', { class: 'choices' }, LIST_PRESETS.map(([n, u, a, d]) => h('div', { class: 'choice' },
-      h('span', { class: 'grow' }, h('b', null, n), h('small', null, `${d} ${LIST_ACTION[a]}.`)),
+    h('div', { class: 'presets' }, LIST_PRESETS.map(([n, u, a, d]) => h('div', { class: 'preset' },
+      h('span', { class: 'grow' }, h('b', null, n), h('small', null, `${d} Действие: ${LIST_ACTION[a].toLowerCase()}.`)),
       have.has(u) ? h('span', { class: 'hint' }, 'уже есть')
         : h('button', { class: 'btn small', onclick: () => { if (add(n, u, a)) { save(0); done(); } } }, 'Добавить')))),
     h('h3', { class: 'mt' }, 'Свой'),
@@ -2287,6 +2290,120 @@ function wlCard() {
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', null, 'Сколько серверов брать'),
         h('input', { type: 'number', min: 5, max: 100, value: S.wl.max, onchange: e => { S.wl.max = Math.max(5, Math.min(100, parseInt(e.target.value, 10) || 30)); save(0); } })))) : null,
     h('p', { class: 'hint mt' }, 'Это чужие серверы неизвестных владельцев. Содержимое HTTPS-сайтов они не видят, но видят, куда вы ходите. Поэтому подписка — запасной вариант, а не основной.'));
+}
+
+// ---------- история трафика ----------
+let TRAFFIC = null;
+const tsum = v => v ? v[0] + v[1] : 0;
+const aroundOf = k => tsum(k.direct) + tsum(k.zapret) + tsum(k.telegram);
+const fmtDay = d => { const [y, m, dd] = d.split('-'); return `${dd}.${m}`; };
+const fmtDayLong = d => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+
+async function refreshTraffic() {
+  try { TRAFFIC = await api('/api/traffic'); } catch (_) { return; }
+  renderTraffic();
+}
+
+function viewTraffic() {
+  return h('div', null,
+    h('p', { class: 'sub' }, 'Сколько прошло через сервер и мимо него — по дням. Это счётчики Naivka: хостинг и оператор насчитают немного больше (шифрование, служебные данные).'),
+    h('div', { id: 'trafficBox' }, h('p', { class: 'hint' }, 'Загружаю…')),
+    h('h2', { class: 'mt-lg' }, 'Лимит'),
+    h('p', { class: 'hint' }, 'Если у сервера или у мобильного тарифа есть лимит — Naivka предупредит на 80% и 100% (уведомлением Windows). Считается только трафик через сервер.'),
+    h('div', { class: 'grid2' },
+      h('label', { class: 'field' }, h('span', null, 'Лимит в месяц, ГБ'),
+        h('input', { type: 'number', min: 0, value: S.trafficLimitGB || '', placeholder: 'без лимита', onchange: e => { S.trafficLimitGB = Math.max(0, parseInt(e.target.value, 10) || 0); save(0); setTimeout(refreshTraffic, 500); } })),
+      h('label', { class: 'field' }, h('span', null, 'Месяц начинается'),
+        h('select', { onchange: e => { S.trafficResetDay = parseInt(e.target.value, 10); save(0); setTimeout(refreshTraffic, 500); } },
+          Array.from({ length: 28 }, (_, i) => h('option', { value: i + 1, selected: (S.trafficResetDay || 1) === i + 1 }, `${i + 1}-го числа`))),
+        h('small', { class: 'hint' }, 'Как у тарифа: например, в день оплаты сервера.'))));
+}
+
+function renderTraffic() {
+  const box = $('#trafficBox');
+  if (!box || !TRAFFIC) return;
+  const t = TRAFFIC;
+  const used = t.periodDown + t.periodUp;
+  const limit = t.limitGB * 1024 ** 3;
+  const pct = limit ? used / limit * 100 : 0;
+  const head = h('div', { class: 'traffic-head' },
+    h('div', null, h('div', { class: 'hint' }, `Через сервер с ${fmtDayLong(t.period)}`),
+      h('div', { class: 'hero-num' }, fmtBytes(used), h('small', null, `↓ ${fmtBytes(t.periodDown)} · ↑ ${fmtBytes(t.periodUp)}`))),
+    limit ? h('div', { class: 'limit-meter' + (pct >= 100 ? ' over' : pct >= 80 ? ' warn' : '') },
+      h('div', { class: 'hint' }, pct >= 100 ? 'Лимит превышен' : pct >= 80 ? 'Лимит почти исчерпан' : 'Лимит'),
+      h('div', { class: 'score-bar', role: 'meter', 'aria-valuenow': Math.round(pct), 'aria-valuemin': 0, 'aria-valuemax': 100 },
+        h('span', { style: `width:${Math.min(100, pct)}%` })),
+      h('div', { class: 'num' }, `${fmtBytes(used)} из ${t.limitGB} ГБ — ${Math.round(pct)}%`)) : null);
+
+  // столбики по дням: через сервер у основания, мимо сервера сверху
+  const days = t.days;
+  const W = 620, H = 180, top = 16, bottom = 156, slot = W / days.length, bw = Math.max(4, Math.min(14, slot - 6)), gap = 2;
+  const totals = days.map(d => [tsum(d.keys.proxy), aroundOf(d.keys)]);
+  let max = Math.max(1, ...totals.map(([a, b]) => a + b));
+  const y = v => (bottom - top) * v / max;
+  const tip = h('div', { class: 'chart-tip', hidden: true });
+  const cols = [], hits = [];
+  const topRound = (x, yTop, w, hgt) => {
+    const r = Math.min(4, hgt, w / 2);
+    return `M${x} ${yTop + hgt}V${yTop + r}Q${x} ${yTop} ${x + r} ${yTop}H${x + w - r}Q${x + w} ${yTop} ${x + w} ${yTop + r}V${yTop + hgt}Z`;
+  };
+  days.forEach((d, i) => {
+    const [p, a] = totals[i];
+    const x = i * slot + (slot - bw) / 2;
+    const hp = y(p), ha = y(a);
+    const g = s('g', { class: 'col' });
+    // скруглён только верх всего столбика
+    if (p > 0) g.append(s('path', { d: a > 0 ? `M${x} ${bottom - hp}h${bw}v${hp}h${-bw}Z` : topRound(x, bottom - hp, bw, hp), fill: 'var(--chart-tunnel)' }));
+    if (a > 0) {
+      const base = bottom - hp - (p > 0 ? gap : 0);
+      g.append(s('path', { d: topRound(x, base - ha, bw, ha), fill: 'var(--chart-direct)' }));
+    }
+    cols.push(g);
+    const hit = s('rect', { class: 'hit', x: i * slot, y: top, width: slot, height: bottom - top });
+    hit.addEventListener('mouseenter', () => {
+      cols.forEach((c, j) => c.classList.toggle('dim', j !== i));
+      tip.replaceChildren(h('b', null, fmtDayLong(d.date)),
+        h('div', null, h('i', { style: 'background:var(--chart-tunnel)' }), `Через сервер: ${fmtBytes(p)}`),
+        h('div', null, h('i', { style: 'background:var(--chart-direct)' }), `Мимо сервера: ${fmtBytes(a)}`));
+      const r = hit.getBoundingClientRect(), wr = box.querySelector('.bars-wrap').getBoundingClientRect();
+      tip.style.left = `${r.left - wr.left + r.width / 2}px`;
+      tip.style.top = `${Math.max(0, r.top - wr.top + (bottom - y(p + a) - top) * r.height / (bottom - top) - 6)}px`;
+      tip.hidden = false;
+    });
+    hit.addEventListener('mouseleave', () => { cols.forEach(c => c.classList.remove('dim')); tip.hidden = true; });
+    hits.push(hit);
+  });
+  const xLabels = days.map((d, i) => (i % 7 === days.length % 7 || i === days.length - 1) && i > 1
+    ? s('text', { x: i === days.length - 1 ? W - 2 : i * slot + slot / 2, y: H - 6, 'text-anchor': i === days.length - 1 ? 'end' : 'middle' }, fmtDay(d.date)) : null);
+  const chart = h('div', { class: 'bars-wrap' },
+    s('svg', { class: 'bars', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Трафик по дням за последний месяц' },
+      s('line', { x1: 0, x2: W, y1: top, y2: top, class: 'grid' }),
+      s('line', { x1: 0, x2: W, y1: bottom, y2: bottom, class: 'grid' }),
+      s('text', { x: 4, y: top - 4 }, fmtBytes(max)),
+      ...cols, ...hits, ...xLabels),
+    tip);
+  const k = t.periodKeys || {};
+  const legend = h('div', { class: 'legend' },
+    h('span', null, h('i', { style: 'background:var(--chart-tunnel)' }), 'Через сервер', h('b', null, fmtBytes(tsum(k.proxy)))),
+    h('span', null, h('i', { style: 'background:var(--chart-direct)' }), 'Мимо сервера', h('b', null, fmtBytes(aroundOf(k)))),
+    h('span', null, 'за месяц'));
+
+  // таблица: за расчётный месяц по маршрутам и серверам
+  const rows = [['Через сервер — всего', k.proxy]];
+  for (const [key, v] of Object.entries(k).sort((a, b) => tsum(b[1]) - tsum(a[1]))) {
+    let name = null;
+    if (key.startsWith('s-')) { const sv = serverById(key.slice(2)); name = sv ? sv.name : 'удалённый сервер'; }
+    else if (key === 'wl') name = 'подписка «белые списки»';
+    else if (key === 'twitch-adfree') name = 'Twitch без рекламы';
+    if (name) rows.push(['  ' + name, v]);
+  }
+  rows.push(['Напрямую', k.direct], ['Через zapret', k.zapret], ['Telegram (tg-ws-proxy)', k.telegram]);
+  const table = h('div', { class: 'panel mt' }, h('table', { class: 'table' },
+    h('thead', null, h('tr', null, h('th', null, 'За месяц'), h('th', { class: 'r' }, 'Загрузка'), h('th', { class: 'r' }, 'Отдача'), h('th', { class: 'r' }, 'Всего'))),
+    h('tbody', null, rows.filter(([, v]) => v && tsum(v) > 0).map(([n, v]) => h('tr', null,
+      h('td', { class: n.startsWith('  ') ? 'cell-sub' : '', style: n.startsWith('  ') ? 'padding-left:24px' : '' }, n.trim()),
+      h('td', { class: 'r num' }, fmtBytes(v[0])), h('td', { class: 'r num' }, fmtBytes(v[1])), h('td', { class: 'r num' }, fmtBytes(tsum(v))))))));
+  box.replaceChildren(head, h('div', { class: 'panel mt', style: 'padding:14px 14px 8px' }, chart, legend), table);
 }
 
 // ---------- тест скорости ----------

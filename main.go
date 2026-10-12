@@ -33,13 +33,14 @@ type App struct {
 	settings *Settings
 	applied  string // fingerprint настроек, с которыми запущено ядро
 
-	geo    serverGeoCache
-	mon    *Monitor
-	zapret *Zapret
-	tgws   *TgWs
-	wl     *WL
-	xray   *Xray
-	lists  *listCache
+	geo     serverGeoCache
+	mon     *Monitor
+	zapret  *Zapret
+	tgws    *TgWs
+	wl      *WL
+	xray    *Xray
+	lists   *listCache
+	traffic *trafficStore
 
 	restarter serialRunner // перезапуски ядра — по одному
 
@@ -108,6 +109,7 @@ func main() {
 	a.wl = newWL(a)
 	a.xray = newXray(a)
 	a.lists = newListCache(a.dir)
+	a.traffic = newTrafficStore(a.dir)
 	a.core.OnStop = a.xray.Stop
 	a.core.ExtraEnv = a.fillEnv
 	go a.mon.run()
@@ -193,6 +195,7 @@ func (a *App) connect() error {
 func (a *App) Quit() {
 	a.quitOnce.Do(func() {
 		a.core.Stop()
+		a.traffic.save(true)
 		restoreSystemProxy(a.dir)
 		a.zapret.Stop()
 		a.tgws.Stop()

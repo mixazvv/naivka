@@ -266,6 +266,9 @@ func (a *App) routes() http.Handler {
 	})
 	api("POST", "/api/restore", a.apiRestore)
 	api("GET", "/api/lists", func(*http.Request) (any, error) { return a.listsView(), nil })
+	api("GET", "/api/traffic", func(*http.Request) (any, error) {
+		return a.traffic.view(time.Now(), 31, a.settingsCopy()), nil
+	})
 	api("POST", "/api/lists/refresh", func(*http.Request) (any, error) {
 		err := a.refreshLists()
 		return a.listsView(), err

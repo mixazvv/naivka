@@ -19,6 +19,9 @@
   --on-accent: #0D1230;
   --shadow: 0 18px 50px rgba(0, 0, 0, .45);
   --tg: #4FB3F2;
+  /* графики: те же цвета, подобранные по светлоте и различимости при дальтонизме */
+  --chart-tunnel: #6F80F5;
+  --chart-direct: #2FAA90;
   color-scheme: dark;
 }
 :root[data-theme="light"] {
@@ -41,6 +44,8 @@
   --on-accent: #FFFFFF;
   --shadow: 0 18px 50px rgba(15, 25, 40, .2);
   --tg: #1C8AD0;
+  --chart-tunnel: #3146C6;
+  --chart-direct: #00806A;
   color-scheme: light;
 }
 :root {
@@ -418,3 +423,29 @@ pre.changes { font: 13px/1.5 var(--font); white-space: pre-wrap; margin: 8px 0 0
 .flag.big { width: 27px; height: 18px; }
 .cc-slot .flag { margin-right: 0; }
 .wl-now { display: flex; align-items: center; }
+
+/* ---------- трафик ---------- */
+.traffic-head { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-end; }
+.hero-num { font-size: 30px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.hero-num small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.limit-meter { min-width: 240px; flex: 1; max-width: 420px; }
+.limit-meter .score-bar { height: 8px; border-radius: 4px; margin: 6px 0 4px; }
+.limit-meter .score-bar span { background: var(--chart-tunnel); border-radius: 4px; }
+.limit-meter.warn .score-bar span { background: var(--warn); }
+.limit-meter.over .score-bar span { background: var(--danger); }
+.bars-wrap { position: relative; }
+.bars { width: 100%; height: auto; display: block; }
+.bars .grid { stroke: var(--line); stroke-width: 1; }
+.bars text { fill: var(--muted); font-size: 11px; font-family: var(--font); }
+.bars .hit { fill: transparent; cursor: default; }
+.bars .col.dim { opacity: .45; }
+.chart-tip { position: absolute; pointer-events: none; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+  font-size: 12.5px; box-shadow: var(--shadow); white-space: nowrap; transform: translate(-50%, -100%); z-index: 2; }
+.chart-tip b { display: block; margin-bottom: 3px; }
+.chart-tip i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.presets { display: flex; flex-direction: column; gap: 8px; }
+.preset { display: flex; gap: 14px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.preset .grow { flex: 1; min-width: 0; }
+.preset b { display: block; font-weight: 600; }
+.preset small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.preset .btn, .preset .hint { flex: none; }

@@ -146,24 +146,26 @@ type Settings struct {
 	ExtraOutbounds string     `json:"extraOutbounds"` // JSON-массив outbounds
 	Override       string     `json:"override"`       // JSON-объект, накладывается на итоговый конфиг
 
-	ShowIP         bool             `json:"showIp"` // определять IP и страну через внешние сервисы
-	KillSwitch     bool             `json:"killSwitch"`
-	Watchdog       bool             `json:"watchdog"`
-	Notify         bool             `json:"notify"`
-	AutoStart      bool             `json:"autoStart"`
-	Theme          string           `json:"theme"` // system | dark | light
-	Window         *WindowGeom      `json:"window,omitempty"`
-	Zapret         ZapretSettings   `json:"zapret"`
-	Telegram       TelegramSettings `json:"telegram"`
-	UpdateCheck    bool             `json:"updateCheck"`
-	WL             WLSettings       `json:"wl"`
-	Share          ShareSettings    `json:"share"`
-	AdBlock        bool             `json:"adBlock"`
-	TwitchAdFree   bool             `json:"twitchAdFree"` // плейлисты Twitch — через прокси без рекламы
-	UDPProxy       bool             `json:"udpProxy"`     // UDP (голос Discord, игры) — через сервер VLESS
-	LogLevel       string           `json:"logLevel"`
-	AutoConnect    bool             `json:"autoConnect"`
-	ExitWithWindow bool             `json:"exitWithWindow"`
+	ShowIP          bool             `json:"showIp"` // определять IP и страну через внешние сервисы
+	KillSwitch      bool             `json:"killSwitch"`
+	Watchdog        bool             `json:"watchdog"`
+	Notify          bool             `json:"notify"`
+	AutoStart       bool             `json:"autoStart"`
+	Theme           string           `json:"theme"` // system | dark | light
+	Window          *WindowGeom      `json:"window,omitempty"`
+	Zapret          ZapretSettings   `json:"zapret"`
+	Telegram        TelegramSettings `json:"telegram"`
+	UpdateCheck     bool             `json:"updateCheck"`
+	WL              WLSettings       `json:"wl"`
+	Share           ShareSettings    `json:"share"`
+	AdBlock         bool             `json:"adBlock"`
+	TrafficLimitGB  int              `json:"trafficLimitGB"`  // предупреждать о трафике через сервер за месяц; 0 — нет
+	TrafficResetDay int              `json:"trafficResetDay"` // с какого числа считается месяц (1–28)
+	TwitchAdFree    bool             `json:"twitchAdFree"`    // плейлисты Twitch — через прокси без рекламы
+	UDPProxy        bool             `json:"udpProxy"`        // UDP (голос Discord, игры) — через сервер VLESS
+	LogLevel        string           `json:"logLevel"`
+	AutoConnect     bool             `json:"autoConnect"`
+	ExitWithWindow  bool             `json:"exitWithWindow"`
 }
 
 func DefaultSettings() *Settings {
@@ -255,6 +257,7 @@ func (s *Settings) fingerprint() string {
 	c.Theme = ""
 	c.Notify, c.ShowIP, c.Watchdog, c.KillSwitch, c.AutoStart = false, false, false, false, false
 	c.UpdateCheck = false
+	c.TrafficLimitGB, c.TrafficResetDay = 0, 0
 	// На ядро влияют только «включён» и «напрямую»; стратегия и фильтры — дело самого zapret.
 	c.Zapret = ZapretSettings{Enabled: s.Zapret.Enabled, RouteDirect: s.Zapret.RouteDirect}
 	c.Telegram = TelegramSettings{Enabled: s.Telegram.Enabled}
@@ -322,6 +325,12 @@ func (s *Settings) normalize() {
 	}
 	if s.WL.Max <= 0 || s.WL.Max > 100 {
 		s.WL.Max = 30
+	}
+	if s.TrafficResetDay < 1 || s.TrafficResetDay > 28 {
+		s.TrafficResetDay = 1
+	}
+	if s.TrafficLimitGB < 0 {
+		s.TrafficLimitGB = 0
 	}
 	if s.Share.Port <= 0 || s.Share.Port > 65535 {
 		s.Share.Port = 2090

@@ -121,6 +121,10 @@ func (m *Monitor) run() {
 		now := time.Now()
 		gap := now.Sub(lastTick)
 		lastTick = now
+		if n%60 == 0 && m.a.traffic != nil {
+			m.a.traffic.checkLimit(now, m.a.settingsCopy(), func(kind, text string) { m.Event(kind, text, true) })
+			m.a.traffic.save(false)
+		}
 		running := m.a.core.Running()
 		if running && !wasRunning {
 			m.resetSession()
@@ -222,6 +226,17 @@ func (m *Monitor) refreshZapretSet(s *Settings) {
 	m.zset = set
 }
 
+// trafficServerKey — под каким ключом истории считать трафик через сервер.
+func trafficServerKey(route string) string {
+	switch {
+	case strings.HasPrefix(route, "s-"), route == tagTwitch:
+		return route
+	case route == "wl", strings.HasPrefix(route, "w-"):
+		return "wl"
+	}
+	return ""
+}
+
 func isTgWsProc(proc string) bool {
 	return strings.HasPrefix(strings.ToLower(proc), "tgwsproxy")
 }
@@ -239,6 +254,7 @@ func (m *Monitor) sample(cl *Clash) {
 	defer m.mu.Unlock()
 	m.refreshZapretSet(s)
 	var d [8]int64
+	now := time.Now()
 	seen := make(map[string]bool, len(v.Connections))
 	agg := map[string]*TopItem{}
 	for _, c := range v.Connections {
@@ -280,6 +296,9 @@ func (m *Monitor) sample(cl *Clash) {
 		default:
 			d[0] += dd
 			d[1] += du
+			if k := trafficServerKey(route); k != "" && m.a.traffic != nil {
+				m.a.traffic.add(now, k, dd, du)
+			}
 		}
 		if host == "" {
 			host = c.Metadata.DestIP
@@ -316,6 +335,11 @@ func (m *Monitor) sample(cl *Clash) {
 	}
 	for i := range d {
 		m.totals[i] += d[i]
+	}
+	if m.a.traffic != nil {
+		for i, k := range []string{"proxy", "direct", "zapret", "telegram"} {
+			m.a.traffic.add(now, k, d[2*i], d[2*i+1])
+		}
 	}
 	m.samples = append(m.samples, Sample{T: time.Now().Unix(),
 		ProxyDown: float64(d[0]), ProxyUp: float64(d[1]), DirectDown: float64(d[2]), DirectUp: float64(d[3]),
