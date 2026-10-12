@@ -119,7 +119,7 @@ function toast(msg, bad) {
 
 const serverById = id => S.servers.find(x => x.id === id);
 let WL = null; // состояние подписки «белые списки»
-let SELF = null; // обновление самой MZ
+let SELF = null; // обновление самой Naivka
 async function refreshSelf() { try { SELF = await api('/api/self'); } catch (_) { /* не важно */ } }
 const wlName = tag => WL && WL.names && WL.names[tag];
 const serverByTag = tag => {
@@ -179,25 +179,99 @@ document.addEventListener('contextmenu', e => {
 });
 
 // ---------- тема ----------
-const darkQuery = matchMedia('(prefers-color-scheme: dark)');
 let themeSent = '';
 function applyTheme() {
-  // «Чёрное золото» — тёмная тема со своей палитрой и геометрией (срезанные углы, шестиугольники).
+  // Тема одна — тёмная; «Никогда не проси об этом» и «Пиксели» — стили поверх неё со своей палитрой.
   const gold = !!S && S.theme === 'gold';
   const blocks = !!S && S.theme === 'blocks';
-  const t = gold || blocks ? 'dark' : S && S.theme === 'system' ? (darkQuery.matches ? 'dark' : 'light') : (S ? S.theme : 'dark');
   const root = document.documentElement;
-  root.dataset.theme = t;
+  root.dataset.theme = 'dark';
   if (gold || blocks) root.dataset.skin = gold ? 'gold' : 'blocks'; else delete root.dataset.skin;
-  root.dataset.accent = gold || blocks ? root.dataset.skin : (S && S.accent) || 'lime';
-  if (S && S.oled && t === 'dark' && !root.dataset.skin) root.dataset.oled = ''; else delete root.dataset.oled;
+  applyAccent(S && S.accent);
+  if (S && S.oled && !root.dataset.skin) root.dataset.oled = ''; else delete root.dataset.oled;
   // Сплошной фон: в OLED и тематических стилях полупрозрачный Mica не нужен.
   if (root.dataset.skin || root.dataset.oled !== undefined) root.dataset.solid = ''; else delete root.dataset.solid;
   if (root.dataset.skin === 'blocks' && root.dataset.prevSkin !== 'blocks' && $('#main') && $('#main').firstChild) setTimeout(() => chunkReveal($('#main'), 'var(--fog)'), 30);
   root.dataset.prevSkin = root.dataset.skin || '';
-  if (themeSent !== t) { themeSent = t; api('/api/window/theme', { dark: t === 'dark' }).catch(() => { themeSent = ''; }); }
+  if (!themeSent) { themeSent = 'dark'; api('/api/window/theme', { dark: true }).catch(() => { themeSent = ''; }); }
 }
-darkQuery.addEventListener('change', () => { if (S && S.theme === 'system') applyTheme(); });
+
+// ---------- акцентный цвет в HEX ----------
+// Цвет считается в OKLab: так светлота и различимость близки к тому, как их видит глаз.
+const ACCENT_DEFAULT = '#B6E35A';
+// Готовые цвета проверены accentNotes: ни один не путается с «напрямую», ошибкой и ожиданием.
+const ACCENT_PRESETS = [['#B6E35A', 'Лайм'], ['#4FD08A', 'Изумруд'], ['#F2E05A', 'Лимон'], ['#FF9A6E', 'Коралл'], ['#F58FC0', 'Роза']];
+const ACCENT_VARS = ['--tunnel', '--tunnel-soft', '--chart-tunnel', '--on-accent', '--logo', '--logo-ink'];
+
+function parseHex(v) {
+  let x = String(v || '').trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(x)) x = x.split('').map(c => c + c).join('');
+  return /^[0-9a-f]{6}$/i.test(x) ? '#' + x.toUpperCase() : '';
+}
+const hexRgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+const toLin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+const fromLin = c => c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+function linOklab([r, g, b]) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const q = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * q, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * q, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * q];
+}
+function oklabLin([L, a, b]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, q = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * q, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * q, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * q];
+}
+const hexLab = hex => linOklab(hexRgb(hex).map(toLin));
+// Цвет по светлоте L, насыщенности C и оттенку h; насыщенность убавляется, пока цвет не влезет в sRGB.
+function lchHex(L, C, hue) {
+  for (let c = C; c >= 0; c -= 0.005) {
+    const lin = oklabLin([L, c * Math.cos(hue), c * Math.sin(hue)]);
+    if (lin.every(v => v >= -1e-4 && v <= 1 + 1e-4) || c < 0.005) {
+      return '#' + lin.map(v => Math.round(Math.min(1, Math.max(0, fromLin(Math.min(1, Math.max(0, v))))) * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+  }
+}
+const lum = hex => { const [r, g, b] = hexRgb(hex).map(toLin); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+// Протанопия и дейтеранопия (Machado и др., 2009): различимость для тех, кто плохо видит красный или зелёный.
+const CVD = [[[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
+  [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]]];
+function deltaE(h1, h2, mat) {
+  const lab = hex => { let lin = hexRgb(hex).map(toLin); if (mat) lin = mat.map(row => Math.max(0, Math.min(1, row[0] * lin[0] + row[1] * lin[1] + row[2] * lin[2]))); return linOklab(lin); };
+  const a = lab(h1), b = lab(h2);
+  return 100 * Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+// accentVars — все цвета, которые выводятся из акцента.
+function accentVars(hex) {
+  const [L, a, b] = hexLab(hex), C = Math.hypot(a, b), hue = Math.atan2(b, a);
+  const [r, g, bl] = hexRgb(hex).map(v => Math.round(v * 255));
+  // Графики: светлота в полосе 0.52–0.64 и насыщенность не меньше 0.1 — так линия видна на тёмном фоне
+  // и не сливается с соседними сериями.
+  const chart = lchHex(Math.min(0.64, Math.max(0.52, L)), C < 0.03 ? C : Math.max(C, 0.1), hue);
+  const dark = lchHex(0.2, Math.min(C, 0.05), hue);
+  const ink = contrast(hex, dark) >= contrast(hex, '#FFFFFF') ? dark : '#FFFFFF';
+  return { '--tunnel': hex, '--tunnel-soft': `rgba(${r}, ${g}, ${bl}, .14)`, '--chart-tunnel': chart, '--on-accent': ink, '--logo': hex, '--logo-ink': ink };
+}
+
+function applyAccent(v) {
+  const root = document.documentElement;
+  const hex = parseHex(v) || ACCENT_DEFAULT;
+  if (root.dataset.skin || hex === ACCENT_DEFAULT) { ACCENT_VARS.forEach(k => root.style.removeProperty(k)); return; }
+  for (const [k, val] of Object.entries(accentVars(hex))) root.style.setProperty(k, val);
+}
+
+// accentNotes — чем свой цвет может мешать: плохо виден, путается с «напрямую», ошибкой или ожиданием.
+function accentNotes(hex) {
+  const out = [], chart = accentVars(hex)['--chart-tunnel'];
+  if (contrast(hex, '#16181B') < 3) out.push('Слишком тёмный: на тёмном фоне его будет плохо видно.');
+  const cvd = Math.min(...CVD.map(m => deltaE(chart, '#3A8FCF', m)));
+  if (deltaE(chart, '#3A8FCF') < 15) out.push('Похож на голубой цвет трафика «напрямую» — на схеме и графиках их будет трудно различить.');
+  else if (cvd < 8) out.push('Людям с нарушением цветового зрения его будет трудно отличить от голубого «напрямую».');
+  if (deltaE(hex, '#FF6B6B') < 8) out.push('Похож на красный цвет ошибок — сбой будет хуже заметен.');
+  if (deltaE(hex, '#F5B44A') < 8) out.push('Похож на жёлтый цвет ожидания и zapret.');
+  return out;
+}
 
 // ---------- API ----------
 async function api(path, body) {
@@ -211,7 +285,7 @@ async function api(path, body) {
     res = await fetch(path, opt);
   } catch (e) {
     setOffline(true);
-    throw new Error('MZ не отвечает');
+    throw new Error('Naivka не отвечает');
   }
   setOffline(false);
   let data = {};
@@ -225,8 +299,8 @@ function setOffline(on) {
   if (!on) { failures = 0; box.hidden = true; return; }
   failures++;
   if (elevating) {
-    $('#offlineText').textContent = updating ? 'MZ обновляется и сейчас откроет новое окно. Это окно можно закрыть.'
-      : 'MZ перезапускается с правами администратора и откроет новое окно. Это окно можно закрыть.';
+    $('#offlineText').textContent = updating ? 'Naivka обновляется и сейчас откроет новое окно. Это окно можно закрыть.'
+      : 'Naivka перезапускается с правами администратора и откроет новое окно. Это окно можно закрыть.';
     box.hidden = false;
     setTimeout(() => window.close(), 1500);
   } else if (failures >= 3) {
@@ -402,15 +476,9 @@ function updateStatus() {
   const cs = currentServer();
   $('#navSub').textContent = p === 'on' ? (cs.auto ? `${cs.name}, авто` : cs.name) : (ST.mode === 'tun' || S.mode === 'tun' ? 'режим TUN' : '');
   navCounts();
-  const hbt = $('#hbToggle');
-  if (hbt) hbt.textContent = p === 'on' || p === 'blocked' ? 'Отключить' : 'Подключить';
-  const hbs = $('#hbSession');
-  if (hbs) hbs.textContent = p === 'on' ? `канал открыт ${fmtDur(Date.now() / 1000 - ST.startedAt)} · ${cs.name}` : TITLES[p].toLowerCase();
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
-  const xp = $('#hbXp');
-  if (xp) xp.style.width = (Math.min(1, Math.log10(kb + 1) / 4) * 100).toFixed(1) + '%';
   const tbs = $('#tbStatus');
   if (tbs) tbs.textContent = TITLES[p] + (p === 'on' ? ' · ' + cs.name : '');
 
@@ -420,12 +488,12 @@ function updateStatus() {
     if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - ST.startedAt)}`;
     else if (p === 'wait') sub = 'Запускаю sing-box и проверяю конфиг.';
     else if (p === 'err') sub = 'Подробности ниже и в журнале.';
-    else if (p === 'blocked') sub = 'Ядро упало, защита от утечек не выпускает трафик напрямую. MZ пробует восстановить связь.';
+    else if (p === 'blocked') sub = 'Ядро упало, защита от утечек не выпускает трафик напрямую. Naivka пробует восстановить связь.';
     $('#statusSub').textContent = sub;
     const btn = $('#connectBtn');
     btn.disabled = p === 'wait';
     btn.setAttribute('aria-label', powerLabel(p));
-    btn.title = powerLabel(p);
+    btn.title = powerLabel(p) + ' (Ctrl+Enter)';
     renderTiles();
     const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok')].join('|');
     patch('notices', n, buildNotices);
@@ -476,7 +544,7 @@ function buildNotices() {
     out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать серверы остальных протоколов (Reality, Hysteria2 и другие).'));
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
-  if (SELF && SELF.available) out.push(notice('info', `Вышла новая версия MZ: ${SELF.latest} (у вас ${SELF.version}).`, h('button', { class: 'btn small', onclick: () => go('settings') }, 'Подробнее')));
+  if (SELF && SELF.available) out.push(notice('info', `Вышла Naivka ${SELF.latest} (у вас ${SELF.version}).`, h('button', { class: 'btn small', onclick: () => go('settings') }, 'Подробнее')));
   if (S.servers.length && S.routing !== 'global' && !dnsEncrypted(S.dnsDirect) && !sessionStorage.getItem('naivka-dns-ok')) {
     out.push(notice('info', 'DNS для сайтов «напрямую» не зашифрован: провайдер видит, какие сайты вы открываете.',
       h('div', { class: 'row', style: 'flex-wrap:nowrap' },
@@ -489,12 +557,12 @@ function buildNotices() {
   if (ST.needsRestart) out.push(notice('info', 'Настройки изменены. Они применятся после переподключения.', h('button', { class: 'btn small', onclick: reconnect }, 'Переподключить')));
   const pi = !ST.running && ST.portIssue;
   if (pi) {
-    const who = pi.kind === 'naivka' ? 'другая копия MZ' : pi.name ? `программа ${pi.name}` : 'другая программа';
+    const who = pi.kind === 'naivka' ? 'другая копия Naivka' : pi.name ? `программа ${pi.name}` : 'другая программа';
     out.push(h('div', { class: 'notice error' }, h('div', { class: 'grow' },
       h('b', null, `Порт ${pi.port} занят`),
       h('p', { style: 'margin:4px 0 0' }, `Его держит ${who}` + (pi.pid ? ` (PID ${pi.pid})` : '') + '. ' + (pi.kind === 'naivka'
         ? 'Закройте её через значок в трее (он может прятаться под стрелкой у часов) или возьмите свободный порт.'
-        : 'Закройте эту программу или пусть MZ возьмёт свободный порт — браузеры и программы, которые используют системный прокси, подхватят его сами.')),
+        : 'Закройте эту программу или пусть Naivka возьмёт свободный порт — браузеры и программы, которые используют системный прокси, подхватят его сами.')),
       pi.path ? h('div', { class: 'cell-sub', style: 'margin-top:4px;word-break:break-all' }, pi.path) : null),
       h('div', { class: 'row', style: 'flex-wrap:nowrap' },
         h('button', { class: 'btn small primary', onclick: async () => {
@@ -565,8 +633,6 @@ function applySections() {
     b.querySelector('.nav-key').textContent = i >= 0 ? i + 1 : '';
     b.title = b.querySelector('.nav-label').firstChild.textContent + (i >= 0 ? ` (${i + 1})` : '');
   });
-  const last = $('#hbLast');
-  if (last) last.textContent = order.length;
   railMark();
   if (!sectionOn(view)) go('overview');
 }
@@ -874,16 +940,18 @@ function renderLanes() {
         const x = l.nx, y = l.ny;
         const open = () => go(l.key === 'proxy' ? 'servers' : 'bypass');
         const tip = s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»');
+        // Флаг страны сервера — внутри узла вместо значка, чтобы не ложиться на ветку.
+        const flag = l.node.cc ? flagInSvg(l.node.cc, x - 11, y - 22 / 3, 22) : null;
         // «Пиксели»: тот же круг радиусом 19, растрированный.
-        if (mc) nodes.push(s('g', { class: 'clickable' + (l.active ? ' on' : ''), onclick: open }, tip, pxNode(x, y, 19, l.node.icon, l.active ? l.color : 'var(--faint)', l.active ? 'on' : '')));
+        if (mc) nodes.push(s('g', { class: 'clickable' + (l.active ? ' on' : ''), onclick: open }, tip, pxNode(x, y, 19, flag ? null : l.node.icon, l.active ? l.color : 'var(--faint)', l.active ? 'on' : '')));
         else {
           nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node clickable' + (l.active ? ' on' : ''), style: `stroke:${l.color}`, onclick: open }, tip));
-          nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
+          if (!flag) nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
         }
+        if (flag) { flag.classList.add('node-flag'); if (!l.active) flag.classList.add('idle'); nodes.push(flag); }
         nodes.push(s('text', { x, y: y - 40, 'text-anchor': 'middle', class: 'lbl halo' }, l.node.title));
         nodes.push(s('text', { x, y: y - 25, 'text-anchor': 'middle', class: 'sub-lbl halo' },
-          !flagShapes((l.node.cc || '').toUpperCase()) && l.node.cc ? s('tspan', { class: 'cc-text' }, l.node.cc + '  ') : null, l.node.sub));
-        if (l.node.cc) nodes.push(flagInSvg(l.node.cc, x - 19 - 32, y - 8, 24));
+          !flag && l.node.cc ? s('tspan', { class: 'cc-text' }, l.node.cc + '  ') : null, l.node.sub));
       } else {
         nodes.push(s('text', { x: l.nx, y: l.ny + 26, 'text-anchor': 'middle', class: 'sub-lbl halo', style: `fill:${l.color}` }, 'напрямую'));
       }
@@ -1223,7 +1291,7 @@ function viewCheck() {
   const btn = h('button', { class: 'btn primary', onclick: run }, 'Проверить');
   if (lastCheck) renderCheck(out, lastCheck);
   return h('div', null,
-    h('p', { class: 'sub' }, 'Не открывается сайт? MZ проверит, заблокирован ли он у провайдера, открывается ли через сервер и по какому правилу сейчас идёт.'),
+    h('p', { class: 'sub' }, 'Не открывается сайт? Naivka проверит, заблокирован ли он у провайдера, открывается ли через сервер и по какому правилу сейчас идёт.'),
     h('div', { class: 'row' }, input, btn), out);
 }
 
@@ -1470,7 +1538,7 @@ async function phoneDialog() {
         segmented(res.links.map((x, i) => [String(i), x.ip]), () => String(idx), v => { idx = +v; show(); }, 'Сеть')) : null,
       h('div', { class: 'qr-box' }, qrSvg(l.singbox)),
       h('div', { class: 'link-box' }, l.url),
-      h('p', { class: 'hint mt' }, `Ссылка работает ${left} мин и не больше трёх скачиваний, потом закроется сама. В профиле пароли серверов — открывайте его только в своей сети. Windows может спросить разрешение для MZ в брандмауэре: разрешите для частных сетей.`),
+      h('p', { class: 'hint mt' }, `Ссылка работает ${left} мин и не больше трёх скачиваний, потом закроется сама. В профиле пароли серверов — открывайте его только в своей сети. Windows может спросить разрешение для Naivka в брандмауэре: разрешите для частных сетей.`),
       h('div', { class: 'row end mt' },
         fileBtn,
         h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(l.url); toast('Ссылка скопирована'); } catch (_) { toast('Не удалось скопировать', true); } } }, 'Скопировать ссылку'),
@@ -1646,7 +1714,7 @@ function installServerDialog(prev) {
     body.replaceChildren(
       h('div', { class: 'notice warn' }, h('div', { class: 'grow' },
         h('b', null, 'Делайте это, только если понимаете, что происходит, и это ваш сервер.'),
-        h('p', { style: 'margin:6px 0 0' }, 'MZ подключится к серверу по SSH с правами root и изменит его настройки. На сервере, где уже работает что-то важное (сайт, другой VPN, панель управления), установка может ему помешать.'))),
+        h('p', { style: 'margin:6px 0 0' }, 'Naivka подключится к серверу по SSH с правами root и изменит его настройки. На сервере, где уже работает что-то важное (сайт, другой VPN, панель управления), установка может ему помешать.'))),
       h('h3', { class: 'mt' }, 'Что может быть сделано на сервере (вы выберете на следующем шаге)'),
       h('ul', { class: 'steps' },
         h('li', null, 'sing-box из официального репозитория SagerNet (apt): VLESS + Reality на TCP 443 или 8443 и, по желанию, Hysteria2 на UDP. Нужен Debian 11+ или Ubuntu 20.04+.'),
@@ -1656,8 +1724,8 @@ function installServerDialog(prev) {
       h('h3', null, 'Что останется как было'),
       h('ul', { class: 'steps' },
         h('li', null, 'SSH, пароли, пользователи, другие программы и их порты.'),
-        h('li', null, 'Пароль и ключ SSH MZ не сохраняет — они нужны только на время установки (и потом — чтобы открыть панель).')),
-      h('p', { class: 'hint' }, 'Перед вводом пароля MZ покажет отпечаток ключа сервера — сверьте его с панелью хостинга или консолью. Скрипты, которые выполнятся на сервере, можно прочитать заранее. Откатить протоколы: на сервере bash install-server.sh --remove; панели удаляются их же меню (x-ui uninstall, s-ui uninstall).'),
+        h('li', null, 'Пароль и ключ SSH Naivka не сохраняет — они нужны только на время установки (и потом — чтобы открыть панель).')),
+      h('p', { class: 'hint' }, 'Перед вводом пароля Naivka покажет отпечаток ключа сервера — сверьте его с панелью хостинга или консолью. Скрипты, которые выполнятся на сервере, можно прочитать заранее. Откатить протоколы: на сервере bash install-server.sh --remove; панели удаляются их же меню (x-ui uninstall, s-ui uninstall).'),
       h('label', { class: 'check mt' }, ok, h('span', null, h('b', null, 'Понимаю, что делаю, и это мой сервер'))),
       h('div', { class: 'row mt' },
         h('button', { class: 'btn', onclick: () => showScript(false) }, 'Скрипт протоколов'),
@@ -1716,7 +1784,7 @@ function installServerDialog(prev) {
       h('p', { class: 'hint' }, 'VLESS + Reality ставится всегда — это основной протокол.'),
       h('div', { class: 'grid2' }, sniField, domainField, inp('name', 'Название', { placeholder: 'как адрес', resets: false })),
       box('naive', 'Ещё и NaiveProxy (нужен домен)', 'Настоящий Chromium внутри: трафик неотличим от браузера. Caddy займёт порты 80 и 443, Reality переедет на 8443.', renderProto),
-      box('hy2', 'Ещё и Hysteria2 (UDP)', 'Запасной протокол: быстрый на плохом мобильном интернете, но где-то UDP за границу режут. Свой сертификат, MZ проверяет его по отпечатку.'),
+      box('hy2', 'Ещё и Hysteria2 (UDP)', 'Запасной протокол: быстрый на плохом мобильном интернете, но где-то UDP за границу режут. Свой сертификат, Naivka проверяет его по отпечатку.'),
       box('bbr', 'Включить BBR', 'Обычно ускоряет загрузку через далёкий сервер. Меняет настройку ядра сервера.'));
 
     // панель
@@ -1727,16 +1795,16 @@ function installServerDialog(prev) {
       panelBody.replaceChildren(
         f.panel === '3x-ui'
           ? choices('panelAccess', [
-            ['tunnel', 'Только через MZ (рекомендуется)', 'Панель слушает только сам сервер — из интернета её не найти и не взломать. MZ открывает её через SSH-туннель (спросит пароль SSH).'],
+            ['tunnel', 'Только через Naivka (рекомендуется)', 'Панель слушает только сам сервер — из интернета её не найти и не взломать. Naivka открывает её через SSH-туннель (спросит пароль SSH).'],
             ['public', 'Из интернета по HTTPS', 'Откроется по адресу https://IP:порт/секретный-путь с сертификатом Let\'s Encrypt на IP (нужен свободный порт 80). Удобно с телефона, но панель видна всему интернету — её будут пробовать подобрать.'],
           ], () => f.panelAccess, v => { f.panelAccess = v; })
-          : h('p', { class: 'hint' }, 's-ui работает без HTTPS, поэтому открывается только через MZ по SSH-туннелю — из интернета её не видно.'),
+          : h('p', { class: 'hint' }, 's-ui работает без HTTPS, поэтому открывается только через Naivka по SSH-туннелю — из интернета её не видно.'),
         h('div', { class: 'notice warn mt' }, h('div', { class: 'grow' },
           h('b', null, 'Панель — сторонняя программа с правами root.'),
           h('ul', { class: 'steps', style: 'margin-bottom:0' },
-            h('li', null, `Ставится официальный установщик ${PANEL_TITLE[f.panel]} с GitHub (последний релиз): его код выполняется на сервере от root. MZ не может за него ручаться.`),
+            h('li', null, `Ставится официальный установщик ${PANEL_TITLE[f.panel]} с GitHub (последний релиз): его код выполняется на сервере от root. Naivka не может за него ручаться.`),
             f.panel === '3x-ui' ? h('li', null, 'Установщик 3X-UI заодно ставит fail2ban и cron для обновления сертификатов.') : null,
-            h('li', null, 'Логин и длинный пароль панели MZ придумает сам и сохранит у вас в зашифрованном виде.'),
+            h('li', null, 'Логин и длинный пароль панели Naivka придумает сама и сохранит у вас в зашифрованном виде.'),
             h('li', null, 'Протоколы, которые вы создадите в панели, не должны занимать уже занятые порты (Reality, Hysteria2, NaiveProxy).')))),
         h('label', { class: 'check' }, agree, h('span', null, h('b', null, 'Понимаю риски и всё равно ставлю панель'))));
     };
@@ -1767,7 +1835,7 @@ function installServerDialog(prev) {
       h('label', { class: 'check' }, useKey, h('span', null, h('b', null, 'Вход по ключу SSH'))),
       keyBox,
       h('h3', { class: 'mt' }, 'Протоколы'),
-      box('protocols', 'Поставить протоколы MZ', 'Снимите, если нужна только панель.', renderProto),
+      box('protocols', 'Поставить протоколы Naivka', 'Снимите, если нужна только панель.', renderProto),
       protoBody,
       h('h3', { class: 'mt' }, 'Веб-панель (необязательно)'),
       h('p', { class: 'hint' }, 'Панель нужна, если хотите сами управлять протоколами и пользователями в браузере: раздавать доступ друзьям, ставить лимиты трафика. Для себя одного хватит протоколов выше.'),
@@ -1831,7 +1899,7 @@ function viewOwn() {
   const proto = (name, what) => h('div', { class: 'own-proto' }, h('b', null, name), h('span', null, what));
   return h('div', { class: 'view' },
     h('h1', null, 'Свой сервер'),
-    h('p', { class: 'sub' }, 'MZ сам поставит протоколы и панель управления на ваш VPS по SSH (Debian или Ubuntu) и добавит готовые серверы в список.'),
+    h('p', { class: 'sub' }, 'Naivka сама поставит протоколы и панель управления на ваш VPS по SSH (Debian или Ubuntu) и добавит готовые серверы в список.'),
     h('div', { class: 'card own-hero' },
       h('div', { class: 'own-protos' },
         proto('VLESS Reality', 'основной: маскируется под чужой сайт, ставится всегда'),
@@ -1840,7 +1908,7 @@ function viewOwn() {
         proto('Панель 3X-UI или s-ui', 'пользователи, лимиты, подписки — по желанию')),
       h('div', { class: 'row mt' },
         h('button', { class: 'btn primary', disabled: !can, onclick: () => installServerDialog() }, 'Начать установку'),
-        h('span', { class: 'hint' }, can ? 'Перед началом MZ покажет, что именно сделает на сервере, и попросит подтвердить.' : 'Недоступно в этой сборке (Windows 7).'))),
+        h('span', { class: 'hint' }, can ? 'Перед началом Naivka покажет, что именно сделает на сервере, и попросит подтвердить.' : 'Недоступно в этой сборке (Windows 7).'))),
     h('h2', null, 'Панели'),
     h('div', { id: 'panelsBox' }),
     h('div', { class: 'row mt' },
@@ -1871,7 +1939,7 @@ function panelsBox() {
           if (!confirm(`Убрать панель ${PANEL_TITLE[p.type]} на ${p.host} из списка? На сервере она останется.`)) return;
           S.panels = S.panels.filter(x => x.id !== p.id); save(0); await saveNow(); renderServers();
         } }, 'Убрать')))))))),
-    h('p', { class: 'hint' }, 'Через туннель панель открывается в браузере по адресу 127.0.0.1 — соединение до сервера зашифровано SSH. Туннель живёт 3 часа или до выхода из MZ.'));
+    h('p', { class: 'hint' }, 'Через туннель панель открывается в браузере по адресу 127.0.0.1 — соединение до сервера зашифровано SSH. Туннель живёт 3 часа или до выхода из Naivka.'));
 }
 
 function panelCreds(p) {
@@ -1879,7 +1947,7 @@ function panelCreds(p) {
     h('button', { class: 'btn small', onclick: async () => { try { await navigator.clipboard.writeText(value); toast('Скопировано'); } catch (_) { toast('Не удалось скопировать', true); } } }, 'Копировать'));
   const d = openDialog(h('h2', null, `${PANEL_TITLE[p.type]} на ${p.host}`),
     row('Логин', p.user), row('Пароль', p.pass),
-    p.access === 'public' ? row('Адрес', p.url) : h('p', { class: 'hint' }, `Порт панели на сервере ${p.port}, путь ${p.path} — открывается только через туннель MZ.`),
+    p.access === 'public' ? row('Адрес', p.url) : h('p', { class: 'hint' }, `Порт панели на сервере ${p.port}, путь ${p.path} — открывается только через туннель Naivka.`),
     h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Закрыть')));
 }
 
@@ -1894,7 +1962,7 @@ function openPanel(p) {
   const err = h('div', { class: 'err-text' });
   const go = h('button', { class: 'btn primary' }, 'Открыть');
   const d = openDialog(h('h2', null, `Открыть ${PANEL_TITLE[p.type]}`),
-    h('p', { class: 'hint' }, `MZ подключится к ${p.host} по SSH (ключ сервера проверяется по отпечатку, подтверждённому при установке) и откроет панель в браузере. Пароль SSH не сохраняется.`),
+    h('p', { class: 'hint' }, `Naivka подключится к ${p.host} по SSH (ключ сервера проверяется по отпечатку, подтверждённому при установке) и откроет панель в браузере. Пароль SSH не сохраняется.`),
     pass, h('details', { class: 'more' }, h('summary', null, h('span', null, 'Вход по ключу')), h('div', { class: 'more-body' }, key, phrase)), err,
     h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Отмена'), go));
   const submit = async () => {
@@ -1916,7 +1984,7 @@ function importLinksDialog() {
   const err = h('div', { class: 'err-text' });
   const dlg = openDialog(
     h('h2', null, 'Вставить ссылки'),
-    h('p', { class: 'hint' }, 'По одной в строке: naive+https://…, naive+quic://…, vless://…, hysteria2://…, tuic://…, trojan://…, anytls://… или ss://…. Ссылку для Reality выдаёт скрипт сервера add-reality.sh или установка сервера из MZ.'),
+    h('p', { class: 'hint' }, 'По одной в строке: naive+https://…, naive+quic://…, vless://…, hysteria2://…, tuic://…, trojan://…, anytls://… или ss://…. Ссылку для Reality выдаёт скрипт сервера add-reality.sh или установка сервера из Naivka.'),
     ta, err,
     h('div', { class: 'row end mt' },
       h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'),
@@ -2017,9 +2085,9 @@ function viewRules() {
       check('ruInsideDirect', 'Сайты, которые работают только из России, всегда напрямую', 'Госуслуги, банки и другие сервисы, которые не пускают иностранные IP.', refreshSpecialNote),
       check('blockQuic', 'Блокировать QUIC', 'Naive передаёт только TCP. Без QUIC браузеры сами перейдут на обычный HTTPS, и он пойдёт через сервер.', refreshSpecialNote),
       check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки пойдут мимо сервера: через Naive UDP всё равно не проходит.', refreshSpecialNote),
-      check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Naive и AnyTLS передают только TCP, а VLESS, Hysteria2, TUIC, Trojan и Shadowsocks — и UDP. Тогда UDP, который по правилам должен идти через сервер, пойдёт через них (или через подписку). Работает в режиме TUN: в режиме прокси программы отправляют UDP мимо MZ.', refreshSpecialNote),
+      check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Naive и AnyTLS передают только TCP, а VLESS, Hysteria2, TUIC, Trojan и Shadowsocks — и UDP. Тогда UDP, который по правилам должен идти через сервер, пойдёт через них (или через подписку). Работает в режиме TUN: в режиме прокси программы отправляют UDP мимо Naivka.', refreshSpecialNote),
       check('adBlock', 'Блокировать рекламу и трекеры', 'По готовому списку для sing-box (geosite category-ads-all, обновляется раз в сутки): баннеры, счётчики, рекламные сети. Видеорекламу YouTube так не убрать — она идёт с тех же серверов, что и само видео; для неё нужен uBlock Origin в браузере. Если какой-то сайт сломается — добавьте его правилом «Напрямую» или «Через сервер».', refreshSpecialNote),
-      check('twitchAdFree', 'Twitch без рекламы', 'Twitch вставляет рекламу в трансляцию в зависимости от страны, откуда запрошен плейлист. MZ запрашивает плейлисты через прокси проекта TTV LOL PRO в стране без рекламы, а само видео идёт как обычно. Прокси видит только то, что вы смотрите Twitch, но не какой канал. Работает для трансляций, не для записей; баннеры на сайте остаются. Если трансляции перестали открываться — выключите.', refreshSpecialNote)),
+      check('twitchAdFree', 'Twitch без рекламы', 'Twitch вставляет рекламу в трансляцию в зависимости от страны, откуда запрошен плейлист. Naivka запрашивает плейлисты через прокси проекта TTV LOL PRO в стране без рекламы, а само видео идёт как обычно. Прокси видит только то, что вы смотрите Twitch, но не какой канал. Работает для трансляций, не для записей; баннеры на сайте остаются. Если трансляции перестали открываться — выключите.', refreshSpecialNote)),
     more('Правила sing-box вручную', S.extraRules.trim() ? 'есть свои правила' : 'для опытных',
       h('p', { class: 'hint' }, 'JSON-массив для route.rules, вставляется сразу после ваших правил. Можно ссылаться на outbound proxy, direct, auto и на свои outbounds из настроек.'),
       jsonArea('extraRules', '[\n  { "domain_keyword": ["openai"], "outbound": "proxy" }\n]', true)));
@@ -2324,7 +2392,7 @@ async function exportRulesDialog() {
   const dlg = openDialog(
     h('h2', null, 'Экспорт правил'),
     h('p', { class: 'hint' }, data.json.rules.length
-      ? `${count(data.json.rules.length, 'правило', 'правила', 'правил')}. Файл JSON можно импортировать обратно в MZ. Текст удобно читать и править: строки в квадратных скобках задают действие.`
+      ? `${count(data.json.rules.length, 'правило', 'правила', 'правил')}. Файл JSON можно импортировать обратно в Naivka. Текст удобно читать и править: строки в квадратных скобках задают действие.`
       : 'Правил пока нет.'),
     h('textarea', { readonly: true, class: 'rules-input', value: humanText }),
     h('div', { class: 'row end mt' },
@@ -2344,7 +2412,7 @@ async function exportRulesDialog() {
 // ---------- настройки ----------
 function buildAdminBox() {
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') {
-    return notice('warn', 'Для TUN нужны права администратора. Включите автозапуск — тогда MZ будет стартовать с правами без запроса.',
+    return notice('warn', 'Для TUN нужны права администратора. Включите автозапуск — тогда Naivka будет стартовать с правами без запроса.',
       h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами'));
   }
   return null;
@@ -2367,6 +2435,46 @@ function buildCoreBox() {
   return out;
 }
 
+// Акцент: готовые цвета, палитра Windows/Chromium и поле HEX. Пока цвет подбирается, он только
+// показывается; сохраняется — когда выбран.
+function accentPicker() {
+  const cur = () => parseHex(S.accent) || ACCENT_DEFAULT;
+  const notes = h('div', { class: 'accent-notes' });
+  const text = h('input', { type: 'text', class: 'hex-input', value: cur(), maxlength: '7', spellcheck: 'false', 'aria-label': 'Цвет в формате HEX', placeholder: '#B6E35A' });
+  const wheel = h('input', { type: 'color', class: 'hex-wheel', value: cur().toLowerCase(), 'aria-label': 'Выбрать цвет', title: 'Выбрать цвет' });
+  const sw = h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Готовые цвета' });
+  const show = (hex, keep) => {
+    applyAccent(hex);
+    if (keep !== 'text') text.value = hex;
+    if (keep !== 'wheel') wheel.value = hex.toLowerCase();
+    text.removeAttribute('aria-invalid');
+    sw.querySelectorAll('.swatch').forEach(b => b.setAttribute('aria-checked', b.dataset.hex === hex ? 'true' : 'false'));
+    notes.replaceChildren(...accentNotes(hex).map(t => h('p', { class: 'hint warn-text' }, t)));
+  };
+  const commit = hex => { S.accent = hex; save(); show(hex); };
+  for (const [hex, name] of ACCENT_PRESETS) {
+    const b = h('button', { class: 'swatch', type: 'button', role: 'radio', 'data-hex': hex, title: `${name} ${hex}`, 'aria-label': `${name} ${hex}`, onclick: () => commit(hex) });
+    b.style.background = hex;
+    sw.append(b);
+  }
+  text.addEventListener('input', () => { const hex = parseHex(text.value); if (hex) show(hex, 'text'); });
+  text.addEventListener('change', () => {
+    const hex = parseHex(text.value);
+    if (hex) commit(hex);
+    else { text.setAttribute('aria-invalid', 'true'); notes.replaceChildren(h('p', { class: 'err-text' }, 'Нужен цвет вида #B6E35A: решётка и шесть знаков 0–9, A–F.')); }
+  });
+  text.addEventListener('keydown', e => { if (e.key === 'Enter') text.dispatchEvent(new Event('change')); });
+  wheel.addEventListener('input', () => show(parseHex(wheel.value), 'wheel'));
+  wheel.addEventListener('change', () => commit(parseHex(wheel.value)));
+  show(cur());
+  return h('div', { class: 'accent-box' },
+    h('div', { class: 'accent-row' }, h('span', { class: 'hint' }, 'Акцент'), sw,
+      h('label', { class: 'hex-field' }, wheel, text),
+      h('button', { class: 'btn small', type: 'button', onclick: () => commit(ACCENT_DEFAULT) }, 'Сбросить')),
+    h('p', { class: 'hint' }, 'Любой цвет в формате HEX. Им же на схемах и графиках показан трафик через сервер; для графиков его яркость подгоняется сама, чтобы линия была видна на тёмном фоне.'),
+    notes);
+}
+
 function viewSettings() {
   const cfgOut = h('textarea', { readonly: true, style: 'min-height:320px', hidden: true });
   return h('div', { class: 'view', style: 'max-width:860px' },
@@ -2378,27 +2486,17 @@ function viewSettings() {
       h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
 
     h('h2', null, 'Внешний вид'),
-    segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows'], ['gold', 'Никогда не проси об этом'], ['blocks', 'Пиксели']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
+    segmented([['dark', 'Обычная'], ['gold', 'Никогда не проси об этом'], ['blocks', 'Пиксели']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
     h('p', { class: 'hint gold-only' }, 'Чёрное с золотом, тонкие заглавные, огни на фоне разгораются от трафика, заголовки «расшифровываются». Акцентный цвет и OLED в этой теме свои.'),
     h('p', { class: 'hint blocks-only' }, 'Тёмный интерфейс с пиксельными акцентами: рамки «ступеньками», крупные пиксельные цифры, кольцо из делений, экраны проступают мозаикой. Акцентный цвет и OLED в этой теме свои.'),
-    h('div', { class: 'accent-row' }, h('span', { class: 'hint' }, 'Акцент'),
-      h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Акцентный цвет' },
-        ...ACCENTS.map(([id, name]) => h('button', {
-          class: 'swatch', type: 'button', role: 'radio', 'data-accent': id, title: name, 'aria-label': name,
-          'aria-checked': S.accent === id ? 'true' : 'false',
-          onclick: e => {
-            S.accent = id; save(); applyTheme();
-            e.currentTarget.parentNode.querySelectorAll('.swatch').forEach(b => b.setAttribute('aria-checked', b.dataset.accent === id ? 'true' : 'false'));
-          },
-        }))),
-      h('span', { class: 'hint' }, 'Им же на схемах и графиках показан трафик через сервер.')),
+    accentPicker(),
     h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', 'Тёмная тема на чёрном фоне: контрастнее и бережёт заряд на OLED-экранах.', applyTheme)),
     h('h2', null, 'Разделы'),
     check('ownServer', 'Свой сервер', 'Установка протоколов и панели управления на ваш VPS по SSH. Если пользуетесь готовыми серверами, выключите — раздел пропадёт из меню, а уже поставленные серверы останутся в списке.', applySections),
 
     window.NAIVKA_HOST ? h('h2', null, 'Окно') : null,
     window.NAIVKA_HOST ? check('trayMini', 'Мини-окно по щелчку в трее', 'Маленькое окно у часов: подключение, сервер, скорость. Если выключить, щелчок сразу открывает главное окно.') : null,
-    window.NAIVKA_HOST ? check('nativeFrame', 'Классическое окно Windows', 'Обычная строка заголовка и фон без Mica (полупрозрачный фон есть в Windows 11). Применится после перезапуска MZ.') : null,
+    window.NAIVKA_HOST ? check('nativeFrame', 'Классическое окно Windows', 'Обычная строка заголовка и фон без Mica (полупрозрачный фон есть в Windows 11). Применится после перезапуска Naivka.') : null,
 
     h('h2', null, 'Перехват трафика'),
     choices('mode', [
@@ -2410,21 +2508,21 @@ function viewSettings() {
     h('h2', null, 'Надёжность'),
     check('killSwitch', 'Защита от утечек', 'Если ядро упадёт, трафик не пойдёт напрямую мимо сервера, пока связь не восстановится. Работает в режиме системного прокси; в TUN ядро просто быстро перезапускается.'),
     check('watchdog', 'Следить за соединением', 'Каждые 20 секунд проверять связь через сервер. После сна, смены сети или обрыва — переподключать соединения, а если не помогло — перезапускать ядро.'),
-    check('sleepReconnect', 'Отключаться перед сном', 'Перед сном компьютера MZ отключается, а после пробуждения ждёт сеть и подключается снова — без зависших соединений и прокси, который указывает в никуда.'),
+    check('sleepReconnect', 'Отключаться перед сном', 'Перед сном компьютера Naivka отключается, а после пробуждения ждёт сеть и подключается снова — без зависших соединений и прокси, который указывает в никуда.'),
     check('notify', 'Уведомления Windows', 'О сбоях, восстановлении связи и смене сервера автовыбором.'),
 
     h('h2', null, 'Запуск'),
-    check('autoStart', 'Запускать вместе с Windows', 'MZ стартует в трее без окна. В режиме TUN — с правами администратора и без запроса UAC (один раз Windows спросит разрешение при включении).'),
-    check('autoConnect', 'Подключаться при запуске MZ'),
-    check('exitWithWindow', 'Закрывать MZ вместе с окном', 'Иначе при закрытии окна MZ уходит в трей и соединение остаётся.'),
-    check('showIp', 'Показывать мой IP и страну', 'MZ спрашивает ipwho.is и ipinfo.io по HTTPS (последний запасной — ip-api.com), как вас видят сайты.', () => { ip.key = ''; srvGeoKey = ''; }),
+    check('autoStart', 'Запускать вместе с Windows', 'Naivka стартует в трее без окна. В режиме TUN — с правами администратора и без запроса UAC (один раз Windows спросит разрешение при включении).'),
+    check('autoConnect', 'Подключаться при запуске Naivka'),
+    check('exitWithWindow', 'Закрывать Naivka вместе с окном', 'Иначе при закрытии окна Naivka уходит в трей и соединение остаётся.'),
+    check('showIp', 'Показывать мой IP и страну', 'Naivka спрашивает ipwho.is и ipinfo.io по HTTPS (последний запасной — ip-api.com), как вас видят сайты.', () => { ip.key = ''; srvGeoKey = ''; }),
 
     h('h2', null, 'Раздача на другие устройства'),
-    h('p', { class: 'hint' }, 'Телевизор, приставка или второй компьютер в той же сети смогут пользоваться подключением MZ как прокси.'),
+    h('p', { class: 'hint' }, 'Телевизор, приставка или второй компьютер в той же сети смогут пользоваться подключением Naivka как прокси.'),
     h('div', { id: 'shareBox' }),
     h('h2', null, 'Ядро sing-box'),
     h('div', { id: 'coreBox' }),
-    check('updateCheck', 'Проверять обновления', 'Раз в 12 часов MZ смотрит новые версии ядра, zapret и tg-ws-proxy на GitHub и сообщает о них. Устанавливаются они только по вашей кнопке.'),
+    check('updateCheck', 'Проверять обновления', 'Раз в 12 часов Naivka смотрит новые версии ядра, zapret и tg-ws-proxy на GitHub и сообщает о них. Устанавливаются они только по вашей кнопке.'),
 
     h('h2', null, 'Резервная копия'),
     h('p', { class: 'hint' }, (ST && ST.secrets
@@ -2474,7 +2572,7 @@ function viewSettings() {
       h('button', { class: 'btn danger', onclick: async () => {
         try { await saveNow(); await api('/api/quit', {}); } catch (_) { /* уже закрывается */ }
         setTimeout(() => window.close(), 300);
-      } }, 'Выйти из MZ')));
+      } }, 'Выйти из Naivka')));
 }
 
 function backupDialog() {
@@ -2486,7 +2584,7 @@ function backupDialog() {
   plain.addEventListener('change', () => { pass.hidden = plain.checked; err.textContent = ''; });
   const dlg = openDialog(
     h('h2', null, 'Резервная копия'),
-    h('p', { class: 'hint' }, 'В копии все серверы с паролями, правила и настройки. С паролем файл зашифрован (AES-256): открыть его можно только в MZ и только зная пароль.'),
+    h('p', { class: 'hint' }, 'В копии все серверы с паролями, правила и настройки. С паролем файл зашифрован (AES-256): открыть его можно только в Naivka и только зная пароль.'),
     pass,
     h('label', { class: 'check mt' }, plain, h('span', null, h('b', null, 'Без пароля'), h('small', null, 'Пароли серверов будут в файле открытым текстом — любой, кто получит файл, сможет пользоваться вашими серверами.'))),
     err,
@@ -2552,7 +2650,6 @@ function restoreBackup() {
   input.click();
 }
 
-const ACCENTS = [['lime', 'Лайм'], ['coral', 'Коралл'], ['rose', 'Роза']];
 // Обратная связь — в Telegram автора. Ссылку открывает Naivka в браузере (в своём окне её открывать нельзя).
 async function openFeedback() {
   try { await api('/api/open', { link: 'feedback' }); toast('Открываю Telegram @mixazvv'); }
@@ -2639,7 +2736,7 @@ async function act(path, okText) {
 function viewBypass() {
   return h('div', { class: 'view', style: 'max-width:960px' },
     h('h1', null, 'Обход без сервера'),
-    h('p', { class: 'sub' }, 'Программы Flowseal, которые обходят блокировки без вашего сервера и не тратят его трафик. MZ скачивает их из официальных релизов на GitHub, обновляет и запускает вместе с собой.'),
+    h('p', { class: 'sub' }, 'Программы Flowseal, которые обходят блокировки без вашего сервера и не тратят его трафик. Naivka скачивает их из официальных релизов на GitHub, обновляет и запускает вместе с собой.'),
     h('div', { id: 'bypassBox' }, h('p', { class: 'hint' }, 'Загружаю…')));
 }
 
@@ -2648,7 +2745,7 @@ function renderBypass() {
   const z = AD.zapret, t = AD.telegram;
   const sig = JSON.stringify([z, t, AD.updates, AD.conflict, ST && ST.admin, S.zapret, S.telegram]);
   patch('bypassBox', sig, () => [
-    ST && ST.os === 'windows' && !ST.admin ? notice('warn', 'zapret работает через драйвер WinDivert и требует прав администратора. Чтобы MZ стартовала с ними без запроса, включите автозапуск в настройках.',
+    ST && ST.os === 'windows' && !ST.admin ? notice('warn', 'zapret работает через драйвер WinDivert и требует прав администратора. Чтобы Naivka стартовала с ними без запроса, включите автозапуск в настройках.',
       h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')) : null,
     AD.conflict ? notice('error', AD.conflict) : null,
     zapretCard(z),
@@ -2661,7 +2758,7 @@ function zapretCard(z) {
   const zs = S.zapret;
   if (ST && ST.legacy) {
     return h('section', { class: 'card addon' }, h('div', { class: 'addon-head' }, h('div', null, h('h3', null, 'zapret'),
-      h('p', null, 'В MZ zapret пока работает только на Windows 10 и 11: на Windows 7 ему нужен другой драйвер WinDivert. Заблокированные сайты на этом компьютере идут через ваш сервер Reality.'))));
+      h('p', null, 'В Naivka zapret пока работает только на Windows 10 и 11: на Windows 7 ему нужен другой драйвер WinDivert. Заблокированные сайты на этом компьютере идут через ваш сервер Reality.'))));
   }
   const installed = !!z.installed;
   const status = !installed ? null
@@ -2677,7 +2774,7 @@ function zapretCard(z) {
       h('div', { class: 'row' }, h('span', null, `Проверяю «${pick.current}» — ${pick.index} из ${pick.count - 1}`), h('span', { class: 'spacer' }),
         h('button', { class: 'btn small', onclick: () => act('/api/zapret/pick/cancel') }, 'Остановить')),
       h('div', { class: 'pick-bar' }, h('span', { style: `width:${pick.index / Math.max(1, pick.count - 1) * 100}%` })),
-      h('p', { class: 'hint' }, 'MZ запускает стратегии по очереди и пробует открыть YouTube, Discord, Google и Cloudflare напрямую. Пока идёт подбор, эти сайты могут подтормаживать.'))
+      h('p', { class: 'hint' }, 'Naivka запускает стратегии по очереди и пробует открыть YouTube, Discord, Google и Cloudflare напрямую. Пока идёт подбор, эти сайты могут подтормаживать.'))
     : null;
   const results = !pick.active && !trial.active && pick.results && pick.results.length ? pickTable(pick, zs) : null;
   return h('section', { class: 'card addon' },
@@ -2706,13 +2803,13 @@ function zapretCard(z) {
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: zs.routeDirect, onchange: e => { S.zapret.routeDirect = e.target.checked; save(0); } }),
         h('span', null, h('b', null, 'Сайты из списков zapret — напрямую'), h('small', null, 'YouTube, Discord и другие из списков Flowseal идут мимо сервера. Выключите, если хотите, чтобы zapret только помогал, а трафик шёл как раньше.'))),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: zs.fallback, onchange: e => { S.zapret.fallback = e.target.checked; save(0); } }),
-        h('span', null, h('b', null, 'Подстраховка сервером'), h('small', null, 'Если zapret перестал справляться, MZ временно пустит эти сайты через сервер и вернёт обратно, когда обход снова заработает.'))),
+        h('span', null, h('b', null, 'Подстраховка сервером'), h('small', null, 'Если zapret перестал справляться, Naivka временно пустит эти сайты через сервер и вернёт обратно, когда обход снова заработает.'))),
       h('div', { class: 'row mt' }, h('span', { class: 'hint', style: 'min-width:120px' }, 'Режим для игр'),
         segmented([['off', 'Выключен'], ['all', 'TCP и UDP'], ['tcp', 'TCP'], ['udp', 'UDP']], () => S.zapret.gameFilter, v => { S.zapret.gameFilter = v; save(0); }, 'Режим для игр')),
       h('p', { class: 'hint' }, 'Обход для игр и программ на портах выше 1023. Античиты иногда ругаются на WinDivert — включайте, только если нужно.'),
       h('div', { class: 'row mt' }, h('span', { class: 'hint', style: 'min-width:120px' }, 'Список IP'),
         segmented([['none', 'Не использовать'], ['loaded', 'Список Flowseal'], ['any', 'Любые IP']], () => S.zapret.ipset, v => { S.zapret.ipset = v; save(0); }, 'Список IP')),
-      h('p', { class: 'hint' }, '«Любые IP» обрабатывает весь трафик и ломает многие сайты — только для проверки. Ваши серверы MZ всегда исключает из обработки.'),
+      h('p', { class: 'hint' }, '«Любые IP» обрабатывает весь трафик и ломает многие сайты — только для проверки. Ваши серверы Naivka всегда исключает из обработки.'),
       h('p', { class: 'hint mt' }, 'Папка: ' + z.path)) : null);
 }
 
@@ -2735,7 +2832,7 @@ function telegramCard(t) {
       h('button', { class: 'btn primary', disabled: !t.running, onclick: () => act('/api/tg/open', 'Telegram должен предложить подключить прокси') }, 'Подключить Telegram'),
       h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(t.link); toast('Ссылка скопирована'); } catch (_) { toast('Не удалось скопировать', true); } } }, 'Скопировать ссылку'),
       t.latest && t.installed !== t.latest ? h('button', { class: 'btn primary', disabled: !!t.busy, onclick: () => act('/api/tg/install') }, `Обновить до ${t.latest}`) : null) : null,
-    installed ? h('p', { class: 'hint mt' }, 'Кнопка открывает Telegram Desktop с предложением добавить прокси — нажмите «Подключить». Если не сработало, отправьте ссылку себе в «Избранное» и нажмите на неё. У tg-ws-proxy свой значок в трее с окном настроек; закрывать его не нужно, MZ управляет им сам.') : null,
+    installed ? h('p', { class: 'hint mt' }, 'Кнопка открывает Telegram Desktop с предложением добавить прокси — нажмите «Подключить». Если не сработало, отправьте ссылку себе в «Избранное» и нажмите на неё. У tg-ws-proxy свой значок в трее с окном настроек; закрывать его не нужно, Naivka управляет им сама.') : null,
     installed ? more('Порт', String(ts.port),
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', null, 'Порт прокси'),
         h('input', { type: 'number', value: ts.port, min: 1, max: 65535, onchange: e => { S.telegram.port = parseInt(e.target.value, 10) || 1443; save(0); } }))),
@@ -2879,12 +2976,12 @@ function wlCard() {
   return h('section', { class: 'card addon' },
     h('div', { class: 'addon-head' },
       h('div', null, h('h3', null, 'Запасная подписка для белых списков', h('span', { class: 'ver' }, 'zieng2/wl')),
-        h('p', null, 'Общедоступные серверы для работы при белых списках на мобильном интернете. Обновляется каждый час. MZ переключается на неё сам, когда ваши серверы перестают отвечать, и возвращается обратно.')),
+        h('p', null, 'Общедоступные серверы для работы при белых списках на мобильном интернете. Обновляется каждый час. Naivka переключается на неё сама, когда ваши серверы перестают отвечать, и возвращается обратно.')),
       sw(on, false, v => { S.wl.enabled = v; save(0); if (v) setTimeout(() => act('/api/wl/refresh'), 600); }, on ? 'Включена' : 'Выключена')),
     on ? h('div', { class: 'addon-status' }, h('span', { class: 'k ' + (w.error ? 'err' : w.active ? 'warn' : w.used ? 'on' : '') }),
       w.busy ? 'Загружаю подписку…' : w.error ? w.error :
         `${count(w.used || 0, 'сервер', 'сервера', 'серверов')} в работе из ${w.total || 0}, ${upd}` + (src ? ` (${src})` : '') + '.') : null,
-    on && w.active ? notice('warn', 'Сейчас трафик идёт через подписку: ваши серверы не отвечали. MZ проверяет их каждые 2 минуты.') : null,
+    on && w.active ? notice('warn', 'Сейчас трафик идёт через подписку: ваши серверы не отвечали. Naivka проверяет их каждые 2 минуты.') : null,
     on && w.ru && !S.wl.includeRu ? h('p', { class: 'hint mt' }, `Российские серверы (${w.ru}) не используются — через них заблокированное не открывается.`) : null,
     on ? h('div', { class: 'row mt' },
       h('button', { class: 'btn', disabled: !!w.busy, onclick: () => act('/api/wl/refresh', 'Подписка обновлена').then(refreshWL) }, 'Обновить сейчас'),
@@ -2893,7 +2990,7 @@ function wlCard() {
     on && w.list && w.list.length ? wlList(w) : null,
     on ? more('Настройки подписки', `${S.wl.max} серверов` + (S.wl.fallback ? ', запасной вариант' : '') + (S.wl.includeRu ? ', с российскими' : ''),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.wl.fallback, onchange: e => { S.wl.fallback = e.target.checked; save(0); } }),
-        h('span', null, h('b', null, 'Включать, когда свои серверы не отвечают'), h('small', null, 'Сторож соединения дважды подряд не достучался через ваш сервер — MZ переходит на подписку и возвращается, как только ваши серверы оживут.'))),
+        h('span', null, h('b', null, 'Включать, когда свои серверы не отвечают'), h('small', null, 'Сторож соединения дважды подряд не достучался через ваш сервер — Naivka переходит на подписку и возвращается, как только ваши серверы оживут.'))),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.wl.includeRu, onchange: e => { S.wl.includeRu = e.target.checked; save(0); } }),
         h('span', null, h('b', null, 'Использовать и российские серверы'), h('small', null, 'Через них работает российский сегмент при белых списках, но заблокированное (Telegram, YouTube) не откроется. Автовыбор их любит из-за малой задержки.'))),
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', null, 'Сколько серверов брать'),
@@ -2915,13 +3012,13 @@ async function refreshTraffic() {
 
 function viewTraffic() {
   return h('div', null,
-    h('p', { class: 'sub' }, 'Сколько прошло через сервер и мимо него — по дням. Это счётчики MZ: хостинг и оператор насчитают немного больше (шифрование, служебные данные).'),
+    h('p', { class: 'sub' }, 'Сколько прошло через сервер и мимо него — по дням. Это счётчики Naivka: хостинг и оператор насчитают немного больше (шифрование, служебные данные).'),
     h('div', { id: 'trafficBox', 'aria-label': 'Загружаю…' },
       h('div', { class: 'skel', style: 'width:180px;height:12px' }),
       h('div', { class: 'skel', style: 'width:240px;height:30px;margin-top:8px' }),
       h('div', { class: 'skel', style: 'width:100%;height:180px;margin-top:18px;border-radius:12px' })),
     h('h2', { class: 'mt-lg' }, 'Лимит'),
-    h('p', { class: 'hint' }, 'Если у сервера или у мобильного тарифа есть лимит — MZ предупредит на 80% и 100% (уведомлением Windows). Считается только трафик через сервер.'),
+    h('p', { class: 'hint' }, 'Если у сервера или у мобильного тарифа есть лимит — Naivka предупредит на 80% и 100% (уведомлением Windows). Считается только трафик через сервер.'),
     h('div', { class: 'grid2' },
       h('label', { class: 'field' }, h('span', null, 'Лимит в месяц, ГБ'),
         h('input', { type: 'number', min: 0, value: S.trafficLimitGB || '', placeholder: 'без лимита', onchange: e => { S.trafficLimitGB = Math.max(0, parseInt(e.target.value, 10) || 0); save(0); setTimeout(refreshTraffic, 500); } })),
@@ -3033,7 +3130,7 @@ function viewSpeed() {
         try { await api('/api/speedtest', {}); } catch (e) { toast(e.message, true); }
         refreshSpeed();
       } }, 'Запустить тест'),
-      h('span', { class: 'hint', id: 'speedNote' }, ST && !ST.running ? 'Сейчас MZ отключена — будет замер только напрямую.' : '')),
+      h('span', { class: 'hint', id: 'speedNote' }, ST && !ST.running ? 'Сейчас Naivka отключена — будет замер только напрямую.' : '')),
     h('div', { class: 'panel mt' }, h('table', { class: 'table speed' },
       h('thead', null, h('tr', null, h('th', null, 'Маршрут'), h('th', { class: 'r' }, 'Задержка'), h('th', null, 'Скорость загрузки'), h('th', { class: 'r' }, 'К прямому'))),
       h('tbody', { id: 'speedBody' }))));
@@ -3094,7 +3191,7 @@ async function pickProcesses() {
   });
   const dlg = openDialog(
     h('h2', null, 'Выбрать программы'),
-    h('p', { class: 'hint' }, 'Сверху — программы, которые выходили в сеть, пока работает MZ; ниже — остальные запущенные. Правило по программе работает в режиме TUN, а в режиме прокси — для программ, которые им пользуются.'),
+    h('p', { class: 'hint' }, 'Сверху — программы, которые выходили в сеть, пока работает Naivka; ниже — остальные запущенные. Правило по программе работает в режиме TUN, а в режиме прокси — для программ, которые им пользуются.'),
     h('div', { class: 'row' }, search),
     box,
     h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Действие'),
@@ -3120,13 +3217,13 @@ async function shareBox() {
       info.ips.length ? h('div', { class: 'share-addr' }, info.ips.map(ip => h('code', null, `${ip}:${info.port}`)))
         : h('p', { class: 'err-text' }, 'Компьютер не подключён к домашней сети.'),
       sh.auth ? h('p', { class: 'mt' }, 'Логин ', h('code', null, info.username), ' пароль ', h('code', null, info.password)) : h('p', { class: 'hint mt' }, 'Без пароля — подключиться может любое устройство в этой сети.'),
-      h('p', { class: 'hint' }, ST && ST.running ? 'Устройства получат то же, что этот компьютер: те же серверы и правила.' : 'Раздача работает, пока MZ подключена.'),
+      h('p', { class: 'hint' }, ST && ST.running ? 'Устройства получат то же, что этот компьютер: те же серверы и правила.' : 'Раздача работает, пока Naivka подключена.'),
       h('div', { class: 'row mt' },
         h('button', { class: 'btn', onclick: () => act('/api/share/firewall', 'Брандмауэр Windows разрешил подключения из домашней сети') }, 'Разрешить в брандмауэре'),
         h('span', { class: 'hint' }, 'Один раз: иначе Windows не пустит другие устройства. Попросит права администратора.')),
       more('Настройки раздачи', `порт ${sh.port}` + (sh.auth ? ', с паролем' : ', без пароля'),
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sh.auth, onchange: e => { S.share.auth = e.target.checked; save(0); setTimeout(shareBox, 500); } }),
-          h('span', null, h('b', null, 'Требовать логин и пароль'), h('small', null, 'Многие телевизоры не умеют прокси с паролем — тогда выключите. Подключения не из домашней сети MZ отклоняет в любом случае.'))),
+          h('span', null, h('b', null, 'Требовать логин и пароль'), h('small', null, 'Многие телевизоры не умеют прокси с паролем — тогда выключите. Подключения не из домашней сети Naivka отклоняет в любом случае.'))),
         h('div', { class: 'grid2' },
           h('label', { class: 'field' }, h('span', null, 'Порт'), h('input', { type: 'number', value: sh.port, onchange: e => { S.share.port = parseInt(e.target.value, 10) || 2090; save(0); setTimeout(shareBox, 500); } })),
           h('label', { class: 'field' }, h('span', null, 'Пароль'), h('input', { type: 'text', value: sh.password, spellcheck: 'false', onchange: e => { S.share.password = e.target.value.trim(); save(0); setTimeout(shareBox, 500); } }))))) : null);
@@ -3140,7 +3237,7 @@ function xrayBlock(w) {
   }
   return h('div', { class: 'notice info' }, h('div', { class: 'grow' },
       h('b', null, `${w.xhttp} серверов подписки — на транспорте xHTTP`),
-      h('p', { style: 'margin:4px 0 0' }, 'sing-box его не умеет. MZ может поставить рядом ядро Xray (около 10 МБ, официальный релиз XTLS) — только для этих серверов; правила, статистика и автовыбор остаются прежними.'),
+      h('p', { style: 'margin:4px 0 0' }, 'sing-box его не умеет. Naivka может поставить рядом ядро Xray (около 10 МБ, официальный релиз XTLS) — только для этих серверов; правила, статистика и автовыбор остаются прежними.'),
       x.busy ? h('p', { class: 'hint num' }, `Скачиваю… ${fmtBytes(x.done)}` + (x.total > 0 ? ` из ${fmtBytes(x.total)}` : '')) : null,
       x.error ? h('p', { class: 'err-text' }, x.error) : null),
     h('button', { class: 'btn small primary', disabled: !!x.busy, onclick: async () => { await act('/api/xray/install'); toast('Xray ставится — после установки переподключитесь'); } }, 'Установить Xray'));
@@ -3180,8 +3277,8 @@ async function pickServer(id) {
 function selfBox() {
   const u = SELF;
   if (!u) return h('p', { class: 'hint' }, 'Загружаю…');
-  if (!u.enabled) return h('p', { class: 'hint' }, `MZ ${u.version}. Это сборка для разработки: автообновление есть только в релизных сборках.`);
-  const out = [h('p', null, `MZ ${u.version}. Обновления приходят из github.com/${u.repo}.`)];
+  if (!u.enabled) return h('p', { class: 'hint' }, `Naivka ${u.version}. Это сборка для разработки: автообновление есть только в релизных сборках.`);
+  const out = [h('p', null, `Naivka ${u.version}. Обновления приходят из github.com/${u.repo}.`)];
   if (u.available) {
     out.push(h('div', { class: 'card' },
       h('b', null, `Доступна версия ${u.latest}`),
@@ -3201,7 +3298,7 @@ function selfBox() {
         catch (e) { toast(e.message, true); }
         patch('selfBox', JSON.stringify(SELF), selfBox);
       } }, u.busy === 'check' ? 'Проверяю…' : 'Проверить обновления'),
-      h('span', { class: 'hint' }, u.checked ? 'Проверено в ' + fmtTime(u.checked) : 'MZ проверяет сам раз в 12 часов.')));
+      h('span', { class: 'hint' }, u.checked ? 'Проверено в ' + fmtTime(u.checked) : 'Naivka проверяет сама раз в 12 часов.')));
     if (u.error) out.push(h('p', { class: 'err-text' }, u.error));
   }
   return out;

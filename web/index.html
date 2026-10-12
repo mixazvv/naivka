@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MZ</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23B6E35A'/%3E%3Cpath d='M6.5 22.5V9.5l4.75 6.5L16 9.5v13M19 9.5h7l-7 13h4.2' fill='none' stroke='%2311170A' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='26' cy='22.5' r='2.1' fill='%2311170A'/%3E%3C/svg%3E">
+  <title>Naivka</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23B6E35A'/%3E%3Cpath d='M9 23.5V9l14 14.5V12.5' fill='none' stroke='%2311170A' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='23' cy='9.3' r='3' fill='%2311170A'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="fonts/fonts.css">
   <link rel="stylesheet" href="app.css">
 </head>
 <body data-state="off">
   <header class="titlebar" id="titlebar" hidden>
     <div class="tb-drag" id="tbDrag">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="8"/><path class="logo-ink" d="M6.5 22.5V9.5l4.75 6.5L16 9.5v13M19 9.5h7l-7 13h4.2"/><circle class="logo-dot" cx="26" cy="22.5" r="2.1"/></svg>
-      <span class="tb-name">MZ</span>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="8"/><path class="logo-ink" d="M9 23.5V9l14 14.5V12.5"/><circle class="logo-dot" cx="23" cy="9.3" r="3"/></svg>
+      <span class="tb-name">Naivka</span>
       <span class="tb-status"><span class="led"></span><span id="tbStatus">Отключено</span></span>
     </div>
     <div class="tb-buttons">
@@ -24,7 +24,7 @@
   </header>
   <div class="shell">
     <aside class="sidebar">
-      <button class="brand" type="button" data-view="overview" title="Главный экран"><svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="8"/><path class="logo-ink" d="M6.5 22.5V9.5l4.75 6.5L16 9.5v13M19 9.5h7l-7 13h4.2"/><circle class="logo-dot" cx="26" cy="22.5" r="2.1"/></svg><span>MZ</span></button>
+      <button class="brand" type="button" data-view="overview" title="Главный экран"><svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="8"/><path class="logo-ink" d="M9 23.5V9l14 14.5V12.5"/><circle class="logo-dot" cx="23" cy="9.3" r="3"/></svg><span>Naivka</span></button>
       <nav class="rail" id="rail" aria-label="Разделы">
         <button class="nav-item" data-view="overview"><i class="nav-node" aria-hidden="true"></i><span class="nav-label">Главная</span><kbd class="nav-key"></kbd></button>
         <button class="nav-item" data-view="servers"><i class="nav-node" aria-hidden="true"></i><span class="nav-label">Серверы</span><kbd class="nav-key"></kbd></button>
@@ -52,21 +52,12 @@
         <div class="drawer-body" id="drawerBody"></div>
       </aside>
     </div>
-    <footer class="hintbar">
-      <span class="hb-left"><span class="hb-code">MZ</span><span id="hbSession">канал закрыт</span></span>
-      <span class="hb-xp" aria-hidden="true"><i id="hbXp"></i></span>
-      <span class="hb-keys">
-        <span><kbd>1</kbd>–<kbd id="hbLast">7</kbd> Разделы</span>
-        <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> <span id="hbToggle">Подключить</span></span>
-        <span><kbd>Esc</kbd> Назад</span>
-      </span>
-    </footer>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="offline" id="offline" hidden>
     <div>
-      <h2>MZ не отвечает</h2>
-      <p id="offlineText">Приложение закрыто или перезапускается. Запустите MZ снова, и окно откроется.</p>
+      <h2>Naivka не отвечает</h2>
+      <p id="offlineText">Приложение закрыто или перезапускается. Запустите Naivka снова, и окно откроется.</p>
     </div>
   </div>
   <input type="file" id="fileInput" accept=".json,.txt,.list,.conf,.lst,text/plain,application/json" hidden>

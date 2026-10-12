@@ -146,7 +146,7 @@ func (a *App) checkSelf(notify bool) error {
 	prev := selfView().Latest
 	setSelf(func(s *SelfUpdateView) { s.Busy, s.Latest, s.Notes, s.Checked = "", tag, notes, time.Now().Unix() })
 	if notify && newerVersion(tag, appVersion) && prev != tag {
-		a.mon.Event("info", fmt.Sprintf("Доступна новая версия MZ %s (сейчас %s) — «Настройки» → «О программе»", tag, appVersion), true)
+		a.mon.Event("info", fmt.Sprintf("Доступна новая версия Naivka %s (сейчас %s) — «Настройки» → «О программе»", tag, appVersion), true)
 	}
 	return nil
 }
@@ -169,7 +169,7 @@ func (a *App) applySelf() error {
 	}
 	newPath := exe + ".new"
 	if f, err := os.Create(newPath); err != nil {
-		return fmt.Errorf("папка с программой защищена от записи (%s). Переложите её туда, где можно писать, или запустите с правами администратора", filepath.Dir(exe))
+		return fmt.Errorf("папка с Naivka защищена от записи (%s). Переложите Naivka туда, где можно писать, или запустите с правами администратора", filepath.Dir(exe))
 	} else {
 		f.Close()
 	}
@@ -215,7 +215,7 @@ func (a *App) applySelf() error {
 		_ = os.Rename(old, exe)
 		return fail(fmt.Errorf("не удалось заменить программу: %v", err))
 	}
-	a.mon.Event("ok", displayName+": установлена версия "+tag+", перезапускаюсь", false)
+	a.mon.Event("ok", "Naivka обновлена до "+tag+" — перезапускаюсь", false)
 	cmd := exec.Command(exe, "--replace", "--updated")
 	cmd.Dir = filepath.Dir(exe)
 	if err := cmd.Start(); err != nil {

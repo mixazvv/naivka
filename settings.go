@@ -179,8 +179,8 @@ type Settings struct {
 	SleepReconnect  bool             `json:"sleepReconnect"` // отключаться перед сном, подключаться после пробуждения
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
-	Theme           string           `json:"theme"`       // system | dark | light | gold («Никогда не проси об этом») | blocks («Блоки»)
-	Accent          string           `json:"accent"`      // акцентный цвет: lime | coral | rose
+	Theme           string           `json:"theme"`       // dark | gold («Никогда не проси об этом») | blocks («Пиксели»)
+	Accent          string           `json:"accent"`      // акцентный цвет, #RRGGBB
 	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
 	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
 	NativeFrame     bool             `json:"nativeFrame"` // обычная рамка Windows вместо своей строки заголовка
@@ -224,7 +224,7 @@ func DefaultSettings() *Settings {
 		SleepReconnect: true,
 		Notify:         true,
 		Theme:          "dark",
-		Accent:         "lime",
+		Accent:         accentDefault,
 		TrayMini:       true,
 		OwnServer:      true,
 		UpdateCheck:    true,
@@ -239,8 +239,27 @@ func DefaultSettings() *Settings {
 var externalLinks = map[string]string{"feedback": "https://t.me/mixazvv"}
 
 // accents — акцентные цвета интерфейса (сами цвета — в web/app.css).
-// Прежние indigo, violet и orchid при загрузке сменятся на акцент по умолчанию.
-var accents = map[string]bool{"lime": true, "coral": true, "rose": true}
+// Акцент — любой цвет #RRGGBB (остальные цвета интерфейса выводятся из него в web/app.js).
+// Названия готовых цветов из прошлых версий переводятся в HEX, неизвестные — в цвет по умолчанию.
+const accentDefault = "#B6E35A"
+
+var accentNames = map[string]string{"lime": "#B6E35A", "coral": "#FF9A6E", "rose": "#F58FC0"}
+
+var accentHex = regexp.MustCompile(`^#[0-9A-F]{6}$`)
+
+func normalizeAccent(v string) string {
+	v = strings.ToUpper(strings.TrimSpace(v))
+	if v != "" && v[0] != '#' {
+		if hex, ok := accentNames[strings.ToLower(v)]; ok {
+			return hex
+		}
+		v = "#" + v
+	}
+	if accentHex.MatchString(v) {
+		return v
+	}
+	return accentDefault
+}
 
 func newID() string {
 	b := make([]byte, 4)
@@ -400,14 +419,13 @@ func (s *Settings) normalize() {
 	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(s.Telegram.Secret) {
 		s.Telegram.Secret = randHex(16)
 	}
+	// Светлой темы и темы «как в Windows» больше нет: остаётся тёмная.
 	switch s.Theme {
-	case "system", "dark", "light", "gold", "blocks":
+	case "dark", "gold", "blocks":
 	default:
 		s.Theme = "dark"
 	}
-	if !accents[s.Accent] {
-		s.Accent = d.Accent
-	}
+	s.Accent = normalizeAccent(s.Accent)
 	for i := range s.Servers {
 		sv := &s.Servers[i]
 		if sv.ID == "" {
@@ -540,7 +558,7 @@ func (s *Settings) Validate() error {
 		}
 	}
 	if s.Share.Enabled && (s.Share.Port == s.MixedPort || (s.Telegram.Enabled && s.Share.Port == s.Telegram.Port)) {
-		return fmt.Errorf("Порт раздачи (%d) совпадает с другим портом MZ — выберите другой", s.Share.Port)
+		return fmt.Errorf("Порт раздачи (%d) совпадает с другим портом Naivka — выберите другой", s.Share.Port)
 	}
 	if s.Telegram.Enabled && s.Telegram.Port == s.MixedPort {
 		return fmt.Errorf("Порт локального прокси и порт Telegram совпадают (%d) — сделайте их разными", s.MixedPort)

@@ -26,7 +26,7 @@ func (p *PortIssue) Error() string {
 		who = "программа " + p.Name
 	}
 	if p.Kind == "naivka" {
-		who = "другая копия MZ"
+		who = "другая копия Naivka"
 	}
 	return fmt.Sprintf("Порт %d занят: его держит %s. Закройте её или возьмите свободный порт.", p.Port, who)
 }
@@ -69,7 +69,7 @@ func (c *Core) freePortFor(port int) error {
 		issue.Name = filepath.Base(path)
 	}
 	if pid == os.Getpid() {
-		return fmt.Errorf("порт %d уже занят самой программой MZ (например, совпадает с портом Telegram) — выберите другой", port)
+		return fmt.Errorf("порт %d уже занят самой Naivka (например, совпадает с портом Telegram) — выберите другой", port)
 	}
 	if pid > 0 && path != "" {
 		for _, own := range c.ownCoreExes() {
@@ -84,8 +84,8 @@ func (c *Core) freePortFor(port int) error {
 					c.logs.Add(fmt.Sprintf("[naivka] закрыто зависшее ядро от прошлого запуска (PID %d), порт %d освобождён", pid, port))
 					return nil
 				}
-				issue.Name = "зависшее ядро MZ (sing-box.exe)"
-				return fmt.Errorf("Порт %d держит зависшее ядро MZ от прошлого запуска, и закрыть его не вышло — скорее всего, оно запущено с правами администратора. Перезапустите MZ с правами или закройте sing-box.exe в Диспетчере задач", port)
+				issue.Name = "зависшее ядро Naivka (sing-box.exe)"
+				return fmt.Errorf("Порт %d держит зависшее ядро Naivka от прошлого запуска, и закрыть его не вышло — скорее всего, оно запущено с правами администратора. Перезапустите Naivka с правами или закройте sing-box.exe в Диспетчере задач", port)
 			}
 		}
 		if strings.EqualFold(issue.Name, "Naivka.exe") || strings.EqualFold(issue.Name, "naivka") {

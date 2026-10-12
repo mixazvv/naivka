@@ -21,10 +21,7 @@ import (
 //go:embed web
 var webFS embed.FS
 
-const appName = "Naivka" // имя папок с данными и задачи автозапуска: не меняется, чтобы не потерять настройки
-
-// displayName — название программы, которое видит человек.
-const displayName = "MZ"
+const appName = "Naivka"
 
 type App struct {
 	dir   string
@@ -124,7 +121,7 @@ func main() {
 	go a.wl.loop()
 	go cleanupOld()
 	if args["--updated"] {
-		a.mon.Event("ok", displayName+": установлена версия "+appVersion, false)
+		a.mon.Event("ok", "Naivka обновлена до "+appVersion, false)
 	}
 	if serr != nil {
 		a.core.logs.Add("[naivka] " + serr.Error())
@@ -230,7 +227,7 @@ func appDataDir() (string, error) {
 			portable = true
 			dir := filepath.Join(base, "Naivka-data")
 			if err := os.MkdirAll(dir, 0o700); err != nil {
-				return "", fmt.Errorf("портативный режим: нет доступа на запись в %s (%v). Перенесите папку с программой туда, где можно писать, например на рабочий стол или флешку", base, err)
+				return "", fmt.Errorf("портативный режим: нет доступа на запись в %s (%v). Перенесите папку Naivka туда, где можно писать, например на рабочий стол или флешку", base, err)
 			}
 			return dir, nil
 		}
@@ -259,7 +256,7 @@ func initLog(dir string) {
 
 func fatal(msg string) {
 	log.Println(msg)
-	messageBox(displayName, msg)
+	messageBox(appName, msg)
 	os.Exit(1)
 }
 

@@ -333,7 +333,7 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/core/download", func(*http.Request) (any, error) { return nil, a.core.StartDownload() })
 	api("POST", "/api/elevate", func(*http.Request) (any, error) {
 		if isAdmin() {
-			return nil, errors.New("MZ уже запущен с правами администратора")
+			return nil, errors.New("Naivka уже запущена с правами администратора")
 		}
 		wasRunning := a.core.Running()
 		a.core.Stop()
@@ -680,11 +680,11 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 	// Unmarshal тихо дал бы пустые настройки и стёр бы все серверы.
 	var keys map[string]json.RawMessage
 	if json.Unmarshal(raw, &keys) != nil || keys["servers"] == nil || keys["rules"] == nil {
-		return nil, errors.New("Файл не похож на резервную копию MZ")
+		return nil, errors.New("Файл не похож на резервную копию Naivka")
 	}
 	ns := DefaultSettings()
 	if err := json.Unmarshal(raw, ns); err != nil {
-		return nil, fmt.Errorf("файл не похож на резервную копию MZ: %v", err)
+		return nil, fmt.Errorf("файл не похож на резервную копию Naivka: %v", err)
 	}
 	if problems := openSettings(ns); len(problems) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(problems, "; "))

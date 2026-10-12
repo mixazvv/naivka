@@ -102,7 +102,7 @@ func (z *Zapret) setLatest(tag string) {
 }
 
 // Install скачивает последний релиз Flowseal. Предыдущая версия остаётся рядом — на случай отката.
-var errZapretLegacy = errors.New("zapret в MZ пока работает только на Windows 10 и 11: на Windows 7 и 8 нужен другой драйвер WinDivert")
+var errZapretLegacy = errors.New("zapret в Naivka пока работает только на Windows 10 и 11: на Windows 7 и 8 нужен другой драйвер WinDivert")
 
 func (z *Zapret) Install() error {
 	if legacyWindows() {
@@ -294,7 +294,7 @@ func gameRanges(mode string) (tcp, udp string) {
 // writeLists: свои списки zapret формирует Naivka — из правил «Через zapret» и адресов серверов.
 func (z *Zapret) writeLists(s *Settings) error {
 	lists := filepath.Join(z.root(), "lists")
-	hdr := "# Файл ведёт MZ и перезаписывает при каждом запуске zapret.\n"
+	hdr := "# Файл ведёт Naivka и перезаписывает при каждом запуске zapret.\n"
 	var gen []string
 	for _, r := range s.Rules {
 		if r.Action == "zapret" && r.Kind == "domain" {

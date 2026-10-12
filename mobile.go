@@ -87,7 +87,7 @@ func (a *App) apiMobileShare(*http.Request) (any, error) {
 		links = append(links, map[string]string{
 			"ip":      ip,
 			"url":     u,
-			"singbox": "sing-box://import-remote-profile?url=" + url.QueryEscape(u) + "#MZ",
+			"singbox": "sing-box://import-remote-profile?url=" + url.QueryEscape(u) + "#Naivka",
 		})
 	}
 	if len(links) == 0 {

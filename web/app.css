@@ -25,42 +25,14 @@
   --chart-direct: #3A8FCF;
   color-scheme: dark;
 }
-:root[data-theme="light"] {
-  --bg: #EDEEE9;
-  --nav: #E4E6E0;
-  --surface: #F8F8F5;
-  --raised: #FFFFFF;
-  --ink: #15171A;
-  --muted: #585E64;
-  --faint: #8C9197;
-  --line: #D2D5CE;
-  --tunnel: #4E7D00;
-  --tunnel-soft: #E3EEC9;
-  --direct: #1767B0;
-  --direct-soft: #D6E6F5;
-  --danger: #B42525;
-  --danger-soft: #F6DADA;
-  --warn: #8A5A00;
-  --warn-soft: #F4E6C6;
-  --on-accent: #FFFFFF;
-  --shadow: 0 18px 50px rgba(20, 24, 16, .18);
-  --tg: #4553C8;
-  --chart-tunnel: #4E7D00;
-  --chart-direct: #1767B0;
-  color-scheme: light;
-}
-/* Акцентные цвета. --tunnel — акцент и цвет трафика через сервер; --chart-tunnel проверен
-   на различимость с --chart-direct (в том числе при дальтонизме) на фонах обеих тем и OLED.
-   Логотип: плашка --logo, буквы --logo-ink. */
+/* Акцент. Значения по умолчанию — лайм; свой цвет в формате HEX переопределяет --tunnel, --tunnel-soft,
+   --chart-tunnel, --on-accent и логотип (их считает applyAccent в app.js: цвет для графиков
+   подгоняется по светлоте, текст на акценте — тёмный или белый по контрасту).
+   Логотип: плашка --logo, буква --logo-ink. */
 :root { --logo: #B6E35A; --logo-ink: #11170A; }
 .logo-bg { fill: var(--logo); }
 .logo-ink { fill: none; stroke: var(--logo-ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .logo-dot { fill: var(--logo-ink); }
-:root[data-accent="coral"] { --tunnel: #FF9A6E; --tunnel-soft: rgba(255, 154, 110, .15); --chart-tunnel: #E0704A; --logo: #FF9A6E; --logo-ink: #2A1006; --on-accent: #2A1006; }
-:root[data-accent="rose"] { --tunnel: #F58FC0; --tunnel-soft: rgba(245, 143, 192, .15); --chart-tunnel: #D9609C; --logo: #F58FC0; --logo-ink: #2E0A1C; --on-accent: #2E0A1C; }
-:root[data-theme="light"] { --logo: #4E7D00; --logo-ink: #FFFFFF; }
-:root[data-theme="light"][data-accent="coral"] { --tunnel: #B0461F; --tunnel-soft: #F6DFD4; --chart-tunnel: #B0461F; --logo: #B0461F; --logo-ink: #FFFFFF; --on-accent: #FFFFFF; }
-:root[data-theme="light"][data-accent="rose"] { --tunnel: #B23C7A; --tunnel-soft: #F4DCE8; --chart-tunnel: #B23C7A; --logo: #B23C7A; --logo-ink: #FFFFFF; --on-accent: #FFFFFF; }
 
 /* Чистый чёрный для OLED. */
 :root[data-theme="dark"][data-oled] {
@@ -71,9 +43,6 @@
 :root.mica:not([data-solid]) { --bg: transparent; --nav: transparent; }
 :root.mica[data-theme="dark"]:not([data-solid]) {
   --layer: rgba(16, 18, 21, .62); --surface: rgba(34, 37, 41, .58); --raised: rgba(46, 50, 55, .78); --line: rgba(255, 255, 255, .09);
-}
-:root.mica[data-theme="light"] {
-  --layer: rgba(255, 255, 255, .55); --surface: rgba(255, 255, 255, .72); --raised: #FFFFFF; --line: rgba(20, 30, 45, .1);
 }
 
 /* Свечение по состоянию: цвет плавно перетекает (регистрация свойства позволяет анимировать переменную). */
@@ -106,7 +75,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- каркас ----------
    Слева — меню разделов «линией маршрута»: узел на линии у каждого раздела, пройденный до текущего
    отрезок подсвечен. Главный экран — «сцена» со схемой ветвей; разделы выезжают панелью справа. */
-.shell { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: 100%; }
+.shell { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
 .sidebar { width: 224px; display: flex; flex-direction: column; gap: 18px; padding: 18px 14px 14px; min-height: 0; overflow: hidden auto; scrollbar-width: none;
   position: relative; z-index: 3; border-right: 1px solid var(--line); background: var(--nav); }
 .brand { display: flex; align-items: center; gap: 11px; font: 700 21px/1 var(--display); letter-spacing: .06em; color: var(--ink); background: none; border: 0; padding: 4px 6px; margin: 0 -2px; cursor: pointer; border-radius: 10px; }
@@ -121,7 +90,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-item[hidden] { display: none; }
 .nav-node { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--faint); background: var(--nav); transition: background .2s, border-color .2s, box-shadow .2s; }
 :root.mica[data-theme="dark"]:not([data-solid]) .nav-node { background: #1B1D20; }
-:root.mica[data-theme="light"]:not([data-solid]) .nav-node { background: #F2F3EF; }
 .nav-label { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .nav-key { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--line); border-radius: 5px; font: 600 10.5px/1 var(--font); color: var(--faint); opacity: .7; }
 .nav-key:empty { display: none; }
@@ -183,13 +151,6 @@ p { margin: 0 0 10px; }
 .grow-input { flex: 1; min-width: 220px; }
 .err-text { color: var(--danger); font-size: 13px; white-space: pre-wrap; }
 
-/* Нижняя строка: сеанс и клавиши. */
-.hintbar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 22px; flex: none; border-top: 1px solid var(--line); background: var(--nav); font-size: 12px; color: var(--muted); }
-.hb-left { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hb-code { font: 700 10.5px/1 var(--display); letter-spacing: .12em; color: var(--tunnel); }
-.hb-keys { display: flex; gap: 18px; white-space: nowrap; }
-.hb-xp { display: none; }
-.hintbar kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border: 1px solid var(--line); border-radius: 5px; font: 600 11px/1 var(--font); color: var(--ink); background: var(--raised); margin: 0 1px; }
 
 /* ---------- сцена ---------- */
 .stage-inner { max-width: 1180px; margin: 0 auto; padding: 26px 34px 30px; display: flex; flex-direction: column; min-height: 100%; }
@@ -452,7 +413,6 @@ dialog h2 { margin-top: 0; }
   .drawer { width: 100%; }
   .stage-inner { padding: 16px; }
   .stage-tiles { grid-template-columns: 1fr; }
-  .hb-keys { display: none; }
   .view { padding: 18px; }
   .grid2, .add-rule, .ipcols, .facts { grid-template-columns: 1fr; }
   .ipcol + .ipcol { padding: 14px 0 0; border-left: 0; border-top: 1px solid var(--line); margin-top: 14px; }
@@ -616,7 +576,7 @@ code.fp { display: block; font: 13px/1.4 var(--mono); padding: 8px 10px; backgro
 
 /* Mica: навигация на фоне окна, содержимое — на полупрозрачном слое со скруглённым углом, как в «Параметрах» Windows. */
 :root.mica:not([data-solid]) body, :root.mica:not([data-solid]) .titlebar { background: transparent; }
-:root.mica:not([data-solid]) .sidebar, :root.mica:not([data-solid]) .hintbar { background: transparent; }
+:root.mica:not([data-solid]) .sidebar { background: transparent; }
 :root.mica:not([data-solid]) .drawer { background: var(--layer); }
 
 /* ---------- главный экран: кнопка, статус, карта ---------- */
@@ -695,7 +655,6 @@ body[data-state="blocked"] .pw-core { fill: var(--danger-soft); }
 .pt-tail { fill: color-mix(in srgb, currentColor 55%, #fff); opacity: .5; }
 .pt-tail[data-k="3"] { opacity: .25; }
 .pt-glow { fill: currentColor; opacity: .32; }
-:root[data-theme="light"] .pt-core { fill: #fff; stroke: currentColor; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .lane-pts { isolation: isolate; }
 
 /* ---------- серверы: карточки ---------- */
@@ -758,10 +717,18 @@ body[data-state="blocked"] .pw-core { fill: var(--danger-soft); }
 .accent-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 14px 0 4px; }
 .swatches { display: flex; gap: 10px; }
 .swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; box-shadow: inset 0 0 0 2px var(--surface); }
-.swatch[data-accent="lime"] { background: #B6E35A; }
-.swatch[data-accent="coral"] { background: #FF9A6E; }
-.swatch[data-accent="rose"] { background: #F58FC0; }
+
 .swatch[aria-checked="true"] { border-color: var(--ink); }
+.hex-field { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--raised); padding: 3px 4px 3px 3px; }
+.hex-field:focus-within { border-color: var(--tunnel); }
+.hex-wheel { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; cursor: pointer; }
+.hex-wheel::-webkit-color-swatch-wrapper { padding: 0; }
+.hex-wheel::-webkit-color-swatch { border: 0; border-radius: 6px; }
+.hex-field .hex-input { width: 92px; min-height: 0; border: 0; background: none; padding: 4px 8px; font: 600 13px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase; outline: none; box-shadow: none; }
+.hex-input[aria-invalid="true"] { color: var(--danger); }
+.accent-box > .hint { margin: 2px 0 6px; }
+.warn-text { color: var(--warn); margin: 0 0 4px; }
+:root[data-skin] .accent-box { display: none; }
 
 /* ---------- мини-окно из трея ---------- */
 body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
@@ -872,7 +839,7 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="gold"] .tile:hover { background: var(--brackets), var(--surface); }
 :root[data-skin="gold"] .scard:not(.sel):hover { background: var(--brackets), var(--surface); }
 
-:root[data-skin="gold"] :is(h1, h2, h3, .status-title, .brand, .nav-item, .tile-k, .tile-v, .sysline, .btn, .seg button, .card-head small, .mini-title, .tb-name, .hb-code) { font-family: var(--display); }
+:root[data-skin="gold"] :is(h1, h2, h3, .status-title, .brand, .nav-item, .tile-k, .tile-v, .sysline, .btn, .seg button, .card-head small, .mini-title, .tb-name) { font-family: var(--display); }
 :root[data-skin="gold"] :is(h1, h2, .status-title, .nav-item, .brand, .tile-k, .sysline, .btn, .mini-title) { text-transform: uppercase; }
 :root[data-skin="gold"] .sidebar { background: linear-gradient(90deg, rgba(0, 0, 0, .88), rgba(0, 0, 0, .6)); border-right-color: rgba(222, 196, 140, .12); }
 :root[data-skin="gold"] .rail::before { width: 1px; background: rgba(222, 196, 140, .22); }
@@ -889,9 +856,6 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="gold"] .pill .led { border-radius: 0; transform: rotate(45deg); box-shadow: none; }
 :root[data-skin="gold"] .drawer { background: rgba(10, 10, 9, .94); border-left: 1px solid rgba(222, 196, 140, .18); }
 :root[data-skin="gold"] .drawer-close { border-radius: 0; background: none; }
-:root[data-skin="gold"] .hintbar { background: rgba(0, 0, 0, .7); border-top-color: rgba(222, 196, 140, .1); }
-:root[data-skin="gold"] .hb-code { color: var(--on-accent); background: var(--gold-fill); padding: 2px 6px; }
-:root[data-skin="gold"] .hintbar kbd { border-radius: 50%; min-width: 19px; height: 19px; border-color: rgba(222, 196, 140, .35); background: none; }
 /* Заголовки: тонкие, крупные, золотом — как «АУГМЕНТАЦИИ». */
 :root[data-skin="gold"] h1 { font-weight: 300; font-size: 34px; letter-spacing: .1em; color: var(--tunnel); }
 :root[data-skin="gold"] h2 { font-weight: 600; font-size: 14px; letter-spacing: .16em; color: var(--ink); }
@@ -1068,17 +1032,14 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] .drawer { background: #17181B; border-left: 2px solid #2E3036; box-shadow: -24px 0 60px -20px rgba(0, 0, 0, .7); }
 :root[data-skin="blocks"] .drawer-close { border: 0; background: #2A2C32; }
 :root[data-skin="blocks"] .scrim { background: rgba(6, 8, 7, .55); }
-:root[data-skin="blocks"] .hintbar { background: #141518; border-top: 2px solid #26282D; }
-:root[data-skin="blocks"] .hintbar kbd { border-radius: 0; clip-path: var(--px-r); border: 0; background: #26282D; }
 /* Крупные надписи — пиксельным шрифтом (заглавными: у пиксельных строчных кириллица читается хуже). */
-:root[data-skin="blocks"] :is(.status-title, .drawer h1, .brand span, .tile-v, .mini-title, .hb-code) { font-family: var(--px); font-weight: 400; }
+:root[data-skin="blocks"] :is(.status-title, .drawer h1, .brand span, .tile-v, .mini-title) { font-family: var(--px); font-weight: 400; }
 :root[data-skin="blocks"] :is(.status-title, .drawer h1) { text-transform: uppercase; text-shadow: 3px 3px 0 #0B0C0E; }
 :root[data-skin="blocks"] .status-title { font-size: 30px; line-height: 1.25; letter-spacing: .02em; }
 :root[data-skin="blocks"] .drawer h1 { font-size: 22px; line-height: 1.3; }
 :root[data-skin="blocks"] .brand span { font-size: 14px; }
 :root[data-skin="blocks"] .tile-v { font-size: 15px; letter-spacing: 0; text-transform: uppercase; }
 :root[data-skin="blocks"] .mini-title { font-size: 15px; text-transform: uppercase; }
-:root[data-skin="blocks"] .hb-code { font-size: 10px; color: var(--tunnel); }
 :root[data-skin="blocks"] .sl-val.on { color: var(--tunnel); }
 /* Схема: та же, что в основной теме, растрированная. */
 :root[data-skin="blocks"] .lanes { shape-rendering: crispEdges; }
@@ -1113,9 +1074,7 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] body[data-state="wait"] .pw-px-icon { fill: var(--warn); }
 @keyframes pxRun { 0% { fill: var(--warn); } 25% { fill: #34363D; } }
 :root[data-skin="blocks"] body:is([data-state="err"], [data-state="blocked"]) :is(.pw-px-ring, .pw-px-icon) { fill: var(--danger); }
-/* Нижняя строка: шкала скорости из сегментов; сила сигнала 0–15 в легенде. */
-:root[data-skin="blocks"] .hb-xp { display: block; flex: 1; max-width: 300px; height: 10px; background: #1D1E22; position: relative; clip-path: var(--px-r); }
-:root[data-skin="blocks"] .hb-xp i { display: block; height: 100%; width: 0; background: repeating-linear-gradient(90deg, #4FD08A 0 6px, transparent 6px 8px); transition: width 1s steps(8); }
+/* Сила сигнала 0–15 в легенде. */
 :root[data-skin="blocks"] .sig { display: inline-flex; gap: 1px; margin-left: 2px; }
 :root[data-skin="blocks"] .sig i { width: 3px; height: 9px; background: #34363D; }
 :root[data-skin="blocks"] .sig i.on { background: var(--muted); }
@@ -1125,3 +1084,8 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] .titlebar { background: #141518; }
 :root[data-skin="blocks"] .skel { background: linear-gradient(90deg, #26282D 0 50%, #2E3036 0) 0 0 / 16px 100%; animation: none; }
 @media (prefers-reduced-motion: reduce) { :root[data-skin="blocks"] :is(.pw-px-halo, .pw-px-ring) { animation: none !important; } }
+
+/* Флаг страны внутри узла сервера на схеме. */
+.node-flag { pointer-events: none; }
+.node-flag.idle { opacity: .55; }
+:root[data-skin="blocks"] .node-flag { shape-rendering: crispEdges; }
