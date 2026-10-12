@@ -128,8 +128,11 @@ const serverByTag = tag => {
 };
 async function refreshWL() { try { WL = await api('/api/wl'); } catch (_) { /* не важно */ } }
 const TR_NAME = { ws: 'WS', grpc: 'gRPC', httpupgrade: 'HTTPUpgrade', xhttp: 'xHTTP' };
-const protoName = sv => sv.type !== 'vless' ? (sv.quic ? 'Naive H3' : 'Naive')
-  : [sv.security === 'tls' ? 'TLS' : sv.security === 'none' ? 'VLESS' : 'Reality', TR_NAME[sv.transport]].filter(Boolean).join(' ');
+const PROTO_TITLE = { hysteria2: 'Hysteria2', tuic: 'TUIC', trojan: 'Trojan', shadowsocks: 'Shadowsocks', anytls: 'AnyTLS' };
+const protoName = sv => sv.type === 'vless'
+  ? [sv.security === 'tls' ? 'TLS' : sv.security === 'none' ? 'VLESS' : 'Reality', TR_NAME[sv.transport]].filter(Boolean).join(' ')
+  : PROTO_TITLE[sv.type] ? [PROTO_TITLE[sv.type], sv.type === 'trojan' ? TR_NAME[sv.transport] : ''].filter(Boolean).join(' ')
+  : (sv.quic ? 'Naive H3' : 'Naive');
 const xrayReady = () => !!(AD && AD.updates && AD.updates.xray && AD.updates.xray.installed);
 
 function patch(id, sig, build) {
@@ -409,7 +412,7 @@ function buildNotices() {
   if (!S.servers.length) out.push(notice('info', 'Сначала добавьте сервер.', h('button', { class: 'btn small', onclick: () => go('servers') }, 'Добавить сервер')));
   if (!ST.core.present) out.push(notice('warn', 'Ядро sing-box ещё не скачано.', h('button', { class: 'btn small', onclick: () => go('settings') }, 'Перейти к загрузке')));
   if (ST.core.present && !ST.core.naive && S.servers.some(x => x.type === 'naive')) {
-    out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать только серверы Reality.'));
+    out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать серверы остальных протоколов (Reality, Hysteria2 и другие).'));
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
   if (SELF && SELF.available) out.push(notice('info', `Вышла Naivka ${SELF.latest} (у вас ${SELF.version}).`, h('button', { class: 'btn small', onclick: () => go('settings') }, 'Подробнее')));
@@ -1118,7 +1121,7 @@ function renderServers() {
     rows.push(h('label', { class: 'srv', style: off ? 'opacity:.5' : '' }, radio(sv.id),
       h('span', { class: 'cc-slot' }, cc(geo && geo.countryCode)),
       h('div', { class: 'srv-main' },
-        h('div', { class: 'cell-main trunc' }, sv.name, h('span', { class: 'proto' + (sv.type === 'vless' ? ' vless' : '') }, protoName(sv))),
+        h('div', { class: 'cell-main trunc' }, sv.name, h('span', { class: 'proto' + (sv.type !== 'naive' ? ' vless' : '') }, protoName(sv))),
         h('div', { class: 'cell-sub trunc' }, off ? 'Naive не поддерживается этим ядром'
           : sv.transport === 'xhttp' && !xrayReady() ? 'нужен Xray — установите его в «Обходе» → «Версии»'
           : `${sv.host}:${sv.port}` + (where ? `, ${where}` : ''))),
@@ -1207,7 +1210,8 @@ async function phoneDialog() {
 
 function editServer(srv) {
   const isNew = !srv;
-  const d = srv ? { ...srv } : { id: rid(), type: 'naive', name: '', host: '', port: 443, username: '', password: '', sni: '', quic: false, uot: false, uuid: '', publicKey: '', shortId: '', flow: 'xtls-rprx-vision', fingerprint: 'chrome' };
+  const d = srv ? { ...srv } : { id: rid(), type: 'naive', name: '', host: '', port: 443, username: '', password: '', sni: '', quic: false, uot: false, uuid: '', publicKey: '', shortId: '', flow: 'xtls-rprx-vision', fingerprint: 'chrome',
+    obfs: '', obfsPassword: '', upMbps: 0, downMbps: 0, congestion: 'bbr', udpRelay: 'native', method: '2022-blake3-aes-128-gcm', transport: 'tcp', security: '', insecure: false };
   const inp = (key, label, extra = {}) => h('label', { class: 'field' }, h('span', null, label),
     h('input', { type: extra.type || 'text', value: d[key], placeholder: extra.placeholder, spellcheck: 'false', autocomplete: 'off', oninput: e => { d[key] = e.target.value; } }));
   const box = (key, title, desc) => h('label', { class: 'check' },
@@ -1215,8 +1219,85 @@ function editServer(srv) {
     h('span', null, h('b', null, title), h('small', null, desc)));
   const err = h('div', { class: 'err-text' });
   const fields = h('div');
+  const sel = (key, label, options) => h('label', { class: 'field' }, h('span', null, label),
+    h('select', { onchange: e => { d[key] = e.target.value; } }, options.map(([v, t]) => h('option', { value: v, selected: d[key] === v }, t))));
+  const num = (key, label, hint) => h('label', { class: 'field' }, h('span', null, label),
+    h('input', { type: 'number', min: 0, value: d[key] || '', placeholder: hint, oninput: e => { d[key] = parseInt(e.target.value, 10) || 0; } }));
+  const insecureBox = () => box('insecure', 'Не проверять сертификат', 'Только для своего сервера с самоподписанным сертификатом: иначе соединение можно перехватить.');
   const renderFields = () => {
-    if (d.type === 'vless' && ((d.security && d.security !== 'reality') || (d.transport && d.transport !== 'tcp'))) {
+    if (d.type === 'trojan' && d.transport && d.transport !== 'tcp') {
+      fields.replaceChildren(
+        h('div', { class: 'grid2' }, inp('name', 'Название')),
+        h('p', { class: 'hint mt' }, `${protoName(d)}, ${d.host}:${d.port}. Такие серверы добавляются ссылкой trojan://. Чтобы поменять транспорт, удалите сервер и вставьте новую ссылку.`));
+      return;
+    }
+    if (d.type === 'hysteria2') {
+      fields.replaceChildren(
+        h('div', { class: 'grid2' },
+          inp('name', 'Название', { placeholder: 'Нидерланды Hysteria2' }),
+          inp('host', 'Домен или IP сервера', { placeholder: 'hy.example.com' }),
+          inp('port', 'Порт', { type: 'number' }),
+          inp('password', 'Пароль', { type: 'password' })),
+        more('Дополнительно', 'SNI, маскировка, скорость',
+          h('div', { class: 'grid2' },
+            inp('sni', 'SNI', { placeholder: 'как домен' }),
+            sel('obfs', 'Маскировка', [['', 'нет'], ['salamander', 'salamander']]),
+            inp('obfsPassword', 'Пароль маскировки'),
+            h('span'),
+            num('upMbps', 'Отдача, Мбит/с', 'авто (BBR)'),
+            num('downMbps', 'Загрузка, Мбит/с', 'авто (BBR)')),
+          h('p', { class: 'hint' }, 'Скорость указывайте, только если знаете свой канал: завышенная хуже, чем автоматическая.'),
+          insecureBox()),
+        h('p', { class: 'hint mt' }, 'Hysteria2 работает поверх UDP (QUIC). Хорош на плохом мобильном интернете, но у части провайдеров UDP за границу режут — держите рядом сервер Reality.'));
+    } else if (d.type === 'tuic') {
+      fields.replaceChildren(
+        h('div', { class: 'grid2' },
+          inp('name', 'Название', { placeholder: 'Нидерланды TUIC' }),
+          inp('host', 'Домен или IP сервера', { placeholder: 'tuic.example.com' }),
+          inp('port', 'Порт', { type: 'number' }),
+          inp('uuid', 'UUID'),
+          inp('password', 'Пароль', { type: 'password' })),
+        more('Дополнительно', 'SNI, перегрузка, UDP',
+          h('div', { class: 'grid2' },
+            inp('sni', 'SNI', { placeholder: 'как домен' }),
+            inp('alpn', 'ALPN', { placeholder: 'h3' }),
+            sel('congestion', 'Алгоритм перегрузки', [['bbr', 'BBR'], ['cubic', 'CUBIC'], ['new_reno', 'NewReno']]),
+            sel('udpRelay', 'Передача UDP', [['native', 'native'], ['quic', 'quic']])),
+          insecureBox()),
+        h('p', { class: 'hint mt' }, 'TUIC, как и Hysteria2, работает поверх UDP (QUIC).'));
+    } else if (d.type === 'trojan') {
+      fields.replaceChildren(
+        h('div', { class: 'grid2' },
+          inp('name', 'Название', { placeholder: 'Нидерланды Trojan' }),
+          inp('host', 'Домен сервера', { placeholder: 'tr.example.com' }),
+          inp('port', 'Порт', { type: 'number' }),
+          inp('password', 'Пароль', { type: 'password' })),
+        more('Дополнительно', 'SNI, отпечаток',
+          h('div', { class: 'grid2' }, inp('sni', 'SNI', { placeholder: 'как домен' }), inp('fingerprint', 'Отпечаток браузера', { placeholder: 'chrome' }), inp('alpn', 'ALPN', { placeholder: 'h2,http/1.1' })),
+          insecureBox()),
+        h('p', { class: 'hint mt' }, 'Trojan через WebSocket или gRPC добавляйте ссылкой trojan://.'));
+    } else if (d.type === 'shadowsocks') {
+      fields.replaceChildren(
+        h('div', { class: 'grid2' },
+          inp('name', 'Название', { placeholder: 'Нидерланды SS' }),
+          inp('host', 'Домен или IP сервера', { placeholder: 'ss.example.com' }),
+          inp('port', 'Порт', { type: 'number' }),
+          sel('method', 'Шифр', [['2022-blake3-aes-128-gcm', '2022-blake3-aes-128-gcm'], ['2022-blake3-aes-256-gcm', '2022-blake3-aes-256-gcm'], ['2022-blake3-chacha20-poly1305', '2022-blake3-chacha20-poly1305'],
+            ['aes-128-gcm', 'aes-128-gcm'], ['aes-256-gcm', 'aes-256-gcm'], ['chacha20-ietf-poly1305', 'chacha20-ietf-poly1305'], ['xchacha20-ietf-poly1305', 'xchacha20-ietf-poly1305']]),
+          inp('password', 'Пароль или ключ', { type: 'password' })),
+        h('p', { class: 'hint mt' }, 'Обычный Shadowsocks в России распознают и блокируют чаще других. Если выбираете его — только шифры 2022 (у них пароль — ключ base64 от сервера), и держите рядом сервер Reality.'));
+    } else if (d.type === 'anytls') {
+      fields.replaceChildren(
+        h('div', { class: 'grid2' },
+          inp('name', 'Название', { placeholder: 'Нидерланды AnyTLS' }),
+          inp('host', 'Домен сервера', { placeholder: 'any.example.com' }),
+          inp('port', 'Порт', { type: 'number' }),
+          inp('password', 'Пароль', { type: 'password' })),
+        more('Дополнительно', 'SNI, отпечаток',
+          h('div', { class: 'grid2' }, inp('sni', 'SNI', { placeholder: 'как домен' }), inp('fingerprint', 'Отпечаток браузера', { placeholder: 'chrome' })),
+          insecureBox()),
+        h('p', { class: 'hint mt' }, 'AnyTLS — TLS с перемешиванием размеров пакетов: против распознавания «TLS внутри TLS». Нужен сервер на sing-box 1.12 или новее. UDP не передаёт.'));
+    } else if (d.type === 'vless' && ((d.security && d.security !== 'reality') || (d.transport && d.transport !== 'tcp'))) {
       fields.replaceChildren(
         h('div', { class: 'grid2' }, inp('name', 'Название')),
         h('p', { class: 'hint mt' }, `${protoName(d)}, ${d.host}:${d.port}. Такие серверы добавляются ссылкой vless://. Чтобы поменять параметры, удалите сервер и вставьте новую ссылку.`));
@@ -1250,7 +1331,9 @@ function editServer(srv) {
   const dlg = openDialog(
     h('h2', null, isNew ? 'Новый сервер' : d.name),
     isNew ? h('div', { class: 'row', style: 'margin-bottom:14px' }, h('span', { class: 'hint' }, 'Протокол'),
-      segmented([['naive', 'Naive'], ['vless', 'VLESS + Reality']], () => d.type, v => { d.type = v; renderFields(); }, 'Протокол')) : null,
+      h('select', { onchange: e => { d.type = e.target.value; d.security = d.type === 'vless' ? 'reality' : d.type === 'trojan' ? 'tls' : ''; renderFields(); } },
+        [['naive', 'Naive'], ['vless', 'VLESS + Reality'], ['hysteria2', 'Hysteria2'], ['tuic', 'TUIC'], ['trojan', 'Trojan'], ['anytls', 'AnyTLS'], ['shadowsocks', 'Shadowsocks']]
+          .map(([v, t]) => h('option', { value: v, selected: d.type === v }, t)))) : null,
     fields, err,
     h('div', { class: 'row mt' },
       !isNew && h('button', { class: 'btn danger', onclick: async () => {
@@ -1280,7 +1363,7 @@ function importLinksDialog() {
   const err = h('div', { class: 'err-text' });
   const dlg = openDialog(
     h('h2', null, 'Вставить ссылки'),
-    h('p', { class: 'hint' }, 'По одной в строке: naive+https://…, naive+quic://… или vless://… (с Reality). Ссылку для Reality выдаёт скрипт сервера add-reality.sh.'),
+    h('p', { class: 'hint' }, 'По одной в строке: naive+https://…, naive+quic://…, vless://…, hysteria2://…, tuic://…, trojan://…, anytls://… или ss://…. Ссылку для Reality выдаёт скрипт сервера add-reality.sh или установка сервера из Naivka.'),
     ta, err,
     h('div', { class: 'row end mt' },
       h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'),
@@ -1381,7 +1464,7 @@ function viewRules() {
       check('ruInsideDirect', 'Сайты, которые работают только из России, всегда напрямую', 'Госуслуги, банки и другие сервисы, которые не пускают иностранные IP.', refreshSpecialNote),
       check('blockQuic', 'Блокировать QUIC', 'Naive передаёт только TCP. Без QUIC браузеры сами перейдут на обычный HTTPS, и он пойдёт через сервер.', refreshSpecialNote),
       check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки пойдут мимо сервера: через Naive UDP всё равно не проходит.', refreshSpecialNote),
-      check('udpProxy', 'UDP через сервер VLESS — голос Discord, игры', 'Naive передаёт только TCP, а VLESS (ваш Reality или подписка) — и UDP. Тогда UDP, который по правилам должен идти через сервер, пойдёт через VLESS. Работает в режиме TUN: в режиме прокси программы отправляют UDP мимо Naivka.', refreshSpecialNote),
+      check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Naive и AnyTLS передают только TCP, а VLESS, Hysteria2, TUIC, Trojan и Shadowsocks — и UDP. Тогда UDP, который по правилам должен идти через сервер, пойдёт через них (или через подписку). Работает в режиме TUN: в режиме прокси программы отправляют UDP мимо Naivka.', refreshSpecialNote),
       check('adBlock', 'Блокировать рекламу и трекеры', 'По готовому списку для sing-box (geosite category-ads-all, обновляется раз в сутки): баннеры, счётчики, рекламные сети. Видеорекламу YouTube так не убрать — она идёт с тех же серверов, что и само видео; для неё нужен uBlock Origin в браузере. Если какой-то сайт сломается — добавьте его правилом «Напрямую» или «Через сервер».', refreshSpecialNote),
       check('twitchAdFree', 'Twitch без рекламы', 'Twitch вставляет рекламу в трансляцию в зависимости от страны, откуда запрошен плейлист. Naivka запрашивает плейлисты через прокси проекта TTV LOL PRO в стране без рекламы, а само видео идёт как обычно. Прокси видит только то, что вы смотрите Twitch, но не какой канал. Работает для трансляций, не для записей; баннеры на сайте остаются. Если трансляции перестали открываться — выключите.', refreshSpecialNote)),
     more('Правила sing-box вручную', S.extraRules.trim() ? 'есть свои правила' : 'для опытных',
@@ -1717,7 +1800,7 @@ function buildAdminBox() {
 function buildCoreBox() {
   const c = ST.core, d = ST.download;
   const out = [];
-  out.push(h('p', null, c.present ? `Установлен sing-box ${c.version || '(версия неизвестна)'}` + (c.naive ? '.' : ' — сборка без Naive, работают только серверы Reality.') : 'Ядро ещё не скачано.'));
+  out.push(h('p', null, c.present ? `Установлен sing-box ${c.version || '(версия неизвестна)'}` + (c.naive ? '.' : ' — сборка без Naive, работают серверы остальных протоколов.') : 'Ядро ещё не скачано.'));
   if (c.present && c.naive && !c.cronet) out.push(h('p', { class: 'err-text' }, 'Рядом с sing-box нет библиотеки libcronet — без неё Naive не заработает.'));
   if (d.active) out.push(h('p', { class: 'num' }, `Скачиваю… ${fmtBytes(d.done)}` + (d.total > 0 ? ` из ${fmtBytes(d.total)}` : '')));
   if (d.error) out.push(h('p', { class: 'err-text' }, 'Не удалось скачать: ' + d.error));

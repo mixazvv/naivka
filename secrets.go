@@ -22,7 +22,7 @@ func sealSettings(s *Settings) *Settings {
 		}
 	}
 	for i := range c.Servers {
-		for _, f := range []*string{&c.Servers[i].Password, &c.Servers[i].UUID} {
+		for _, f := range []*string{&c.Servers[i].Password, &c.Servers[i].UUID, &c.Servers[i].ObfsPassword} {
 			if *f != "" && !strings.HasPrefix(*f, secretPrefix) {
 				if enc, err := protectSecret(*f); err == nil {
 					*f = enc
@@ -44,7 +44,7 @@ func openSettings(s *Settings) []string {
 	}
 	for i := range s.Servers {
 		sv := &s.Servers[i]
-		for _, f := range []*string{&sv.Password, &sv.UUID} {
+		for _, f := range []*string{&sv.Password, &sv.UUID, &sv.ObfsPassword} {
 			if strings.HasPrefix(*f, secretPrefix) {
 				plain, err := unprotectSecret(*f)
 				if err != nil {

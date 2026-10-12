@@ -35,11 +35,7 @@ func (a *App) trayMenu() []menuItem {
 	if len(s.Servers) > 0 {
 		sub := []menuItem{{Text: "Автовыбор", ID: cmdAuto, Checked: s.Selected == "auto"}, {Sep: true}}
 		for i, sv := range s.Servers {
-			proto := "Naive"
-			if sv.Type == "vless" {
-				proto = "Reality"
-			}
-			sub = append(sub, menuItem{Text: fmt.Sprintf("%s (%s)", sv.Name, proto), ID: cmdServer0 + i, Checked: s.Selected == sv.ID})
+			sub = append(sub, menuItem{Text: fmt.Sprintf("%s (%s)", sv.Name, protoTitle(sv)), ID: cmdServer0 + i, Checked: s.Selected == sv.ID})
 		}
 		if s.WL.Enabled {
 			sub = append(sub, menuItem{Sep: true}, menuItem{Text: "Белые списки (подписка)", ID: cmdWL, Checked: s.Selected == "wl"})

@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,10 +17,10 @@ import (
 	"time"
 )
 
-// Server — один сервер NaiveProxy.
+// Server — один сервер.
 type Server struct {
 	ID   string `json:"id"`
-	Type string `json:"type"` // naive | vless
+	Type string `json:"type"` // naive | vless | hysteria2 | tuic | trojan | shadowsocks | anytls
 	Name string `json:"name"`
 	Host string `json:"host"`
 	Port int    `json:"port"`
@@ -46,6 +47,31 @@ type Server struct {
 	Insecure    bool   `json:"insecure"`    // не проверять сертификат TLS
 	XMode       string `json:"xmode"`       // xHTTP: auto | packet-up | stream-up | stream-one
 	XExtra      string `json:"xextra"`      // xHTTP: дополнительные настройки (JSON)
+
+	// Hysteria2
+	Obfs         string `json:"obfs,omitempty"`         // salamander или пусто
+	ObfsPassword string `json:"obfsPassword,omitempty"` // пароль obfs
+	UpMbps       int    `json:"upMbps,omitempty"`       // 0 — пусть решает BBR
+	DownMbps     int    `json:"downMbps,omitempty"`
+
+	// TUIC
+	Congestion string `json:"congestion,omitempty"` // bbr | cubic | new_reno
+	UDPRelay   string `json:"udpRelay,omitempty"`   // native | quic
+
+	// Shadowsocks
+	Method string `json:"method,omitempty"`
+}
+
+// serverTypes — протоколы, которые Naivka умеет. udp — может ли передавать UDP (голос, игры).
+var serverTypes = map[string]struct{ udp bool }{
+	"naive": {false}, "vless": {true}, "hysteria2": {true}, "tuic": {true},
+	"trojan": {true}, "shadowsocks": {true}, "anytls": {false},
+}
+
+// ssMethods — шифры Shadowsocks: ключ (байт) для 2022, 0 — пароль любой длины.
+var ssMethods = map[string]int{
+	"2022-blake3-aes-128-gcm": 16, "2022-blake3-aes-256-gcm": 32, "2022-blake3-chacha20-poly1305": 32,
+	"aes-128-gcm": 0, "aes-256-gcm": 0, "chacha20-ietf-poly1305": 0, "xchacha20-ietf-poly1305": 0,
 }
 
 // Rule — пользовательское правило маршрутизации.
@@ -322,8 +348,32 @@ func (s *Settings) normalize() {
 		if sv.ID == "" {
 			sv.ID = newID()
 		}
-		if sv.Type != "vless" {
+		if _, ok := serverTypes[sv.Type]; !ok {
 			sv.Type = "naive"
+		}
+		switch sv.Type {
+		case "tuic":
+			sv.UUID = strings.TrimSpace(sv.UUID)
+			if sv.Congestion == "" {
+				sv.Congestion = "bbr"
+			}
+			if sv.UDPRelay == "" {
+				sv.UDPRelay = "native"
+			}
+		case "trojan":
+			if sv.Transport == "" || sv.Transport == "raw" {
+				sv.Transport = "tcp"
+			}
+			if sv.Security == "" {
+				sv.Security = "tls"
+			}
+			if sv.Fingerprint == "" {
+				sv.Fingerprint = "chrome"
+			}
+		case "anytls":
+			if sv.Fingerprint == "" {
+				sv.Fingerprint = "chrome"
+			}
 		}
 		if sv.Type == "vless" {
 			sv.UUID = strings.TrimSpace(sv.UUID)
@@ -381,6 +431,9 @@ func (s *Settings) Validate() error {
 			return fmt.Errorf("Повторяющийся ID сервера %s", sv.ID)
 		}
 		ids[sv.ID] = true
+		if err := validateServerProto(sv); err != nil {
+			return err
+		}
 		if sv.Type == "vless" {
 			if !uuidRe.MatchString(sv.UUID) {
 				return fmt.Errorf("У сервера «%s» неверный UUID", sv.Name)
@@ -550,6 +603,75 @@ func parseDirectDNS(v string) (directDNS, error) {
 	return directDNS{}, bad
 }
 
+// validateServerProto — проверки новых протоколов (Naive и VLESS проверяются в Validate).
+func validateServerProto(sv Server) error {
+	bad := func(what string) error { return fmt.Errorf("У сервера «%s» %s", sv.Name, what) }
+	switch sv.Type {
+	case "hysteria2":
+		if sv.Password == "" {
+			return bad("не указан пароль")
+		}
+		if sv.Obfs != "" && sv.Obfs != "salamander" {
+			return bad(fmt.Sprintf("неизвестная маскировка %q (поддерживается salamander)", sv.Obfs))
+		}
+		if sv.Obfs == "salamander" && sv.ObfsPassword == "" {
+			return bad("не указан пароль маскировки salamander")
+		}
+		if sv.UpMbps < 0 || sv.DownMbps < 0 {
+			return bad("скорость не может быть отрицательной")
+		}
+	case "tuic":
+		if !uuidRe.MatchString(sv.UUID) {
+			return bad("неверный UUID")
+		}
+		if sv.Password == "" {
+			return bad("не указан пароль")
+		}
+		switch sv.Congestion {
+		case "bbr", "cubic", "new_reno":
+		default:
+			return bad(fmt.Sprintf("неизвестный алгоритм перегрузки %q", sv.Congestion))
+		}
+		if sv.UDPRelay != "native" && sv.UDPRelay != "quic" {
+			return bad(fmt.Sprintf("неизвестный режим UDP %q", sv.UDPRelay))
+		}
+	case "trojan":
+		if sv.Password == "" {
+			return bad("не указан пароль")
+		}
+		if sv.Security != "tls" {
+			return bad("Trojan работает только с TLS")
+		}
+		switch sv.Transport {
+		case "tcp", "ws", "grpc", "httpupgrade":
+		default:
+			return bad(fmt.Sprintf("транспорт %q не поддерживается", sv.Transport))
+		}
+	case "shadowsocks":
+		keyLen, ok := ssMethods[sv.Method]
+		if !ok {
+			return bad(fmt.Sprintf("шифр %q не поддерживается — нужен один из AEAD или 2022", sv.Method))
+		}
+		if sv.Password == "" {
+			return bad("не указан пароль")
+		}
+		if keyLen > 0 {
+			// В 2022 «пароль» — ключ в base64; у сервера-ретранслятора их несколько через двоеточие.
+			for _, k := range strings.Split(sv.Password, ":") {
+				b, err := base64.StdEncoding.DecodeString(k)
+				if err != nil || len(b) != keyLen {
+					return bad(fmt.Sprintf("для %s пароль — ключ base64 длиной %d байт", sv.Method, keyLen))
+				}
+			}
+		}
+	case "anytls":
+		if sv.Password == "" {
+			return bad("не указан пароль")
+		}
+	}
+	return nil
+}
+
 // ParseShareLinks разбирает ссылки вида naive+https://user:pass@host:443#Имя
 // и naive+quic://user:pass@host:443#Имя (по одной в строке).
 func ParseShareLinks(text string) ([]Server, []string) {
@@ -560,9 +682,38 @@ func ParseShareLinks(text string) ([]Server, []string) {
 		if line == "" {
 			continue
 		}
+		if strings.HasPrefix(strings.ToLower(line), "ss://") {
+			sv, err := parseSS(line)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", short(line), err))
+			} else {
+				out = append(out, sv)
+			}
+			continue
+		}
 		u, err := url.Parse(line)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", short(line), err))
+			continue
+		}
+		var parse func(*url.URL) (Server, error)
+		switch strings.ToLower(u.Scheme) {
+		case "hysteria2", "hy2":
+			parse = parseHysteria2
+		case "tuic":
+			parse = parseTUIC
+		case "trojan":
+			parse = parseTrojan
+		case "anytls":
+			parse = parseAnyTLS
+		}
+		if parse != nil {
+			sv, err := parse(u)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", short(line), err))
+			} else {
+				out = append(out, sv)
+			}
 			continue
 		}
 		var quic bool
@@ -579,7 +730,7 @@ func ParseShareLinks(text string) ([]Server, []string) {
 			}
 			continue
 		default:
-			errs = append(errs, fmt.Sprintf("%s: ожидается naive+https://, naive+quic:// или vless://", short(line)))
+			errs = append(errs, fmt.Sprintf("%s: ожидается naive+https://, naive+quic://, vless://, hysteria2://, tuic://, trojan://, ss:// или anytls://", short(line)))
 			continue
 		}
 		if u.Hostname() == "" {
@@ -693,6 +844,9 @@ func parseVLESS(u *url.URL) (Server, error) {
 
 // ShareLink — ссылка для переноса сервера в другой клиент (QR-код для телефона).
 func ShareLink(sv Server) string {
+	if l := shareLinkProto(sv); l != "" {
+		return l
+	}
 	name := url.PathEscape(sv.Name)
 	host := net.JoinHostPort(sv.Host, strconv.Itoa(sv.Port))
 	if sv.Type == "vless" {

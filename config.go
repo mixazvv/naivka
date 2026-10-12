@@ -120,6 +120,14 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		if sv.Type == "naive" && env.NoNaive {
 			continue
 		}
+		if ob := protoOutbound(sv, serverTag(sv)); ob != nil {
+			outbounds = append(outbounds, ob)
+			serverTags = append(serverTags, serverTag(sv))
+			if sv.ID == s.Selected {
+				selected = serverTag(sv)
+			}
+			continue
+		}
 		sni := sv.SNI
 		if sni == "" {
 			sni = sv.Host
@@ -180,7 +188,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		wlTags = append(wlTags, tag)
 	}
 	if len(serverTags) == 0 && len(wlTags) == 0 {
-		return nil, errors.New("Это ядро sing-box не поддерживает Naive. Добавьте сервер VLESS+Reality")
+		return nil, errors.New("Это ядро sing-box не поддерживает Naive. Добавьте сервер другого протокола, например VLESS+Reality")
 	}
 	selOut := []any{}
 	if len(serverTags) > 0 {
@@ -206,12 +214,12 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	outbounds = append(outbounds, M{"type": "selector", "tag": tagProxy, "outbounds": selOut,
 		"default": selected, "interrupt_exist_connections": true})
 
-	// UDP (голос Discord, игры): Naive его не передаёт, VLESS — да.
+	// UDP (голос Discord, игры): Naive его не передаёт, VLESS, Hysteria2, TUIC, Trojan и Shadowsocks — да.
 	udpTarget := ""
 	if s.UDPProxy && !env.Mobile {
 		var vl []any
 		for _, sv := range s.Servers {
-			if sv.Type == "vless" {
+			if serverTypes[sv.Type].udp && (sv.Transport != "xhttp" || env.XrayPorts[serverTag(sv)] > 0) {
 				vl = append(vl, serverTag(sv))
 			}
 		}
@@ -671,23 +679,31 @@ func vlessOutbound(sv Server, tag string) M {
 		}
 		ob["tls"] = t
 	}
+	if tr := transportFor(sv); tr != nil {
+		ob["transport"] = tr
+	}
+	return ob
+}
+
+// transportFor — транспорт V2Ray (WebSocket, HTTPUpgrade, gRPC) для VLESS и Trojan; nil — обычный TCP.
+func transportFor(sv Server) M {
 	switch sv.Transport {
 	case "ws":
 		tr := M{"type": "ws", "path": orDefault(sv.Path, "/")}
 		if sv.HostHeader != "" {
 			tr["headers"] = M{"Host": sv.HostHeader}
 		}
-		ob["transport"] = tr
+		return tr
 	case "httpupgrade":
 		tr := M{"type": "httpupgrade", "path": orDefault(sv.Path, "/")}
 		if sv.HostHeader != "" {
 			tr["host"] = sv.HostHeader
 		}
-		ob["transport"] = tr
+		return tr
 	case "grpc":
-		ob["transport"] = M{"type": "grpc", "service_name": sv.ServiceName}
+		return M{"type": "grpc", "service_name": sv.ServiceName}
 	}
-	return ob
+	return nil
 }
 
 func orDefault(v, d string) string {
