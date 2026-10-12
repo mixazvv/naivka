@@ -1094,6 +1094,7 @@ function viewServers() {
       h('button', { class: 'btn small', id: 'testAll', onclick: () => testServers('') }, 'Проверить все'),
       h('span', { class: 'hint' }, 'Без подключения проверяется TLS-рукопожатие, после — настоящий запрос через сервер. Линия — задержка за последний час.')),
     h('div', { id: 'wlBox' }),
+    h('div', { id: 'panelsBox' }),
     h('h2', null, 'Телефон'),
     h('div', { class: 'card' },
       h('p', null, 'Те же серверы, режим маршрутов и ваши правила — на iPhone или Android. Профиль открывается в приложении sing-box, его понимают и другие клиенты на sing-box.'),
@@ -1105,6 +1106,7 @@ function viewServers() {
 function renderServers() {
   const list = $('#srvList');
   if (!list) return;
+  patch('panelsBox', JSON.stringify(S.panels || []), panelsBox);
   const radio = id => h('input', {
     type: 'radio', name: 'srvSel', checked: S.selected === id, 'aria-label': 'Использовать',
     onchange: async () => { S.selected = id; try { await api('/api/select', { id }); PXAt = 0; updateStatus(); } catch (e) { toast(e.message, true); } },
@@ -1364,6 +1366,7 @@ function editServer(srv) {
 
 // ---------- установка своего сервера по SSH ----------
 const REALITY_SNI = ['www.microsoft.com', 'dl.google.com', 'www.samsung.com', 'addons.mozilla.org'];
+const PANEL_TITLE = { '3x-ui': '3X-UI', 's-ui': 's-ui' };
 
 function installServerDialog(prev) {
   const body = h('div');
@@ -1379,52 +1382,103 @@ function installServerDialog(prev) {
       h('div', { class: 'notice warn' }, h('div', { class: 'grow' },
         h('b', null, 'Делайте это, только если понимаете, что происходит, и это ваш сервер.'),
         h('p', { style: 'margin:6px 0 0' }, 'Naivka подключится к серверу по SSH с правами root и изменит его настройки. На сервере, где уже работает что-то важное (сайт, другой VPN, панель управления), установка может ему помешать.'))),
-      h('h3', { class: 'mt' }, 'Что будет сделано на сервере'),
+      h('h3', { class: 'mt' }, 'Что может быть сделано на сервере (вы выберете на следующем шаге)'),
       h('ul', { class: 'steps' },
-        h('li', null, 'Установится sing-box из официального репозитория SagerNet (через apt). Нужен Debian 11+ или Ubuntu 20.04+.'),
-        h('li', null, 'Появятся VLESS + Reality на TCP (порт 443 или 8443, если 443 занят) и, по желанию, Hysteria2 на UDP со своим сертификатом.'),
-        h('li', null, 'Файл /etc/sing-box/config.json будет перезаписан — прежний сохранится рядом с пометкой .bak.'),
-        h('li', null, 'Служба sing-box включится в автозапуск; если работает ufw, в нём откроются выбранные порты.'),
-        h('li', null, 'По желанию включится BBR — ускорение TCP на дальних каналах (настройка ядра в /etc/sysctl.d).')),
+        h('li', null, 'sing-box из официального репозитория SagerNet (apt): VLESS + Reality на TCP 443 или 8443 и, по желанию, Hysteria2 на UDP. Нужен Debian 11+ или Ubuntu 20.04+.'),
+        h('li', null, 'NaiveProxy: Caddy с модулем forwardproxy — готовая сборка автора NaiveProxy (проверяется по контрольной сумме) или сборка из исходников прямо на сервере. Нужен свой домен; Caddy займёт порты 80 и 443 и получит сертификат Let\'s Encrypt.'),
+        h('li', null, 'Веб-панель 3X-UI или s-ui — их официальными установщиками с GitHub.'),
+        h('li', null, 'Файл /etc/sing-box/config.json будет перезаписан — прежний сохранится рядом с пометкой .bak. Службы включатся в автозапуск; если работает ufw, в нём откроются нужные порты; по желанию — BBR.')),
       h('h3', null, 'Что останется как было'),
       h('ul', { class: 'steps' },
         h('li', null, 'SSH, пароли, пользователи, другие программы и их порты.'),
-        h('li', null, 'Пароль и ключ SSH Naivka не сохраняет — они нужны только на время установки.')),
-      h('p', { class: 'hint' }, 'Перед вводом пароля Naivka покажет отпечаток ключа сервера — сверьте его с панелью хостинга или консолью. Скрипт, который выполнится на сервере, можно прочитать заранее. Откатить: на сервере bash install-server.sh --remove.'),
+        h('li', null, 'Пароль и ключ SSH Naivka не сохраняет — они нужны только на время установки (и потом — чтобы открыть панель).')),
+      h('p', { class: 'hint' }, 'Перед вводом пароля Naivka покажет отпечаток ключа сервера — сверьте его с панелью хостинга или консолью. Скрипты, которые выполнятся на сервере, можно прочитать заранее. Откатить протоколы: на сервере bash install-server.sh --remove; панели удаляются их же меню (x-ui uninstall, s-ui uninstall).'),
       h('label', { class: 'check mt' }, ok, h('span', null, h('b', null, 'Понимаю, что делаю, и это мой сервер'))),
       h('div', { class: 'row mt' },
-        h('button', { class: 'btn', onclick: showScript }, 'Показать скрипт'),
+        h('button', { class: 'btn', onclick: () => showScript(false) }, 'Скрипт протоколов'),
+        h('button', { class: 'btn', onclick: () => showScript(true) }, 'Скрипт панели'),
         h('span', { class: 'spacer' }),
         h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'), next));
   };
 
-  const showScript = async () => {
+  const showScript = async panel => {
     try {
-      const r = await api('/api/server/script');
+      const r = await api('/api/server/script' + (panel ? '?panel=1' : ''));
       const ta = h('textarea', { readonly: true, style: 'min-height:420px' });
       ta.value = r.script;
-      const d2 = openDialog(h('h2', null, 'install-server.sh'), ta, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d2.close() }, 'Закрыть')));
+      const d2 = openDialog(h('h2', null, panel ? 'install-panel.sh' : 'install-server.sh'), ta, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d2.close() }, 'Закрыть')));
       d2.classList.add('wide');
     } catch (e) { toast(e.message, true); }
   };
 
-  // Шаг 2: адрес, вход, параметры, проверка ключа сервера.
+  // Шаг 2: адрес, вход, что ставить, проверка ключа сервера.
   const formStep = d => {
-    const f = { host: '', port: 22, user: 'root', password: '', key: '', passphrase: '', sni: REALITY_SNI[0], hy2: true, bbr: true, name: '', ...d };
-    const inp = (key, label, extra = {}) => h('label', { class: 'field' }, h('span', null, label),
-      h(extra.area ? 'textarea' : 'input', { type: extra.type || 'text', value: f[key], placeholder: extra.placeholder, spellcheck: 'false', autocomplete: 'off',
-        style: extra.area ? 'min-height:90px' : null, oninput: e => { f[key] = e.target.value; fp = null; fpBox.replaceChildren(); installBtn.disabled = true; } }),
-      extra.hint ? h('small', { class: 'hint' }, extra.hint) : null);
+    const f = { host: '', port: 22, user: 'root', password: '', key: '', passphrase: '', sni: REALITY_SNI[0], hy2: true, bbr: true, name: '',
+      protocols: true, naive: false, domain: '', panel: '', panelAccess: 'tunnel', ...d };
     let fp = null;
     const err = h('div', { class: 'err-text' });
     const fpBox = h('div');
     const installBtn = h('button', { class: 'btn primary', disabled: true, onclick: () => runStep(f, fp) }, 'Установить');
+    const resetFp = () => { fp = null; fpBox.replaceChildren(); installBtn.disabled = true; };
+    const inp = (key, label, extra = {}) => h('label', { class: 'field' }, h('span', null, label),
+      h(extra.area ? 'textarea' : 'input', { type: extra.type || 'text', value: f[key], placeholder: extra.placeholder, spellcheck: 'false', autocomplete: 'off',
+        style: extra.area ? 'min-height:90px' : null, oninput: e => { f[key] = e.target.value; if (extra.resets !== false) resetFp(); } }),
+      extra.hint ? h('small', { class: 'hint' }, extra.hint) : null);
+    const box = (key, title, desc, after) => h('label', { class: 'check' },
+      h('input', { type: 'checkbox', checked: f[key], onchange: e => { f[key] = e.target.checked; if (after) after(); } }),
+      h('span', null, h('b', null, title), desc ? h('small', null, desc) : null));
+
     const useKey = h('input', { type: 'checkbox', checked: !!f.key });
-    const keyBox = h('div', { hidden: !f.key }, h('div', { class: 'grid2' }, inp('key', 'Закрытый ключ SSH', { area: true, placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----' }), inp('passphrase', 'Пароль ключа (если есть)', { type: 'password' })));
+    const keyBox = h('div', { hidden: !f.key }, h('div', { class: 'grid2' }, inp('key', 'Закрытый ключ SSH', { area: true, placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----', resets: false }), inp('passphrase', 'Пароль ключа (если есть)', { type: 'password', resets: false })));
     useKey.addEventListener('change', () => { keyBox.hidden = !useKey.checked; if (!useKey.checked) f.key = ''; });
+
+    // протоколы
+    const sniCustom = h('input', { type: 'text', value: REALITY_SNI.includes(f.sni) ? '' : f.sni, placeholder: 'www.example.com', hidden: REALITY_SNI.includes(f.sni), oninput: e => { f.sni = e.target.value.trim(); } });
     const sniSel = h('select', { onchange: e => { if (e.target.value !== 'custom') { f.sni = e.target.value; sniCustom.hidden = true; } else { sniCustom.hidden = false; sniCustom.focus(); } } },
       REALITY_SNI.map(v => h('option', { value: v, selected: f.sni === v }, v)), h('option', { value: 'custom', selected: !REALITY_SNI.includes(f.sni) }, 'Свой сайт…'));
-    const sniCustom = h('input', { type: 'text', value: REALITY_SNI.includes(f.sni) ? '' : f.sni, placeholder: 'www.example.com', hidden: REALITY_SNI.includes(f.sni), oninput: e => { f.sni = e.target.value.trim(); } });
+    const sniField = h('label', { class: 'field' }, h('span', null, 'Сайт для маскировки Reality'), sniSel, sniCustom,
+      h('small', { class: 'hint' }, 'Посторонний, заглянувший на ваш сервер, увидит этот сайт. Нужен TLS 1.3 и чтобы он не был заблокирован в России. Лучше всего — сайт у того же хостера, что и сервер (их ищет программа RealiTLScanner).'));
+    const domainField = h('label', { class: 'field' }, h('span', null, 'Домен для NaiveProxy'),
+      h('input', { type: 'text', value: f.domain, placeholder: 'proxy.example.com', spellcheck: 'false', oninput: e => { f.domain = e.target.value.trim(); } }),
+      h('small', { class: 'hint' }, 'Заранее создайте у регистратора A-запись этого домена на IP сервера (без прокси Cloudflare) и подождите 5–15 минут. Reality тогда будет маскироваться под ваш же сайт.'));
+    const protoBody = h('div');
+    const renderProto = () => {
+      sniField.hidden = f.naive;
+      domainField.hidden = !f.naive;
+      protoBody.hidden = !f.protocols;
+    };
+    protoBody.append(
+      h('p', { class: 'hint' }, 'VLESS + Reality ставится всегда — это основной протокол.'),
+      h('div', { class: 'grid2' }, sniField, domainField, inp('name', 'Название', { placeholder: 'как адрес', resets: false })),
+      box('naive', 'Ещё и NaiveProxy (нужен домен)', 'Настоящий Chromium внутри: трафик неотличим от браузера. Caddy займёт порты 80 и 443, Reality переедет на 8443.', renderProto),
+      box('hy2', 'Ещё и Hysteria2 (UDP)', 'Запасной протокол: быстрый на плохом мобильном интернете, но где-то UDP за границу режут. Свой сертификат, Naivka проверяет его по отпечатку.'),
+      box('bbr', 'Включить BBR', 'Обычно ускоряет загрузку через далёкий сервер. Меняет настройку ядра сервера.'));
+
+    // панель
+    const panelBody = h('div');
+    const renderPanel = () => {
+      if (!f.panel) { panelBody.replaceChildren(); return; }
+      const agree = h('input', { type: 'checkbox', checked: !!f.panelConfirm, onchange: e => { f.panelConfirm = e.target.checked; } });
+      panelBody.replaceChildren(
+        f.panel === '3x-ui'
+          ? choices('panelAccess', [
+            ['tunnel', 'Только через Naivka (рекомендуется)', 'Панель слушает только сам сервер — из интернета её не найти и не взломать. Naivka открывает её через SSH-туннель (спросит пароль SSH).'],
+            ['public', 'Из интернета по HTTPS', 'Откроется по адресу https://IP:порт/секретный-путь с сертификатом Let\'s Encrypt на IP (нужен свободный порт 80). Удобно с телефона, но панель видна всему интернету — её будут пробовать подобрать.'],
+          ], () => f.panelAccess, v => { f.panelAccess = v; })
+          : h('p', { class: 'hint' }, 's-ui работает без HTTPS, поэтому открывается только через Naivka по SSH-туннелю — из интернета её не видно.'),
+        h('div', { class: 'notice warn mt' }, h('div', { class: 'grow' },
+          h('b', null, 'Панель — сторонняя программа с правами root.'),
+          h('ul', { class: 'steps', style: 'margin-bottom:0' },
+            h('li', null, `Ставится официальный установщик ${PANEL_TITLE[f.panel]} с GitHub (последний релиз): его код выполняется на сервере от root. Naivka не может за него ручаться.`),
+            f.panel === '3x-ui' ? h('li', null, 'Установщик 3X-UI заодно ставит fail2ban и cron для обновления сертификатов.') : null,
+            h('li', null, 'Логин и длинный пароль панели Naivka придумает сама и сохранит у вас в зашифрованном виде.'),
+            h('li', null, 'Протоколы, которые вы создадите в панели, не должны занимать уже занятые порты (Reality, Hysteria2, NaiveProxy).')))),
+        h('label', { class: 'check' }, agree, h('span', null, h('b', null, 'Понимаю риски и всё равно ставлю панель'))));
+    };
+    const panelSel = h('select', { onchange: e => { f.panel = e.target.value; f.panelConfirm = false; renderPanel(); } },
+      [['', 'Без панели'], ['3x-ui', '3X-UI — на Xray: Reality, xHTTP, Trojan, пользователи, лимиты'], ['s-ui', 's-ui — на sing-box: Hysteria2, TUIC, AnyTLS, Naive']]
+        .map(([v, t]) => h('option', { value: v, selected: f.panel === v }, t)));
+
     const check = async () => {
       err.textContent = ''; fpBox.replaceChildren(h('p', { class: 'hint' }, 'Получаю ключ сервера…'));
       try {
@@ -1444,41 +1498,43 @@ function installServerDialog(prev) {
         inp('host', 'IP или домен сервера', { placeholder: '203.0.113.10' }),
         inp('port', 'Порт SSH', { type: 'number' }),
         inp('user', 'Пользователь', { hint: 'root или пользователь с sudo без пароля' }),
-        inp('password', 'Пароль SSH', { type: 'password', hint: 'Не сохраняется.' })),
+        inp('password', 'Пароль SSH', { type: 'password', hint: 'Не сохраняется.', resets: false })),
       h('label', { class: 'check' }, useKey, h('span', null, h('b', null, 'Вход по ключу SSH'))),
       keyBox,
-      h('h3', { class: 'mt' }, 'Параметры'),
-      h('div', { class: 'grid2' },
-        h('label', { class: 'field' }, h('span', null, 'Сайт для маскировки Reality'), sniSel, sniCustom,
-          h('small', { class: 'hint' }, 'Посторонний, заглянувший на ваш сервер, увидит этот сайт. Нужен TLS 1.3 и чтобы он не был заблокирован в России. Лучше всего — сайт у того же хостера, что и сервер (их ищет программа RealiTLScanner).')),
-        inp('name', 'Название', { placeholder: 'как адрес' })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.hy2, onchange: e => { f.hy2 = e.target.checked; } }),
-        h('span', null, h('b', null, 'Ещё и Hysteria2 (UDP)'), h('small', null, 'Запасной протокол: быстрый на плохом мобильном интернете, но где-то UDP за границу режут. Свой сертификат, Naivka проверяет его по отпечатку.'))),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.bbr, onchange: e => { f.bbr = e.target.checked; } }),
-        h('span', null, h('b', null, 'Включить BBR'), h('small', null, 'Обычно ускоряет загрузку через далёкий сервер. Меняет настройку ядра сервера.'))),
+      h('h3', { class: 'mt' }, 'Протоколы'),
+      box('protocols', 'Поставить протоколы Naivka', 'Снимите, если нужна только панель.', renderProto),
+      protoBody,
+      h('h3', { class: 'mt' }, 'Веб-панель (необязательно)'),
+      h('p', { class: 'hint' }, 'Панель нужна, если хотите сами управлять протоколами и пользователями в браузере: раздавать доступ друзьям, ставить лимиты трафика. Для себя одного хватит протоколов выше.'),
+      h('label', { class: 'field' }, panelSel),
+      panelBody,
       err, fpBox,
       h('div', { class: 'row mt' },
         h('button', { class: 'btn', onclick: warnStep }, 'Назад'),
         h('span', { class: 'spacer' }),
         h('button', { class: 'btn', onclick: check }, 'Проверить ключ сервера'),
         installBtn));
+    renderProto();
+    renderPanel();
   };
 
   // Шаг 3: установка, журнал с сервера.
   const runStep = async (f, fp) => {
     const log = h('pre', { class: 'log', style: 'max-height:360px;min-height:200px' });
-    const status = h('p', { class: 'hint' }, 'Устанавливаю… Это занимает 1–5 минут. Окно можно не закрывать.');
+    const status = h('p', { class: 'hint' }, 'Устанавливаю… Обычно 1–5 минут, со сборкой Caddy для NaiveProxy — до 15. Окно можно не закрывать.');
     const close = h('button', { class: 'btn', disabled: true, onclick: () => dlg.close() }, 'Закрыть');
-    body.replaceChildren(status, log, h('div', { class: 'row end mt' }, close));
+    const actions = h('div', { class: 'row end mt' }, close);
+    body.replaceChildren(status, log, actions);
     try {
-      await api('/api/server/install', { host: f.host, port: parseInt(f.port, 10) || 22, user: f.user, password: f.password, key: useKeyVal(f), passphrase: f.passphrase,
-        fingerprint: fp, sni: f.sni, hy2: f.hy2, bbr: f.bbr, name: f.name, confirm: true });
+      await api('/api/server/install', { host: f.host, port: parseInt(f.port, 10) || 22, user: f.user, password: f.password, key: f.key || '', passphrase: f.passphrase,
+        fingerprint: fp, confirm: true, protocols: f.protocols, sni: f.sni, hy2: f.hy2, naive: f.naive, domain: f.domain, bbr: f.bbr, name: f.name,
+        panel: f.panel, panelAccess: f.panelAccess, panelConfirm: !!f.panelConfirm });
     } catch (e) {
       status.className = 'err-text'; status.textContent = e.message; close.disabled = false;
-      body.append(h('button', { class: 'btn mt', onclick: () => formStep(f) }, 'Изменить параметры'));
+      actions.prepend(h('button', { class: 'btn', onclick: () => formStep(f) }, 'Изменить параметры'));
       return;
     }
-    f.password = ''; f.passphrase = ''; // больше не нужны
+    f.password = ''; f.passphrase = ''; f.key = ''; // больше не нужны
     const poll = async () => {
       let v;
       try { v = await api('/api/server/install'); } catch (_) { setTimeout(poll, 1500); return; }
@@ -1486,17 +1542,77 @@ function installServerDialog(prev) {
       log.scrollTop = log.scrollHeight;
       if (v.active) { setTimeout(poll, 1000); return; }
       close.disabled = false;
-      if (v.error) { status.className = 'err-text'; status.textContent = v.error; return; }
-      status.className = '';
-      status.replaceChildren(h('b', null, 'Готово. '), `Добавлены серверы: ${v.added.join(', ')}. Подключитесь, чтобы ими пользоваться.`);
       S = await api('/api/settings');
       renderServers(); refreshServerGeo(true);
+      if (v.error) { status.className = 'err-text'; status.textContent = v.error; return; }
+      status.className = '';
+      const parts = [];
+      if (v.added && v.added.length) parts.push(`добавлены серверы: ${v.added.join(', ')}`);
+      if (v.panel) parts.push(`панель ${PANEL_TITLE[f.panel]} установлена — логин и пароль в разделе «Панели»`);
+      status.replaceChildren(h('b', null, 'Готово: '), parts.join('; ') + '.');
+      const p = v.panel && (S.panels || []).find(x => x.id === v.panel);
+      if (p) actions.prepend(h('button', { class: 'btn primary', onclick: () => openPanel(p) }, 'Открыть панель'));
     };
     poll();
   };
-  const useKeyVal = f => f.key || '';
 
   warnStep();
+}
+
+// ---------- панели ----------
+function panelsBox() {
+  const list = S.panels || [];
+  if (!list.length) return null;
+  return h('div', null,
+    h('h2', null, 'Панели'),
+    h('div', { class: 'panel' }, h('table', { class: 'table' }, h('tbody', null, list.map(p => h('tr', null,
+      h('td', null, h('div', { class: 'cell-main' }, PANEL_TITLE[p.type] || p.type, p.version ? h('span', { class: 'ver' }, ' ', p.version) : null),
+        h('div', { class: 'cell-sub' }, p.host + ' · ' + (p.access === 'public' ? 'из интернета по HTTPS' : 'через SSH-туннель'))),
+      h('td', { class: 'r' }, h('div', { class: 'row end', style: 'flex-wrap:nowrap' },
+        h('button', { class: 'btn small primary', onclick: () => openPanel(p) }, 'Открыть'),
+        h('button', { class: 'btn small', onclick: () => panelCreds(p) }, 'Логин и пароль'),
+        h('button', { class: 'btn small', onclick: async () => {
+          if (!confirm(`Убрать панель ${PANEL_TITLE[p.type]} на ${p.host} из списка? На сервере она останется.`)) return;
+          S.panels = S.panels.filter(x => x.id !== p.id); save(0); await saveNow(); renderServers();
+        } }, 'Убрать')))))))),
+    h('p', { class: 'hint' }, 'Через туннель панель открывается в браузере по адресу 127.0.0.1 — соединение до сервера зашифровано SSH. Туннель живёт 3 часа или до выхода из Naivka.'));
+}
+
+function panelCreds(p) {
+  const row = (label, value) => h('div', { class: 'row', style: 'flex-wrap:nowrap' }, h('span', { class: 'hint', style: 'min-width:80px' }, label), h('code', { class: 'fp grow' }, value),
+    h('button', { class: 'btn small', onclick: async () => { try { await navigator.clipboard.writeText(value); toast('Скопировано'); } catch (_) { toast('Не удалось скопировать', true); } } }, 'Копировать'));
+  const d = openDialog(h('h2', null, `${PANEL_TITLE[p.type]} на ${p.host}`),
+    row('Логин', p.user), row('Пароль', p.pass),
+    p.access === 'public' ? row('Адрес', p.url) : h('p', { class: 'hint' }, `Порт панели на сервере ${p.port}, путь ${p.path} — открывается только через туннель Naivka.`),
+    h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Закрыть')));
+}
+
+function openPanel(p) {
+  if (p.access === 'public' && p.url) {
+    api('/api/panel/open', { id: p.id }).catch(e => toast(e.message, true));
+    return;
+  }
+  const pass = h('input', { type: 'password', placeholder: 'Пароль SSH', autocomplete: 'current-password' });
+  const key = h('textarea', { placeholder: 'или закрытый ключ SSH', spellcheck: 'false', style: 'min-height:70px' });
+  const phrase = h('input', { type: 'password', placeholder: 'пароль ключа (если есть)' });
+  const err = h('div', { class: 'err-text' });
+  const go = h('button', { class: 'btn primary' }, 'Открыть');
+  const d = openDialog(h('h2', null, `Открыть ${PANEL_TITLE[p.type]}`),
+    h('p', { class: 'hint' }, `Naivka подключится к ${p.host} по SSH (ключ сервера проверяется по отпечатку, подтверждённому при установке) и откроет панель в браузере. Пароль SSH не сохраняется.`),
+    pass, h('details', { class: 'more' }, h('summary', null, h('span', null, 'Вход по ключу')), h('div', { class: 'more-body' }, key, phrase)), err,
+    h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Отмена'), go));
+  const submit = async () => {
+    err.textContent = ''; go.disabled = true; go.textContent = 'Подключаюсь…';
+    try {
+      const r = await api('/api/panel/open', { id: p.id, password: pass.value, key: key.value, passphrase: phrase.value });
+      d.close();
+      toast('Панель открывается в браузере');
+      if (ST && ST.os !== 'windows') openDialog(h('p', null, 'Откройте в браузере: ', h('code', null, r.url)));
+    } catch (e) { err.textContent = e.message; go.disabled = false; go.textContent = 'Открыть'; }
+  };
+  go.addEventListener('click', submit);
+  pass.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  pass.focus();
 }
 
 function importLinksDialog() {

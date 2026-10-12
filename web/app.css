@@ -452,3 +452,7 @@ pre.changes { font: 13px/1.5 var(--font); white-space: pre-wrap; margin: 8px 0 0
 .steps { margin: 4px 0 10px; padding-left: 20px; }
 .steps li { margin: 3px 0; }
 code.fp { display: block; font: 13px/1.4 var(--mono); padding: 8px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; word-break: break-all; margin: 6px 0; }
+
+/* атрибут hidden сильнее любого display у компонентов */
+[hidden] { display: none !important; }
+.row code.fp.grow { flex: 1; margin: 0; }

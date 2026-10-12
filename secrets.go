@@ -21,6 +21,13 @@ func sealSettings(s *Settings) *Settings {
 			c.Share.Password = enc
 		}
 	}
+	for i := range c.Panels {
+		if p := &c.Panels[i].Pass; *p != "" && !strings.HasPrefix(*p, secretPrefix) {
+			if enc, err := protectSecret(*p); err == nil {
+				*p = enc
+			}
+		}
+	}
 	for i := range c.Servers {
 		for _, f := range []*string{&c.Servers[i].Password, &c.Servers[i].UUID, &c.Servers[i].ObfsPassword} {
 			if *f != "" && !strings.HasPrefix(*f, secretPrefix) {
@@ -40,6 +47,16 @@ func openSettings(s *Settings) []string {
 			s.Share.Password = plain
 		} else {
 			s.Share.Password = "" // сгенерируется новый
+		}
+	}
+	for i := range s.Panels {
+		if p := &s.Panels[i].Pass; strings.HasPrefix(*p, secretPrefix) {
+			if plain, err := unprotectSecret(*p); err == nil {
+				*p = plain
+			} else {
+				*p = ""
+				problems = append(problems, fmt.Sprintf("панель %s: пароль не расшифровался — сбросьте его на сервере", s.Panels[i].Host))
+			}
 		}
 	}
 	for i := range s.Servers {

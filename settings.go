@@ -66,6 +66,25 @@ type Server struct {
 	PinSHA256 string `json:"pinSHA256,omitempty"`
 }
 
+// Panel — веб-панель на своём сервере (3X-UI или s-ui). Пароль панели шифруется DPAPI, как пароли серверов;
+// пароль SSH не хранится: туннель к панели открывается с ним заново.
+type Panel struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"` // 3x-ui | s-ui
+	Version string `json:"version"`
+	Host    string `json:"host"`    // сервер
+	SSHPort int    `json:"sshPort"` // для туннеля
+	SSHUser string `json:"sshUser"`
+	HostKey string `json:"hostKey"` // отпечаток ключа SSH, подтверждённый при установке
+	Access  string `json:"access"`  // tunnel | public
+	Port    int    `json:"port"`    // порт панели на сервере
+	Path    string `json:"path"`    // секретный путь панели
+	User    string `json:"user"`
+	Pass    string `json:"pass"`
+	URL     string `json:"url"` // для public
+	Added   int64  `json:"added"`
+}
+
 // serverTypes — протоколы, которые Naivka умеет. udp — может ли передавать UDP (голос, игры).
 var serverTypes = map[string]struct{ udp bool }{
 	"naive": {false}, "vless": {true}, "hysteria2": {true}, "tuic": {true},
@@ -146,6 +165,7 @@ type Settings struct {
 
 	Rules          []Rule     `json:"rules"`
 	RuleLists      []RuleList `json:"ruleLists"`      // внешние списки по ссылке
+	Panels         []Panel    `json:"panels"`         // веб-панели, поставленные через «Свой сервер»
 	ExtraRules     string     `json:"extraRules"`     // JSON-массив правил route.rules
 	ExtraOutbounds string     `json:"extraOutbounds"` // JSON-массив outbounds
 	Override       string     `json:"override"`       // JSON-объект, накладывается на итоговый конфиг
@@ -262,6 +282,7 @@ func (s *Settings) fingerprint() string {
 	c.Notify, c.ShowIP, c.Watchdog, c.KillSwitch, c.AutoStart = false, false, false, false, false
 	c.UpdateCheck = false
 	c.TrafficLimitGB, c.TrafficResetDay = 0, 0
+	c.Panels = nil
 	// На ядро влияют только «включён» и «напрямую»; стратегия и фильтры — дело самого zapret.
 	c.Zapret = ZapretSettings{Enabled: s.Zapret.Enabled, RouteDirect: s.Zapret.RouteDirect}
 	c.Telegram = TelegramSettings{Enabled: s.Telegram.Enabled}
@@ -307,6 +328,9 @@ func (s *Settings) normalize() {
 	}
 	if s.RuleLists == nil {
 		s.RuleLists = []RuleList{}
+	}
+	if s.Panels == nil {
+		s.Panels = []Panel{}
 	}
 	for i := range s.RuleLists {
 		s.RuleLists[i].normalize()

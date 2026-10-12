@@ -15,8 +15,8 @@ type ServerInstallView struct{}
 type serverInstaller struct{}
 
 func (a *App) serverInstallRoutes(api func(method, path string, f apiFunc)) {
-	err := errors.New("Установка сервера есть только в Naivka для Windows 10 и 11")
-	for _, p := range []string{"/api/server/hostkey", "/api/server/install"} {
+	err := errors.New("Установка сервера и панели есть только в Naivka для Windows 10 и 11")
+	for _, p := range []string{"/api/server/hostkey", "/api/server/install", "/api/panel/open"} {
 		api("POST", p, func(*http.Request) (any, error) { return nil, err })
 	}
 }
