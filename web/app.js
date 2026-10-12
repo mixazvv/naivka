@@ -397,6 +397,14 @@ function updateStatus() {
   $('#navTitle').textContent = TITLES[p];
   const cs = currentServer();
   $('#navSub').textContent = p === 'on' ? (cs.auto ? `${cs.name}, авто` : cs.name) : (ST.mode === 'tun' || S.mode === 'tun' ? 'режим TUN' : '');
+  navCounts();
+  const hbt = $('#hbToggle');
+  if (hbt) hbt.textContent = p === 'on' || p === 'blocked' ? 'Отключить' : 'Подключить';
+  const hbs = $('#hbSession');
+  if (hbs) hbs.textContent = p === 'on' ? `канал открыт ${fmtDur(Date.now() / 1000 - ST.startedAt)} · ${cs.name}` : TITLES[p].toLowerCase();
+  const sp0 = lastSpeeds();
+  const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
+  document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
   const tbs = $('#tbStatus');
   if (tbs) tbs.textContent = TITLES[p] + (p === 'on' ? ' · ' + cs.name : '');
 
@@ -422,6 +430,33 @@ function updateStatus() {
     patch('coreBox', JSON.stringify([ST.core, ST.download, ST.running, ST.dataDir, ST.protected]), buildCoreBox);
     patch('adminBox', [S.mode, ST.admin, ST.os].join('|'), buildAdminBox);
   }
+}
+
+// Числа на вкладках (видны в теме «Чёрное золото»): серверы, правила, соединения.
+function navCounts() {
+  const counts = { servers: S.servers.length, rules: S.rules.length + (S.ruleLists || []).length, diag: ST && ST.running ? connList.count || 0 : 0 };
+  document.querySelectorAll('.nav-item').forEach(b => {
+    const n = counts[b.dataset.view];
+    let el = b.querySelector('.nav-count');
+    if (!n) { if (el) el.remove(); return; }
+    if (!el) { el = h('span', { class: 'nav-count', 'aria-hidden': 'true' }); b.append(el); }
+    el.textContent = n > 99 ? '99+' : n;
+  });
+}
+
+// Заголовок раздела «проступает» из случайных символов (только в «Чёрном золоте»).
+function decodeTitle(el) {
+  if (!el || REDUCE.matches || document.documentElement.dataset.skin !== 'gold') return;
+  const text = el.textContent;
+  const glyphs = 'АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЭЮЯ0123456789#/<>_';
+  const t0 = performance.now(), dur = 520;
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur);
+    const shown = Math.floor(text.length * k);
+    el.textContent = text.slice(0, shown) + Array.from(text.slice(shown), ch => ch === ' ' ? ' ' : glyphs[Math.random() * glyphs.length | 0]).join('');
+    if (k < 1) requestAnimationFrame(step); else el.textContent = text;
+  };
+  requestAnimationFrame(step);
 }
 
 function notice(kind, text, action) {
@@ -520,6 +555,7 @@ function goNow(v) {
   Object.keys(sigs).forEach(k => delete sigs[k]);
   main.replaceChildren(VIEWS[v]());
   main.scrollTop = 0;
+  decodeTitle(main.querySelector('h1'));
   updateStatus();
   if (v === 'overview') { renderOverviewLive(); renderIP(); refreshIP(false); refreshServerGeo(false); refreshStats(); }
   if (v === 'servers') { renderServers(); refreshProxies(); refreshServerGeo(false); refreshStats(); }
@@ -636,9 +672,10 @@ function viewOverview() {
         h('div', { class: 'hero-text' },
           h('div', { class: 'status-title', id: 'statusTitle' }, '…'),
           h('div', { class: 'sub', id: 'statusSub' }),
-          h('div', { class: 'hero-chips', id: 'heroChips' })))),
+          h('div', { class: 'hero-chips', id: 'heroChips' }),
+          h('div', { class: 'sysline', id: 'sysLine' })))),
     h('div', { id: 'notices' }),
-    h('div', { class: 'card lanes-card', id: 'lanesCard' }, h('div', { id: 'lanesSvg' }), h('div', { class: 'lanes-legend', id: 'lanesLegend' })),
+    h('div', { class: 'card lanes-card', id: 'lanesCard', 'data-tag': 'маршруты' }, h('div', { id: 'lanesSvg' }), h('div', { class: 'lanes-legend', id: 'lanesLegend' })),
     h('div', { class: 'quick' },
       h('label', null, 'Перехват', segmented([['proxy', 'Системный прокси'], ['tun', 'Весь трафик (TUN)']], () => S.mode, v => { S.mode = v; save(); updateStatus(); }, 'Перехват')),
       h('label', null, 'Маршрут', segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); updateStatus(); }, 'Маршрут'))),
@@ -679,6 +716,12 @@ function renderHeroChips() {
       h('span', { class: 'hchip' }, h('span', { class: 'hint' }, '↑'), tnum('h-up', sp.pu + sp.du + sp.zu + sp.tu, fmtSpeed)));
   }
   box.replaceChildren(...chips);
+  const sl = $('#sysLine');
+  if (sl) {
+    const word = { on: 'защищён', off: 'открыт', wait: 'синхронизация…', err: 'сбой', blocked: 'заблокирован' }[p];
+    sl.replaceChildren(h('span', { class: 'sl-key' }, 'Канал /'), h('b', { class: 'sl-val ' + p }, word),
+      p === 'on' && d && d.ms ? h('span', { class: 'sl-ms' }, `· ${d.ms} мс`) : null);
+  }
 }
 
 const ZERO = { pd: 0, pu: 0, dd: 0, du: 0, zd: 0, zu: 0, td: 0, tu: 0 };
@@ -2212,7 +2255,7 @@ function viewSettings() {
 
     h('h2', null, 'Внешний вид'),
     segmented([['dark', 'Тёмная'], ['light', 'Светлая'], ['system', 'Как в Windows'], ['gold', 'Чёрное золото']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
-    h('p', { class: 'hint gold-only' }, 'Чёрный с золотом, срезанные углы и шестиугольники — по мотивам интерфейсов киберпанка. Акцентный цвет и OLED в этой теме свои.'),
+    h('p', { class: 'hint gold-only' }, 'Игровое меню: вкладки сверху, плитки над живыми огнями (они разгораются от трафика), выбранное — золотом. Клавиши 1–6 переключают разделы, Ctrl+Enter подключает. Акцентный цвет и OLED в этой теме свои.'),
     h('div', { class: 'accent-row' }, h('span', { class: 'hint' }, 'Акцент'),
       h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Акцентный цвет' },
         ...ACCENTS.map(([id, name]) => h('button', {
@@ -2396,6 +2439,17 @@ async function boot() {
     try { const fresh = await api('/api/settings'); if (!savePending) { S = fresh; applyTheme(); updateStatus(); if (view === 'servers') renderServers(); } } catch (_) { /* не важно */ }
   };
   window.addEventListener('focus', resync);
+  // Клавиши: 1–6 — разделы, Ctrl+Enter — подключить или отключить.
+  const ORDER = ['overview', 'servers', 'bypass', 'rules', 'diag', 'settings'];
+  document.addEventListener('keydown', e => {
+    if (e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    const t = e.target;
+    const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    if (e.ctrlKey && e.key === 'Enter' && !typing) { e.preventDefault(); toggleConnect(); return; }
+    if (typing || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    const i = /^Digit[1-6]$/.test(e.code) ? +e.code.slice(5) - 1 : -1;
+    if (i >= 0) { e.preventDefault(); go(ORDER[i]); }
+  });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { resync(); refreshState(); } });
   await refreshState();
   if (view === 'conns' || view === 'logs') { diagTab = view; view = 'diag'; }

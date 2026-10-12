@@ -22,7 +22,7 @@
     <div class="tb-edge n" data-edge="n"></div><div class="tb-edge nw" data-edge="nw"></div><div class="tb-edge ne" data-edge="ne"></div>
   </header>
   <div class="shell">
-    <div class="ambient" aria-hidden="true"></div>
+    <div class="ambient" aria-hidden="true"><div class="bokeh"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
     <nav class="nav" aria-label="Разделы">
       <div class="brand">
         <svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="7"/><path d="M6 16h20" stroke="#fff" stroke-width="2.4"/><circle cx="6.5" cy="16" r="3.2" class="logo-bg" stroke="#fff" stroke-width="2.2"/><circle cx="25.5" cy="16" r="3.2" class="logo-bg" stroke="#fff" stroke-width="2.2"/><circle cx="16" cy="16" r="5" fill="#fff"/></svg>
@@ -37,6 +37,13 @@
       <div class="nav-foot"><div class="pill" id="navStatus"><span class="led"></span><span><span id="navTitle">Отключено</span><small id="navSub"></small></span></div></div>
     </nav>
     <main class="main" id="main" tabindex="-1"></main>
+    <footer class="hintbar">
+      <span class="hb-left"><span class="hb-code">NVK</span><span id="hbSession">канал закрыт</span></span>
+      <span class="hb-keys">
+        <span><kbd>1</kbd>–<kbd>6</kbd> Разделы</span>
+        <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> <span id="hbToggle">Подключить</span></span>
+      </span>
+    </footer>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="offline" id="offline" hidden>
