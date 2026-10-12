@@ -79,6 +79,8 @@ type ConfigEnv struct {
 	ServerProbes map[string]int
 	// XrayPorts — серверы xHTTP: тег → локальный вход Xray. Без входа сервер пропускается.
 	XrayPorts map[string]int
+	// InlineLists — скачанные текстовые списки по ссылке: id → домены и IP.
+	InlineLists map[string]*inlineList
 }
 
 func serverTag(sv Server) string { return "s-" + sv.ID }
@@ -385,6 +387,51 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		}
 	}
 
+	// Списки по ссылке — после ваших правил: отдельное правило сильнее целого списка.
+	var listSets []any
+	for _, action := range []string{"block", "direct", "proxy"} {
+		for _, l := range s.RuleLists {
+			if !l.Enabled || l.Action != action {
+				continue
+			}
+			tag := "list-" + l.ID
+			switch l.Format {
+			case "srs", "json":
+				format := "binary"
+				if l.Format == "json" {
+					format = "source"
+				}
+				listSets = append(listSets, M{"type": "remote", "tag": tag, "format": format, "url": l.URL, "update_interval": "1d"})
+			default:
+				il := env.InlineLists[l.ID]
+				if il == nil || len(il.Domains)+len(il.IPs) == 0 {
+					continue // ещё не скачан
+				}
+				var inline []any
+				if len(il.Domains) > 0 {
+					inline = append(inline, M{"domain_suffix": strs(il.Domains)})
+				}
+				if len(il.IPs) > 0 {
+					inline = append(inline, M{"ip_cidr": strs(il.IPs)})
+				}
+				listSets = append(listSets, M{"type": "inline", "tag": tag, "rules": inline})
+			}
+			r := M{"rule_set": []any{tag}}
+			switch action {
+			case "block":
+				r["action"] = "reject"
+				dnsRules = append(dnsRules, M{"rule_set": []any{tag}, "action": "reject"})
+			case "direct":
+				r["outbound"] = tagDirect
+				dnsRules = append(dnsRules, M{"rule_set": []any{tag}, "server": tagDNSDirect})
+			default:
+				r["outbound"] = tagProxy
+				dnsRules = append(dnsRules, M{"rule_set": []any{tag}, "server": tagDNSRemote})
+			}
+			rules = append(rules, r)
+		}
+	}
+
 	if s.AdBlock {
 		rules = append(rules, M{"rule_set": rs("ads"), "action": "reject"})
 		dnsRules = append([]any{M{"rule_set": rs("ads"), "action": "reject"}}, dnsRules...)
@@ -457,6 +504,8 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			"update_interval": "1d",
 		})
 	}
+
+	ruleSets = append(ruleSets, listSets...)
 
 	if udpTarget != "" {
 		var out []any

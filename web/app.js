@@ -490,7 +490,7 @@ function go(v) {
   updateStatus();
   if (v === 'overview') { renderOverviewLive(); renderIP(); refreshIP(false); refreshServerGeo(false); refreshStats(); }
   if (v === 'servers') { renderServers(); refreshProxies(); refreshServerGeo(false); refreshStats(); }
-  if (v === 'rules') { renderRules(); refreshStats(); }
+  if (v === 'rules') { renderRules(); refreshStats(); renderLists(); }
   if (v === 'bypass') refreshAddons();
   if (v === 'settings') { shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify(SELF), selfBox)); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
@@ -1368,6 +1368,14 @@ function viewRules() {
     h('div', { class: 'panel' }, h('table', { class: 'table rules' }, h('tbody', { id: 'ruleBody' }))),
     h('div', { id: 'ruleFoot' }),
 
+    h('div', { class: 'title-row mt-lg' },
+      h('h2', { class: 'flush' }, 'Списки по ссылке'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn', id: 'listRefreshBtn', onclick: refreshListsNow }, 'Обновить'),
+        h('button', { class: 'btn primary', onclick: addListDialog }, 'Добавить список'))),
+    h('p', { class: 'sub' }, 'Готовые списки сайтов из интернета: весь список идёт одним действием и обновляется сам раз в сутки. Ваши правила выше важнее списков.'),
+    h('div', { id: 'listBox' }),
+
     h('div', { class: 'mt-lg' }),
     more('Особые случаи', specialNote(),
       check('ruInsideDirect', 'Сайты, которые работают только из России, всегда напрямую', 'Госуслуги, банки и другие сервисы, которые не пускают иностранные IP.', refreshSpecialNote),
@@ -1379,6 +1387,93 @@ function viewRules() {
     more('Правила sing-box вручную', S.extraRules.trim() ? 'есть свои правила' : 'для опытных',
       h('p', { class: 'hint' }, 'JSON-массив для route.rules, вставляется сразу после ваших правил. Можно ссылаться на outbound proxy, direct, auto и на свои outbounds из настроек.'),
       jsonArea('extraRules', '[\n  { "domain_keyword": ["openai"], "outbound": "proxy" }\n]', true)));
+}
+
+// ---------- списки по ссылке ----------
+const LIST_PRESETS = [
+  ['Заблокированное в России (itdoginfo)', 'https://github.com/itdoginfo/allow-domains/releases/latest/download/russia_inside.srs', 'proxy',
+    'Сайты, недоступные из России. Хорош в режиме «Только заблокированное».'],
+  ['Не пускают пользователей из России (itdoginfo)', 'https://github.com/itdoginfo/allow-domains/releases/latest/download/geoblock.srs', 'proxy',
+    'Сервисы, которые сами закрылись для российских IP: ИИ-сервисы, магазины, облака.'],
+  ['Работает только из России (itdoginfo)', 'https://github.com/itdoginfo/allow-domains/releases/latest/download/russia_outside.srs', 'direct',
+    'Российские сайты, которые не открываются из-за рубежа: их — напрямую.'],
+];
+const LIST_ACTION = { proxy: 'Через сервер', direct: 'Напрямую', block: 'Блокировать' };
+const LIST_FORMAT = { srs: 'sing-box .srs', json: 'sing-box .json', text: 'текстовый список' };
+let LISTS = [];
+
+async function renderLists() {
+  const box = $('#listBox');
+  if (!box) return;
+  try { LISTS = await api('/api/lists'); } catch (_) { /* покажем без счётчиков */ }
+  const info = id => LISTS.find(x => x.id === id) || {};
+  if (!S.ruleLists.length) {
+    box.replaceChildren(h('p', { class: 'hint' }, 'Списков нет. Добавьте готовый или свой по ссылке.'));
+    return;
+  }
+  box.replaceChildren(h('div', { class: 'panel' }, h('table', { class: 'table rules' }, h('tbody', null, S.ruleLists.map(l => {
+    const st = info(l.id);
+    const sub = l.format === 'text'
+      ? (st.error ? h('span', { class: 'err-text' }, st.error) : st.updated ? `${count(st.count || 0, 'запись', 'записи', 'записей')}, обновлён ${fmtTime(st.updated)}` : 'скачается при подключении')
+      : 'скачивает ядро при подключении';
+    return h('tr', null,
+      h('td', null, sw(l.enabled, false, v => { l.enabled = v; save(0); }, '')),
+      h('td', null, h('div', { class: 'cell-main trunc', title: l.url }, l.name), h('div', { class: 'cell-sub' }, LIST_FORMAT[l.format] + ' · ', sub)),
+      h('td', null, h('select', { onchange: e => { l.action = e.target.value; save(0); } },
+        Object.entries(LIST_ACTION).map(([v, t]) => h('option', { value: v, selected: l.action === v }, t)))),
+      h('td', { class: 'r' }, h('button', { class: 'btn small', onclick: () => {
+        if (!confirm(`Удалить список «${l.name}»?`)) return;
+        S.ruleLists = S.ruleLists.filter(x => x !== l); save(0); renderLists();
+      } }, 'Удалить')));
+  })))));
+}
+
+async function refreshListsNow() {
+  const btn = $('#listRefreshBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Обновляю…'; }
+  await saveNow();
+  try { await api('/api/lists/refresh', {}); toast(ST && ST.running ? 'Списки обновлены, переподключаюсь' : 'Списки обновлены'); }
+  catch (e) { toast(e.message.split('\n')[0], true); }
+  if (btn) { btn.disabled = false; btn.textContent = 'Обновить'; }
+  renderLists();
+}
+
+function addListDialog() {
+  const name = h('input', { type: 'text', placeholder: 'Название' });
+  const url = h('input', { type: 'text', placeholder: 'https://…/list.srs, .json или .txt/.lst', spellcheck: 'false' });
+  let action = 'proxy';
+  const err = h('div', { class: 'err-text' });
+  const have = new Set(S.ruleLists.map(l => l.url));
+  const add = (n, u, a) => {
+    u = u.trim();
+    if (!/^https:\/\//.test(u)) { err.textContent = 'Нужна ссылка, начинающаяся с https://'; return false; }
+    if (have.has(u)) { err.textContent = 'Такой список уже есть'; return false; }
+    S.ruleLists.push({ id: rid(), name: n.trim(), url: u, format: '', action: a, enabled: true });
+    return true;
+  };
+  const done = async () => {
+    if (!(await saveNow())) { S.ruleLists = S.ruleLists.filter(l => have.has(l.url)); return; }
+    S = await api('/api/settings');
+    dlg.close(); renderLists();
+    toast(ST && ST.running ? 'Список добавлен — переподключитесь, чтобы он заработал' : 'Список добавлен');
+  };
+  const dlg = openDialog(
+    h('h2', null, 'Добавить список'),
+    h('h3', null, 'Готовые'),
+    h('div', { class: 'choices' }, LIST_PRESETS.map(([n, u, a, d]) => h('div', { class: 'choice' },
+      h('span', { class: 'grow' }, h('b', null, n), h('small', null, `${d} ${LIST_ACTION[a]}.`)),
+      have.has(u) ? h('span', { class: 'hint' }, 'уже есть')
+        : h('button', { class: 'btn small', onclick: () => { if (add(n, u, a)) { save(0); done(); } } }, 'Добавить')))),
+    h('h3', { class: 'mt' }, 'Свой'),
+    h('p', { class: 'hint' }, 'Rule-set sing-box (.srs или .json) или обычный текст: домены и IP по одному в строке, строки hosts тоже подходят. Добавляйте списки только из источников, которым доверяете: список решает, куда пойдёт ваш трафик.'),
+    h('div', { class: 'grid2' }, name, url),
+    h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Действие'), segmented(Object.entries(LIST_ACTION), () => action, v => { action = v; }, 'Действие')),
+    err,
+    h('div', { class: 'row end mt' },
+      h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'),
+      h('button', { class: 'btn primary', onclick: () => { err.textContent = ''; if (add(name.value, url.value, action)) { save(0); done(); } } }, 'Добавить')));
+  dlg.classList.add('wide');
+  url.focus();
 }
 
 const MODE_DESC = {

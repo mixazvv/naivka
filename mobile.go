@@ -25,7 +25,9 @@ const shareTTL = 10 * time.Minute
 
 func (a *App) mobileConfig() ([]byte, error) {
 	s := a.settingsCopy()
-	cfg, err := BuildConfig(s, ConfigEnv{Mobile: true})
+	env := ConfigEnv{Mobile: true}
+	a.fillLists(s, &env, false)
+	cfg, err := BuildConfig(s, env)
 	if err != nil {
 		return nil, err
 	}

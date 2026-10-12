@@ -114,10 +114,11 @@ type Settings struct {
 	TestURL      string `json:"testUrl"`
 	TestInterval string `json:"testInterval"`
 
-	Rules          []Rule `json:"rules"`
-	ExtraRules     string `json:"extraRules"`     // JSON-массив правил route.rules
-	ExtraOutbounds string `json:"extraOutbounds"` // JSON-массив outbounds
-	Override       string `json:"override"`       // JSON-объект, накладывается на итоговый конфиг
+	Rules          []Rule     `json:"rules"`
+	RuleLists      []RuleList `json:"ruleLists"`      // внешние списки по ссылке
+	ExtraRules     string     `json:"extraRules"`     // JSON-массив правил route.rules
+	ExtraOutbounds string     `json:"extraOutbounds"` // JSON-массив outbounds
+	Override       string     `json:"override"`       // JSON-объект, накладывается на итоговый конфиг
 
 	ShowIP         bool             `json:"showIp"` // определять IP и страну через внешние сервисы
 	KillSwitch     bool             `json:"killSwitch"`
@@ -270,6 +271,12 @@ func (s *Settings) normalize() {
 	}
 	if s.Servers == nil {
 		s.Servers = []Server{}
+	}
+	if s.RuleLists == nil {
+		s.RuleLists = []RuleList{}
+	}
+	for i := range s.RuleLists {
+		s.RuleLists[i].normalize()
 	}
 	if s.Rules == nil {
 		s.Rules = []Rule{}
@@ -428,6 +435,14 @@ func (s *Settings) Validate() error {
 	}
 	if _, err := parseDirectDNS(s.DNSDirect); err != nil {
 		return err
+	}
+	if len(s.RuleLists) > maxRuleLists {
+		return fmt.Errorf("Списков по ссылке больше %d — оставьте самые нужные", maxRuleLists)
+	}
+	for _, l := range s.RuleLists {
+		if err := l.validate(); err != nil {
+			return err
+		}
 	}
 	if _, _, err := parseDoH(s.DNSRemote); err != nil {
 		return err

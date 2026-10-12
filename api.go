@@ -265,6 +265,11 @@ func (a *App) routes() http.Handler {
 		return makeBackup(s, req.Password)
 	})
 	api("POST", "/api/restore", a.apiRestore)
+	api("GET", "/api/lists", func(*http.Request) (any, error) { return a.listsView(), nil })
+	api("POST", "/api/lists/refresh", func(*http.Request) (any, error) {
+		err := a.refreshLists()
+		return a.listsView(), err
+	})
 	api("GET", "/api/addons", func(r *http.Request) (any, error) {
 		full := r.URL.Query().Get("full") == "1" // проверка чужого zapret — только для открытого раздела
 		return map[string]any{"updates": a.updatesView(), "zapret": a.zapret.View(), "telegram": a.tgws.View(), "conflict": func() string {

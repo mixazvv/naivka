@@ -143,6 +143,7 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 		env.ZapretDomains = a.zapret.Domains(s)
 	}
 	env.TgWsProxy = s.Telegram.Enabled
+	a.fillLists(s, env, env.APIPort > 0)
 	env.WLServers = a.wl.Servers(s)
 	a.wl.markApplied(env.WLServers)
 	// серверы xHTTP (свои и из подписки) работают через Xray

@@ -39,6 +39,7 @@ type App struct {
 	tgws   *TgWs
 	wl     *WL
 	xray   *Xray
+	lists  *listCache
 
 	restarter serialRunner // перезапуски ядра — по одному
 
@@ -106,6 +107,7 @@ func main() {
 	a.tgws = newTgWs(a)
 	a.wl = newWL(a)
 	a.xray = newXray(a)
+	a.lists = newListCache(a.dir)
 	a.core.OnStop = a.xray.Stop
 	a.core.ExtraEnv = a.fillEnv
 	go a.mon.run()
