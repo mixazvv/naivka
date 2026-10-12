@@ -186,7 +186,7 @@ func newTray(onOpen func(), onMenu func() []menuItem, onCommand func(int)) *tray
 	t.iconOff = iconFromICO(icoOff, int(sm))
 	t.nid = notifyIconData{HWnd: t.hwnd, UID: 1, UFlags: nifMsg | nifIcon | nifTip, UCallbackMessage: wmTray, HIcon: t.iconOff}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
-	setTip(t.nid.SzTip[:], "Naivka")
+	setTip(t.nid.SzTip[:], displayName)
 	procShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&t.nid)))
 	return t
 }
@@ -235,7 +235,7 @@ func (t *tray) Balloon(text string, warn bool) {
 		n.SzInfo = [256]uint16{}
 		n.SzInfoTitle = [64]uint16{}
 		setTip(n.SzInfo[:], text)
-		setTip(n.SzInfoTitle[:], "Naivka")
+		setTip(n.SzInfoTitle[:], displayName)
 		n.DwInfoFlags = 1 // NIIF_INFO
 		if warn {
 			n.DwInfoFlags = 2 // NIIF_WARNING

@@ -23,7 +23,7 @@ const (
 func (a *App) trayMenu() []menuItem {
 	s := a.settingsCopy()
 	st := a.core.Status()
-	items := []menuItem{{Text: "Открыть Naivka", ID: cmdOpen}, {Sep: true}}
+	items := []menuItem{{Text: "Открыть MZ", ID: cmdOpen}, {Sep: true}}
 	switch {
 	case st.Starting:
 		items = append(items, menuItem{Text: "Подключение…", ID: cmdToggle, Disabled: true})
@@ -107,9 +107,9 @@ func (a *App) trayTip() (bool, string) {
 	st := a.core.Status()
 	switch {
 	case st.Blocked:
-		return false, "Naivka: ядро упало, трафик заблокирован"
+		return false, "MZ: ядро упало, трафик заблокирован"
 	case st.Starting:
-		return false, "Naivka: подключение…"
+		return false, "MZ: подключение…"
 	case st.Running:
 		name := ""
 		if cl := a.core.Clash(); cl != nil {
@@ -121,9 +121,9 @@ func (a *App) trayTip() (bool, string) {
 				name = ", " + a.serverName(tag)
 			}
 		}
-		return true, "Naivka: подключено" + name
+		return true, "MZ: подключено" + name
 	}
-	return false, "Naivka: отключено"
+	return false, "MZ: отключено"
 }
 
 func (a *App) trayLoop(t *tray) {

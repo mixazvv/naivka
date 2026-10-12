@@ -116,7 +116,7 @@ func openBackup(raw []byte, password string) ([]byte, error) {
 		return nil, errBackupPassword
 	}
 	if enc.KDF != "pbkdf2-sha256" || enc.Iter < 100_000 || enc.Iter > 10_000_000 {
-		return nil, errors.New("копия зашифрована неизвестным способом — возможно, она от более новой Naivka")
+		return nil, errors.New("копия зашифрована неизвестным способом — возможно, она из более новой версии MZ")
 	}
 	salt, err1 := base64.StdEncoding.DecodeString(enc.Salt)
 	nonce, err2 := base64.StdEncoding.DecodeString(enc.Nonce)

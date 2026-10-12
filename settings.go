@@ -180,10 +180,11 @@ type Settings struct {
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
 	Theme           string           `json:"theme"`       // system | dark | light | gold («Никогда не проси об этом») | blocks («Блоки»)
-	Accent          string           `json:"accent"`      // акцентный цвет: indigo | violet | orchid
+	Accent          string           `json:"accent"`      // акцентный цвет: lime | coral | rose
 	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
 	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
 	NativeFrame     bool             `json:"nativeFrame"` // обычная рамка Windows вместо своей строки заголовка
+	OwnServer       bool             `json:"ownServer"`   // показывать раздел «Свой сервер»
 	Window          *WindowGeom      `json:"window,omitempty"`
 	Zapret          ZapretSettings   `json:"zapret"`
 	Telegram        TelegramSettings `json:"telegram"`
@@ -223,8 +224,9 @@ func DefaultSettings() *Settings {
 		SleepReconnect: true,
 		Notify:         true,
 		Theme:          "dark",
-		Accent:         "indigo",
+		Accent:         "lime",
 		TrayMini:       true,
+		OwnServer:      true,
 		UpdateCheck:    true,
 		Zapret:         ZapretSettings{Strategy: "general", GameFilter: "off", IPSet: "none", RouteDirect: true, Fallback: true},
 		Telegram:       TelegramSettings{Port: 1443},
@@ -237,7 +239,8 @@ func DefaultSettings() *Settings {
 var externalLinks = map[string]string{"feedback": "https://t.me/mixazvv"}
 
 // accents — акцентные цвета интерфейса (сами цвета — в web/app.css).
-var accents = map[string]bool{"indigo": true, "violet": true, "orchid": true}
+// Прежние indigo, violet и orchid при загрузке сменятся на акцент по умолчанию.
+var accents = map[string]bool{"lime": true, "coral": true, "rose": true}
 
 func newID() string {
 	b := make([]byte, 4)
@@ -295,7 +298,7 @@ func (s *Settings) fingerprint() string {
 	c.AutoConnect = false
 	c.ExitWithWindow = false
 	c.Window = nil
-	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame = "", "", false, false, false
+	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer = "", "", false, false, false, false
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
 		c.Servers[i].Fav = false
@@ -537,7 +540,7 @@ func (s *Settings) Validate() error {
 		}
 	}
 	if s.Share.Enabled && (s.Share.Port == s.MixedPort || (s.Telegram.Enabled && s.Share.Port == s.Telegram.Port)) {
-		return fmt.Errorf("Порт раздачи (%d) совпадает с другим портом Naivka — выберите другой", s.Share.Port)
+		return fmt.Errorf("Порт раздачи (%d) совпадает с другим портом MZ — выберите другой", s.Share.Port)
 	}
 	if s.Telegram.Enabled && s.Telegram.Port == s.MixedPort {
 		return fmt.Errorf("Порт локального прокси и порт Telegram совпадают (%d) — сделайте их разными", s.MixedPort)

@@ -59,7 +59,7 @@ func taskXML(exe string) string {
 	user := os.Getenv("USERDOMAIN") + `\` + os.Getenv("USERNAME")
 	return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Naivka: запуск при входе в систему</Description></RegistrationInfo>
+  <RegistrationInfo><Description>MZ: запуск при входе в систему</Description></RegistrationInfo>
   <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>` + xmlEscape(user) + `</UserId><Delay>PT5S</Delay></LogonTrigger></Triggers>
   <Principals><Principal id="Author"><UserId>` + xmlEscape(user) + `</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
   <Settings>

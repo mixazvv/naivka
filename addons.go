@@ -266,4 +266,4 @@ func (a *App) updatesView() UpdatesView {
 	return UpdatesView{Core: core, Zapret: a.zapret.snapshot(), Telegram: a.tgws.snapshot(), Xray: a.xray.snapshot(), Checked: at}
 }
 
-var errNeedAdmin = errors.New("Нужны права администратора: перезапустите Naivka с правами (кнопка на этой странице)")
+var errNeedAdmin = errors.New("Нужны права администратора: перезапустите MZ с правами (кнопка на этой странице)")

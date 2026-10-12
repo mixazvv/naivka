@@ -11,7 +11,7 @@ func TestFingerprintIgnoresUIFields(t *testing.T) {
 	c := s.clone()
 	c.Servers[0], c.Servers[1] = c.Servers[1], c.Servers[0]
 	c.Servers[0].Fav = true
-	c.Accent, c.Oled, c.TrayMini, c.NativeFrame = "orchid", true, false, true
+	c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer = "rose", true, false, true, false
 	if c.fingerprint() != base {
 		t.Fatal("UI-only changes must not require a core restart")
 	}
@@ -23,17 +23,22 @@ func TestFingerprintIgnoresUIFields(t *testing.T) {
 
 func TestNormalizeAccent(t *testing.T) {
 	s := DefaultSettings()
-	s.Accent = "neon"
-	s.normalize()
-	if s.Accent != "indigo" {
-		t.Fatalf("accent = %q, want indigo", s.Accent)
+	for _, old := range []string{"neon", "indigo", "violet", "orchid"} {
+		s.Accent = old
+		s.normalize()
+		if s.Accent != "lime" {
+			t.Fatalf("accent %q → %q, want lime", old, s.Accent)
+		}
 	}
-	s.Accent = "violet"
+	s.Accent = "coral"
 	s.normalize()
-	if s.Accent != "violet" {
-		t.Fatalf("accent = %q, want violet", s.Accent)
+	if s.Accent != "coral" {
+		t.Fatalf("accent = %q, want coral", s.Accent)
 	}
 	if !DefaultSettings().TrayMini {
 		t.Fatal("mini window should be on by default")
+	}
+	if !DefaultSettings().OwnServer {
+		t.Fatal("own server section should be shown by default")
 	}
 }

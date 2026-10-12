@@ -334,7 +334,7 @@ func (u *nativeUI) createMain() {
 		// (под Mica рамка продлена на всё окно). Меню окна страница открывает сама (Alt+Пробел, правый щелчок).
 		style &^= wsSysMenu
 	}
-	hwnd, _, _ := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(u16("Naivka"))),
+	hwnd, _, _ := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(u16(displayName))),
 		style, uintptr(x), uintptr(y), uintptr(width), uintptr(height), 0, 0, hinst, 0)
 	if hwnd == 0 {
 		u.main = nil
@@ -431,7 +431,7 @@ func (u *nativeUI) mainProc(hwnd, msg, wp, lp uintptr) uintptr {
 		}
 		if !u.hinted {
 			u.hinted = true
-			u.t.Balloon("Naivka работает в трее. Щёлкните по значку, чтобы открыть окно.", false)
+			u.t.Balloon("MZ работает в трее. Щёлкните по значку, чтобы открыть окно.", false)
 		}
 		return 0
 	case wmGetMinMaxInfo:
@@ -665,7 +665,7 @@ func (u *nativeUI) createMini() {
 	brush, _, _ := procCreateSolidBrush.Call(uintptr(cref))
 	cls := registerClass("NaivkaMini", u.miniProc, csDropShadow, brush)
 	hinst, _, _ := procGetModuleHandleW.Call(0)
-	hwnd, _, _ := procCreateWindowExW.Call(wsExToolWindow|wsExTopmost, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(u16("Naivka"))),
+	hwnd, _, _ := procCreateWindowExW.Call(wsExToolWindow|wsExTopmost, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(u16(displayName))),
 		wsPopup, 0, 0, 360, uintptr(u.miniH), 0, 0, hinst, 0)
 	if hwnd == 0 {
 		u.mini = nil

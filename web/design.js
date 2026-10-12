@@ -19,7 +19,7 @@ const MINI = !!HOST.mini;
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)');
 
 function hostCmd(cmd, extra) {
-  try { window.chrome.webview.postMessage(JSON.stringify({ cmd, ...extra })); } catch (_) { /* не в окне Naivka */ }
+  try { window.chrome.webview.postMessage(JSON.stringify({ cmd, ...extra })); } catch (_) { /* не в окне MZ */ }
 }
 
 // Naivka сообщает о состоянии окна: развёрнуто, активно, мини-окно показано.
@@ -435,7 +435,7 @@ async function miniRefresh(full) {
       if (full && S.showIp && S.servers.length) { try { srvGeo = await api('/api/geo/servers'); } catch (_) { /* не важно */ } }
       applyTheme();
       renderMini();
-    } catch (_) { /* Naivka перезапускается */ }
+    } catch (_) { /* MZ перезапускается */ }
     finally { miniBusy = false; }
   }
   miniTimer = setTimeout(() => miniRefresh(false), 1000);
@@ -482,7 +482,7 @@ function renderMini() {
       list.length ? h('div', { class: 'mini-list', role: 'group', 'aria-label': 'Сервер' }, ...list)
         : h('div', { class: 'empty' }, 'Серверов пока нет.'),
       h('div', { class: 'mini-foot' },
-        h('button', { class: 'btn small', type: 'button', onclick: () => hostCmd('open') }, 'Открыть Naivka'),
+        h('button', { class: 'btn small', type: 'button', onclick: () => hostCmd('open') }, 'Открыть MZ'),
         S.servers.length > 6 ? h('span', { class: 'hint' }, `ещё ${S.servers.length - 6} в окне`) : null)];
   });
   $('#miniTitle').textContent = TITLES[p];
