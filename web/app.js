@@ -1086,6 +1086,7 @@ function viewServers() {
   return h('div', { class: 'view' },
     h('div', { class: 'title-row' }, h('h1', null, 'Серверы'),
       h('div', { class: 'row' },
+        ST && ST.install ? h('button', { class: 'btn', onclick: () => installServerDialog() }, 'Свой сервер') : null,
         h('button', { class: 'btn', onclick: importLinksDialog }, 'Вставить ссылки'),
         h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
     h('div', { class: 'panel', id: 'srvList' }),
@@ -1359,6 +1360,143 @@ function editServer(srv) {
       } }, isNew ? 'Добавить' : 'Сохранить')));
   const first = dlg.querySelector('dialog .grid2 input');
   if (first) first.focus();
+}
+
+// ---------- установка своего сервера по SSH ----------
+const REALITY_SNI = ['www.microsoft.com', 'dl.google.com', 'www.samsung.com', 'addons.mozilla.org'];
+
+function installServerDialog(prev) {
+  const body = h('div');
+  const dlg = openDialog(h('h2', null, 'Свой сервер'), body);
+  dlg.classList.add('wide');
+
+  // Шаг 1: предупреждение. Без галочки дальше не пустит.
+  const warnStep = () => {
+    const ok = h('input', { type: 'checkbox' });
+    const next = h('button', { class: 'btn primary', disabled: true, onclick: () => formStep(prev || {}) }, 'Дальше');
+    ok.addEventListener('change', () => { next.disabled = !ok.checked; });
+    body.replaceChildren(
+      h('div', { class: 'notice warn' }, h('div', { class: 'grow' },
+        h('b', null, 'Делайте это, только если понимаете, что происходит, и это ваш сервер.'),
+        h('p', { style: 'margin:6px 0 0' }, 'Naivka подключится к серверу по SSH с правами root и изменит его настройки. На сервере, где уже работает что-то важное (сайт, другой VPN, панель управления), установка может ему помешать.'))),
+      h('h3', { class: 'mt' }, 'Что будет сделано на сервере'),
+      h('ul', { class: 'steps' },
+        h('li', null, 'Установится sing-box из официального репозитория SagerNet (через apt). Нужен Debian 11+ или Ubuntu 20.04+.'),
+        h('li', null, 'Появятся VLESS + Reality на TCP (порт 443 или 8443, если 443 занят) и, по желанию, Hysteria2 на UDP со своим сертификатом.'),
+        h('li', null, 'Файл /etc/sing-box/config.json будет перезаписан — прежний сохранится рядом с пометкой .bak.'),
+        h('li', null, 'Служба sing-box включится в автозапуск; если работает ufw, в нём откроются выбранные порты.'),
+        h('li', null, 'По желанию включится BBR — ускорение TCP на дальних каналах (настройка ядра в /etc/sysctl.d).')),
+      h('h3', null, 'Что останется как было'),
+      h('ul', { class: 'steps' },
+        h('li', null, 'SSH, пароли, пользователи, другие программы и их порты.'),
+        h('li', null, 'Пароль и ключ SSH Naivka не сохраняет — они нужны только на время установки.')),
+      h('p', { class: 'hint' }, 'Перед вводом пароля Naivka покажет отпечаток ключа сервера — сверьте его с панелью хостинга или консолью. Скрипт, который выполнится на сервере, можно прочитать заранее. Откатить: на сервере bash install-server.sh --remove.'),
+      h('label', { class: 'check mt' }, ok, h('span', null, h('b', null, 'Понимаю, что делаю, и это мой сервер'))),
+      h('div', { class: 'row mt' },
+        h('button', { class: 'btn', onclick: showScript }, 'Показать скрипт'),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'), next));
+  };
+
+  const showScript = async () => {
+    try {
+      const r = await api('/api/server/script');
+      const ta = h('textarea', { readonly: true, style: 'min-height:420px' });
+      ta.value = r.script;
+      const d2 = openDialog(h('h2', null, 'install-server.sh'), ta, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d2.close() }, 'Закрыть')));
+      d2.classList.add('wide');
+    } catch (e) { toast(e.message, true); }
+  };
+
+  // Шаг 2: адрес, вход, параметры, проверка ключа сервера.
+  const formStep = d => {
+    const f = { host: '', port: 22, user: 'root', password: '', key: '', passphrase: '', sni: REALITY_SNI[0], hy2: true, bbr: true, name: '', ...d };
+    const inp = (key, label, extra = {}) => h('label', { class: 'field' }, h('span', null, label),
+      h(extra.area ? 'textarea' : 'input', { type: extra.type || 'text', value: f[key], placeholder: extra.placeholder, spellcheck: 'false', autocomplete: 'off',
+        style: extra.area ? 'min-height:90px' : null, oninput: e => { f[key] = e.target.value; fp = null; fpBox.replaceChildren(); installBtn.disabled = true; } }),
+      extra.hint ? h('small', { class: 'hint' }, extra.hint) : null);
+    let fp = null;
+    const err = h('div', { class: 'err-text' });
+    const fpBox = h('div');
+    const installBtn = h('button', { class: 'btn primary', disabled: true, onclick: () => runStep(f, fp) }, 'Установить');
+    const useKey = h('input', { type: 'checkbox', checked: !!f.key });
+    const keyBox = h('div', { hidden: !f.key }, h('div', { class: 'grid2' }, inp('key', 'Закрытый ключ SSH', { area: true, placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----' }), inp('passphrase', 'Пароль ключа (если есть)', { type: 'password' })));
+    useKey.addEventListener('change', () => { keyBox.hidden = !useKey.checked; if (!useKey.checked) f.key = ''; });
+    const sniSel = h('select', { onchange: e => { if (e.target.value !== 'custom') { f.sni = e.target.value; sniCustom.hidden = true; } else { sniCustom.hidden = false; sniCustom.focus(); } } },
+      REALITY_SNI.map(v => h('option', { value: v, selected: f.sni === v }, v)), h('option', { value: 'custom', selected: !REALITY_SNI.includes(f.sni) }, 'Свой сайт…'));
+    const sniCustom = h('input', { type: 'text', value: REALITY_SNI.includes(f.sni) ? '' : f.sni, placeholder: 'www.example.com', hidden: REALITY_SNI.includes(f.sni), oninput: e => { f.sni = e.target.value.trim(); } });
+    const check = async () => {
+      err.textContent = ''; fpBox.replaceChildren(h('p', { class: 'hint' }, 'Получаю ключ сервера…'));
+      try {
+        const r = await api('/api/server/hostkey', { host: f.host, port: parseInt(f.port, 10) || 22 });
+        fp = r.fingerprint;
+        const agree = h('input', { type: 'checkbox' });
+        agree.addEventListener('change', () => { installBtn.disabled = !agree.checked; });
+        fpBox.replaceChildren(h('div', { class: 'card mt' },
+          h('p', null, 'Отпечаток ключа сервера (', r.type, '):'),
+          h('code', { class: 'fp' }, fp),
+          h('p', { class: 'hint' }, 'Сверьте его с тем, что показывает хостинг, или с выводом команды на сервере (через консоль в панели хостинга): ', h('code', null, `ssh-keygen -lf /etc/ssh/ssh_host_${r.type === 'ssh-ed25519' ? 'ed25519' : r.type.startsWith('ecdsa') ? 'ecdsa' : 'rsa'}_key.pub`), '. Не совпадает — не продолжайте: возможно, вы подключаетесь не к своему серверу.'),
+          h('label', { class: 'check' }, agree, h('span', null, h('b', null, 'Отпечаток совпадает — это мой сервер')))));
+      } catch (e) { fpBox.replaceChildren(); err.textContent = e.message; }
+    };
+    body.replaceChildren(
+      h('div', { class: 'grid2' },
+        inp('host', 'IP или домен сервера', { placeholder: '203.0.113.10' }),
+        inp('port', 'Порт SSH', { type: 'number' }),
+        inp('user', 'Пользователь', { hint: 'root или пользователь с sudo без пароля' }),
+        inp('password', 'Пароль SSH', { type: 'password', hint: 'Не сохраняется.' })),
+      h('label', { class: 'check' }, useKey, h('span', null, h('b', null, 'Вход по ключу SSH'))),
+      keyBox,
+      h('h3', { class: 'mt' }, 'Параметры'),
+      h('div', { class: 'grid2' },
+        h('label', { class: 'field' }, h('span', null, 'Сайт для маскировки Reality'), sniSel, sniCustom,
+          h('small', { class: 'hint' }, 'Посторонний, заглянувший на ваш сервер, увидит этот сайт. Нужен TLS 1.3 и чтобы он не был заблокирован в России. Лучше всего — сайт у того же хостера, что и сервер (их ищет программа RealiTLScanner).')),
+        inp('name', 'Название', { placeholder: 'как адрес' })),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.hy2, onchange: e => { f.hy2 = e.target.checked; } }),
+        h('span', null, h('b', null, 'Ещё и Hysteria2 (UDP)'), h('small', null, 'Запасной протокол: быстрый на плохом мобильном интернете, но где-то UDP за границу режут. Свой сертификат, Naivka проверяет его по отпечатку.'))),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.bbr, onchange: e => { f.bbr = e.target.checked; } }),
+        h('span', null, h('b', null, 'Включить BBR'), h('small', null, 'Обычно ускоряет загрузку через далёкий сервер. Меняет настройку ядра сервера.'))),
+      err, fpBox,
+      h('div', { class: 'row mt' },
+        h('button', { class: 'btn', onclick: warnStep }, 'Назад'),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn', onclick: check }, 'Проверить ключ сервера'),
+        installBtn));
+  };
+
+  // Шаг 3: установка, журнал с сервера.
+  const runStep = async (f, fp) => {
+    const log = h('pre', { class: 'log', style: 'max-height:360px;min-height:200px' });
+    const status = h('p', { class: 'hint' }, 'Устанавливаю… Это занимает 1–5 минут. Окно можно не закрывать.');
+    const close = h('button', { class: 'btn', disabled: true, onclick: () => dlg.close() }, 'Закрыть');
+    body.replaceChildren(status, log, h('div', { class: 'row end mt' }, close));
+    try {
+      await api('/api/server/install', { host: f.host, port: parseInt(f.port, 10) || 22, user: f.user, password: f.password, key: useKeyVal(f), passphrase: f.passphrase,
+        fingerprint: fp, sni: f.sni, hy2: f.hy2, bbr: f.bbr, name: f.name, confirm: true });
+    } catch (e) {
+      status.className = 'err-text'; status.textContent = e.message; close.disabled = false;
+      body.append(h('button', { class: 'btn mt', onclick: () => formStep(f) }, 'Изменить параметры'));
+      return;
+    }
+    f.password = ''; f.passphrase = ''; // больше не нужны
+    const poll = async () => {
+      let v;
+      try { v = await api('/api/server/install'); } catch (_) { setTimeout(poll, 1500); return; }
+      log.textContent = v.log.join('\n');
+      log.scrollTop = log.scrollHeight;
+      if (v.active) { setTimeout(poll, 1000); return; }
+      close.disabled = false;
+      if (v.error) { status.className = 'err-text'; status.textContent = v.error; return; }
+      status.className = '';
+      status.replaceChildren(h('b', null, 'Готово. '), `Добавлены серверы: ${v.added.join(', ')}. Подключитесь, чтобы ими пользоваться.`);
+      S = await api('/api/settings');
+      renderServers(); refreshServerGeo(true);
+    };
+    poll();
+  };
+  const useKeyVal = f => f.key || '';
+
+  warnStep();
 }
 
 function importLinksDialog() {

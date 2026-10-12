@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -265,6 +268,7 @@ func (a *App) routes() http.Handler {
 		return makeBackup(s, req.Password)
 	})
 	api("POST", "/api/restore", a.apiRestore)
+	a.serverInstallRoutes(api)
 	api("GET", "/api/lists", func(*http.Request) (any, error) { return a.listsView(), nil })
 	api("GET", "/api/traffic", func(*http.Request) (any, error) {
 		return a.traffic.view(time.Now(), 31, a.settingsCopy()), nil
@@ -359,6 +363,7 @@ type stateResp struct {
 	Secrets      bool   `json:"secrets"`   // пароли зашифрованы DPAPI
 	Protected    bool   `json:"protected"` // ядро в Program Files
 	Legacy       bool   `json:"legacy"`    // Windows 7/8
+	Install      bool   `json:"install"`   // есть установка своего сервера по SSH
 }
 
 func (a *App) apiState(*http.Request) (any, error) {
@@ -377,6 +382,7 @@ func (a *App) apiState(*http.Request) (any, error) {
 		Secrets:      encryptSecrets,
 		Protected:    a.core.Protected(),
 		Legacy:       legacyWindows(),
+		Install:      serverInstallSupported,
 	}, nil
 }
 
@@ -553,16 +559,42 @@ func tlsProbe(sv Server) (int, error) {
 	if sv.QUIC {
 		return 0, errors.New("HTTP/3-сервер проверяется только при подключении")
 	}
+	if sv.Type == "hysteria2" || sv.Type == "tuic" {
+		return 0, errors.New("UDP-сервер проверяется только при подключении")
+	}
 	sni := sv.SNI
 	if sni == "" {
 		sni = sv.Host
 	}
 	d := &net.Dialer{Timeout: 8 * time.Second}
+	addr := net.JoinHostPort(sv.Host, strconv.Itoa(sv.Port))
 	start := time.Now()
-	conn, err := tls.DialWithDialer(d, "tcp", net.JoinHostPort(sv.Host, strconv.Itoa(sv.Port)), &tls.Config{
-		ServerName: sni,
-		NextProtos: []string{"h2", "http/1.1"},
-	})
+	if sv.Type == "shadowsocks" || (sv.Type == "vless" && sv.Security == "none") { // без TLS — только TCP
+		conn, err := d.Dial("tcp", addr)
+		if err != nil {
+			return 0, err
+		}
+		conn.Close()
+		return int(time.Since(start) / time.Millisecond), nil
+	}
+	cfg := &tls.Config{ServerName: sni, NextProtos: []string{"h2", "http/1.1"}}
+	if sv.PinSHA256 != "" { // свой сертификат: проверяем отпечаток ключа, а не удостоверяющий центр
+		cfg.InsecureSkipVerify = true
+		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) > 0 {
+				if der, err := x509.MarshalPKIXPublicKey(cs.PeerCertificates[0].PublicKey); err == nil {
+					h := sha256.Sum256(der)
+					if base64.StdEncoding.EncodeToString(h[:]) == sv.PinSHA256 {
+						return nil
+					}
+				}
+			}
+			return errors.New("сертификат сервера не совпал с отпечатком — возможно, подмена")
+		}
+	} else if sv.Insecure {
+		cfg.InsecureSkipVerify = true
+	}
+	conn, err := tls.DialWithDialer(d, "tcp", addr, cfg)
 	if err != nil {
 		return 0, err
 	}

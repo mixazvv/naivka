@@ -60,6 +60,10 @@ type Server struct {
 
 	// Shadowsocks
 	Method string `json:"method,omitempty"`
+
+	// Hysteria2, TUIC, Trojan, AnyTLS: свой сертификат сервера, проверяемый по SHA-256 открытого ключа
+	// (base64) вместо удостоверяющего центра — так ставит серверы «Свой сервер» в Naivka.
+	PinSHA256 string `json:"pinSHA256,omitempty"`
 }
 
 // serverTypes — протоколы, которые Naivka умеет. udp — может ли передавать UDP (голос, игры).
@@ -615,6 +619,11 @@ func parseDirectDNS(v string) (directDNS, error) {
 // validateServerProto — проверки новых протоколов (Naive и VLESS проверяются в Validate).
 func validateServerProto(sv Server) error {
 	bad := func(what string) error { return fmt.Errorf("У сервера «%s» %s", sv.Name, what) }
+	if sv.PinSHA256 != "" {
+		if b, err := base64.StdEncoding.DecodeString(sv.PinSHA256); err != nil || len(b) != 32 {
+			return bad("неверный отпечаток ключа сертификата (нужен SHA-256 в base64)")
+		}
+	}
 	switch sv.Type {
 	case "hysteria2":
 		if sv.Password == "" {

@@ -20,6 +20,7 @@ func TestProtocolLinks(t *testing.T) {
 		"trojan://pass@tr.example.com#TrojanTCP",
 		"anytls://pw@any.example.com:443/?sni=any.example.com&insecure=0#AnyTLS",
 		ssLegacy, ssSIP002, ss2022,
+		"hysteria2://p@1.2.3.4:8443/?sni=www.example.com&obfs=salamander&obfs-password=o&pubkey-sha256=" + "47DEQpj8HBSa%2B%2FTImW%2B5JCeuQeRkm5NMpJWZG3hSuFU%3D" + "#Pinned",
 	}
 	text := ""
 	for _, l := range links {
@@ -50,6 +51,13 @@ func TestProtocolLinks(t *testing.T) {
 	}
 	if ss := servers[8]; ss.Method != "2022-blake3-aes-128-gcm" || ss.Password != testSS2022Key {
 		t.Errorf("ss 2022: %+v", ss)
+	}
+	pinned := servers[9]
+	if pinned.PinSHA256 != "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=" {
+		t.Errorf("отпечаток: %+v", pinned)
+	}
+	if tls := protoOutbound(pinned, "x")["tls"].(M); tls["insecure"] != nil || tls["certificate_public_key_sha256"] == nil {
+		t.Errorf("TLS с отпечатком: %v", tls)
 	}
 
 	// ссылка → сервер → ссылка → сервер: ничего не теряется
@@ -84,6 +92,7 @@ func TestProtocolValidation(t *testing.T) {
 		"trojan://p@t.example.com?security=reality",                                                                 // только TLS
 		"ss://" + base64.StdEncoding.EncodeToString([]byte("rc4-md5:p")) + "@s.example.com:1#x",                     // старый шифр
 		"ss://2022-blake3-aes-256-gcm:short@s.example.com:1",                                                        // ключ не той длины
+		"hysteria2://p@h.example.com?pubkey-sha256=bm90LWEtaGFzaA%3D%3D",                                            // отпечаток не SHA-256
 		"ss://" + base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:p")) + "@s.example.com:1?plugin=obfs-local", // плагин
 	} {
 		if sv, errs := ParseShareLinks(l); len(errs) == 0 {

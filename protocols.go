@@ -55,7 +55,8 @@ func parseHysteria2(u *url.URL) (Server, error) {
 	}
 	q := u.Query()
 	sv := Server{ID: newID(), Type: "hysteria2", Host: u.Hostname(), Port: port, Password: userSecret(u),
-		SNI: q.Get("sni"), Insecure: truthy(q.Get("insecure")), Obfs: q.Get("obfs"), ObfsPassword: q.Get("obfs-password")}
+		SNI: q.Get("sni"), Insecure: truthy(q.Get("insecure")), Obfs: q.Get("obfs"), ObfsPassword: q.Get("obfs-password"),
+		PinSHA256: q.Get("pubkey-sha256")}
 	if v, err := strconv.Atoi(q.Get("upmbps")); err == nil {
 		sv.UpMbps = v
 	}
@@ -78,7 +79,8 @@ func parseTUIC(u *url.URL) (Server, error) {
 	pass, _ := u.User.Password()
 	sv := Server{ID: newID(), Type: "tuic", Host: u.Hostname(), Port: port, UUID: u.User.Username(), Password: pass,
 		SNI: q.Get("sni"), ALPN: q.Get("alpn"), Insecure: truthy(q.Get("allow_insecure")) || truthy(q.Get("insecure")),
-		Congestion: orDefault(q.Get("congestion_control"), "bbr"), UDPRelay: orDefault(q.Get("udp_relay_mode"), "native")}
+		Congestion: orDefault(q.Get("congestion_control"), "bbr"), UDPRelay: orDefault(q.Get("udp_relay_mode"), "native"),
+		PinSHA256: q.Get("pubkey-sha256")}
 	sv.Name = linkName(u, sv.Host)
 	return sv, validateServerProto(sv)
 }
@@ -103,7 +105,7 @@ func parseTrojan(u *url.URL) (Server, error) {
 	sv := Server{ID: newID(), Type: "trojan", Host: u.Hostname(), Port: port, Password: userSecret(u), Security: "tls",
 		SNI: orDefault(q.Get("sni"), q.Get("peer")), Fingerprint: orDefault(q.Get("fp"), "chrome"), ALPN: q.Get("alpn"),
 		Transport: tr, Path: q.Get("path"), HostHeader: q.Get("host"), ServiceName: q.Get("serviceName"),
-		Insecure: truthy(q.Get("allowInsecure")) || truthy(q.Get("insecure"))}
+		Insecure: truthy(q.Get("allowInsecure")) || truthy(q.Get("insecure")), PinSHA256: q.Get("pubkey-sha256")}
 	sv.Name = linkName(u, sv.Host)
 	return sv, validateServerProto(sv)
 }
@@ -118,7 +120,8 @@ func parseAnyTLS(u *url.URL) (Server, error) {
 	}
 	q := u.Query()
 	sv := Server{ID: newID(), Type: "anytls", Host: u.Hostname(), Port: port, Password: userSecret(u),
-		SNI: q.Get("sni"), Fingerprint: orDefault(q.Get("fp"), "chrome"), ALPN: q.Get("alpn"), Insecure: truthy(q.Get("insecure"))}
+		SNI: q.Get("sni"), Fingerprint: orDefault(q.Get("fp"), "chrome"), ALPN: q.Get("alpn"), Insecure: truthy(q.Get("insecure")),
+		PinSHA256: q.Get("pubkey-sha256")}
 	sv.Name = linkName(u, sv.Host)
 	return sv, validateServerProto(sv)
 }
@@ -208,6 +211,8 @@ func shareLinkProto(sv Server) string {
 		return "?" + q.Encode()
 	}
 	secret := func(s string) string { return url.PathEscape(s) }
+	// Naivka-овский параметр: другие клиенты его не знают и такой сервер без своего сертификата не примут.
+	set("pubkey-sha256", sv.PinSHA256)
 	switch sv.Type {
 	case "hysteria2":
 		set("sni", sv.SNI)
@@ -272,7 +277,9 @@ func protoTLS(sv Server, utls bool, defaultALPN []string) M {
 	} else if len(defaultALPN) > 0 {
 		t["alpn"] = strs(defaultALPN)
 	}
-	if sv.Insecure {
+	if sv.PinSHA256 != "" {
+		t["certificate_public_key_sha256"] = []any{sv.PinSHA256}
+	} else if sv.Insecure {
 		t["insecure"] = true
 	}
 	return t
