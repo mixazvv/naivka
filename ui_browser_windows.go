@@ -12,7 +12,7 @@ type browserUI struct {
 func newUI(a *App) uiHost {
 	enableDPIAwareness()
 	u := &browserUI{a: a}
-	u.t = newTray(func() { u.Show() }, a.trayMenu, a.trayCommand)
+	u.t = newTray(func() { u.Show() }, a.trayMenu, a.trayCommand, defaultLogoColors(a.settingsCopy()))
 	go a.trayLoop(u.t)
 	return u
 }
@@ -29,3 +29,4 @@ func (u *browserUI) Notify(text string, warn bool) { u.t.Balloon(text, warn) }
 func (u *browserUI) Refresh()                      { on, tip := u.a.trayTip(); u.t.SetState(on, tip) }
 func (u *browserUI) Close()                        { u.t.Remove() }
 func (u *browserUI) SetTheme(bool)                 {}
+func (u *browserUI) SetLogo(c logoColors)          { u.t.SetLogo(c) }

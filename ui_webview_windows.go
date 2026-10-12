@@ -117,19 +117,21 @@ type nativeUI struct {
 	creating bool
 	hinted   bool
 	dark     bool
-	build    uint32 // номер сборки Windows
-	miniH    int    // высота мини-окна в пикселях CSS (её сообщает страница)
+	logo     logoColors
+	winIcons [2]uintptr // значки главного окна (большой и маленький)
+	build    uint32     // номер сборки Windows
+	miniH    int        // высота мини-окна в пикселях CSS (её сообщает страница)
 	miniHid  time.Time
 	mu       sync.Mutex
 }
 
 func newUI(a *App) uiHost {
 	enableDPIAwareness()
-	u := &nativeUI{a: a, dark: a.settingsCopy().Theme != "light", miniH: 460}
+	u := &nativeUI{a: a, dark: true, logo: defaultLogoColors(a.settingsCopy()), miniH: 460}
 	if v := windows.RtlGetVersion(); v != nil {
 		u.build = v.BuildNumber
 	}
-	u.t = newTray(u.trayClick, a.trayMenu, a.trayCommand)
+	u.t = newTray(u.trayClick, a.trayMenu, a.trayCommand, u.logo)
 	go a.trayLoop(u.t)
 	return u
 }
@@ -344,8 +346,7 @@ func (u *nativeUI) createMain() {
 	}
 	w.hwnd = hwnd
 	dpi = dpiOf(hwnd)
-	procSendMessageW.Call(hwnd, wmSetIcon, 1, iconFromICO(icoOn, 32*dpi/96))
-	procSendMessageW.Call(hwnd, wmSetIcon, 0, iconFromICO(icoOn, 16*dpi/96))
+	u.setWindowIcons()
 	if !classic && u.build >= 22621 && dwmSet(hwnd, 38, 2) { // DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_MAINWINDOW (Mica)
 		m := [4]int32{-1, -1, -1, -1}
 		if r, _, _ := procDwmExtendFrame.Call(hwnd, uintptr(unsafe.Pointer(&m))); r == 0 {
@@ -565,6 +566,39 @@ func (u *nativeUI) restoreGeom() bool {
 	}
 	procSetWindowPos.Call(u.main.hwnd, 0, uintptr(g.X), uintptr(g.Y), uintptr(g.W), uintptr(g.H), swpNoZOrder|swpNoActivate)
 	return g.Max
+}
+
+// SetLogo перекрашивает значок в трее и у окна (заголовок, панель задач, Alt+Tab).
+func (u *nativeUI) SetLogo(c logoColors) {
+	u.mu.Lock()
+	same := u.logo == c
+	u.logo = c
+	u.mu.Unlock()
+	if same {
+		return
+	}
+	u.t.SetLogo(c)
+	u.t.Do(u.setWindowIcons)
+}
+
+// setWindowIcons ставит главному окну значки в текущих цветах. Вызывается в потоке интерфейса.
+func (u *nativeUI) setWindowIcons() {
+	if u.main == nil || u.main.hwnd == 0 {
+		return
+	}
+	u.mu.Lock()
+	c := u.logo
+	u.mu.Unlock()
+	dpi := dpiOf(u.main.hwnd)
+	old := u.winIcons
+	u.winIcons = [2]uintptr{logoIcon(32*dpi/96, c, icoOn), logoIcon(16*dpi/96, c, icoOn)}
+	procSendMessageW.Call(u.main.hwnd, wmSetIcon, 1, u.winIcons[0])
+	procSendMessageW.Call(u.main.hwnd, wmSetIcon, 0, u.winIcons[1])
+	for _, h := range old {
+		if h != 0 {
+			procDestroyIcon.Call(h)
+		}
+	}
 }
 
 // SetTheme красит рамку окна под тему интерфейса.

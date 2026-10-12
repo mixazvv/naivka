@@ -257,8 +257,24 @@ function accentVars(hex) {
 function applyAccent(v) {
   const root = document.documentElement;
   const hex = parseHex(v) || ACCENT_DEFAULT;
-  if (root.dataset.skin || hex === ACCENT_DEFAULT) { ACCENT_VARS.forEach(k => root.style.removeProperty(k)); return; }
-  for (const [k, val] of Object.entries(accentVars(hex))) root.style.setProperty(k, val);
+  if (root.dataset.skin || hex === ACCENT_DEFAULT) ACCENT_VARS.forEach(k => root.style.removeProperty(k));
+  else for (const [k, val] of Object.entries(accentVars(hex))) root.style.setProperty(k, val);
+  syncLogo();
+}
+
+// Значок в трее и у окна — того же цвета, что логотип на странице (с учётом стиля и своего акцента).
+// Пока цвет подбирается в палитре, Naivka получает его не чаще раза в 0,3 с.
+let logoSent = '', logoTimer = 0;
+function syncLogo() {
+  if (!S) return;
+  clearTimeout(logoTimer);
+  logoTimer = setTimeout(() => {
+    const cs = getComputedStyle(document.documentElement);
+    const bg = parseHex(cs.getPropertyValue('--logo')), ink = parseHex(cs.getPropertyValue('--logo-ink'));
+    if (!bg || !ink || bg + ink === logoSent) return;
+    logoSent = bg + ink;
+    api('/api/window/logo', { bg, ink }).catch(() => { logoSent = ''; });
+  }, 300);
 }
 
 // accentNotes — чем свой цвет может мешать: плохо виден, путается с «напрямую», ошибкой или ожиданием.

@@ -87,6 +87,18 @@ func (a *App) routes() http.Handler {
 		a.ui.SetTheme(req.Dark)
 		return nil, nil
 	})
+	// Страница сообщает цвета логотипа, и значок в трее и у окна перекрашивается вместе с ней.
+	api("POST", "/api/window/logo", func(r *http.Request) (any, error) {
+		var c logoColors
+		if err := decode(r, &c); err != nil {
+			return nil, err
+		}
+		if !c.valid() {
+			return nil, errors.New("цвета значка — в формате #RRGGBB")
+		}
+		a.ui.SetLogo(c)
+		return nil, nil
+	})
 	api("GET", "/api/state", a.apiState)
 	api("GET", "/api/settings", func(*http.Request) (any, error) {
 		a.mu.Lock()

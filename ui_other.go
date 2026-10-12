@@ -20,3 +20,4 @@ func (u *consoleUI) Notify(string, bool) {}
 func (u *consoleUI) Refresh()            {}
 func (u *consoleUI) Close()              {}
 func (u *consoleUI) SetTheme(bool)       {}
+func (u *consoleUI) SetLogo(logoColors)  {}

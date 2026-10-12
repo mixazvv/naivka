@@ -33,6 +33,7 @@ var (
 	procGetCursorPos        = user32.NewProc("GetCursorPos")
 	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
 	procCreateIconFromRes   = user32.NewProc("CreateIconFromResourceEx")
+	procDestroyIcon         = user32.NewProc("DestroyIcon")
 	procGetSystemMetrics    = user32.NewProc("GetSystemMetrics")
 	procRegisterWindowMsgW  = user32.NewProc("RegisterWindowMessageW")
 	procSetProcessDpiCtx    = user32.NewProc("SetProcessDpiAwarenessContext")
@@ -117,6 +118,7 @@ type tray struct {
 	nid        notifyIconData
 	iconOn     uintptr
 	iconOff    uintptr
+	connected  bool
 	taskbarMsg uint32
 	onOpen     func()
 	onMenu     func() []menuItem
@@ -160,6 +162,26 @@ func iconFromICO(ico []byte, want int) uintptr {
 	return h
 }
 
+// iconFromPNG создаёт HICON из PNG (Windows принимает PNG как картинку значка с Vista).
+func iconFromPNG(b []byte, size int) uintptr {
+	if len(b) == 0 {
+		return 0
+	}
+	h, _, _ := procCreateIconFromRes.Call(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 1, 0x00030000, uintptr(size), uintptr(size), 0)
+	return h
+}
+
+// logoIcon — значок нужного размера в заданных цветах; если Windows не приняла картинку,
+// берётся значок из .ico.
+func logoIcon(size int, c logoColors, fallback []byte) uintptr {
+	if c.valid() {
+		if h := iconFromPNG(logoPNG(size, c), size); h != 0 {
+			return h
+		}
+	}
+	return iconFromICO(fallback, size)
+}
+
 func setTip(dst []uint16, s string) {
 	u, _ := syscall.UTF16FromString(s)
 	if len(u) > len(dst) {
@@ -169,7 +191,7 @@ func setTip(dst []uint16, s string) {
 	copy(dst, u)
 }
 
-func newTray(onOpen func(), onMenu func() []menuItem, onCommand func(int)) *tray {
+func newTray(onOpen func(), onMenu func() []menuItem, onCommand func(int), logo logoColors) *tray {
 	runtime.LockOSThread()
 	t := &tray{onOpen: onOpen, onMenu: onMenu, onCommand: onCommand}
 	theTray = t
@@ -182,8 +204,8 @@ func newTray(onOpen func(), onMenu func() []menuItem, onCommand func(int)) *tray
 	t.hwnd, _, _ = procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(cls)), 0, 0, 0, 0, 0, 0, ^uintptr(2), 0, hinst, 0)
 	t.taskbarMsg = uint32(must(procRegisterWindowMsgW.Call(uintptr(unsafe.Pointer(u16("TaskbarCreated"))))))
 	sm, _, _ := procGetSystemMetrics.Call(49) // SM_CXSMICON — с учётом масштаба экрана
-	t.iconOn = iconFromICO(icoOn, int(sm))
-	t.iconOff = iconFromICO(icoOff, int(sm))
+	t.iconOn = logoIcon(int(sm), logo, icoOn)
+	t.iconOff = logoIcon(int(sm), logoOff, icoOff)
 	t.nid = notifyIconData{HWnd: t.hwnd, UID: 1, UFlags: nifMsg | nifIcon | nifTip, UCallbackMessage: wmTray, HIcon: t.iconOff}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	setTip(t.nid.SzTip[:], "Naivka")
@@ -217,6 +239,7 @@ func (t *tray) Do(f func()) {
 func (t *tray) SetState(connected bool, tip string) {
 	t.Do(func() {
 		t.nid.UFlags = nifIcon | nifTip
+		t.connected = connected
 		if connected {
 			t.nid.HIcon = t.iconOn
 		} else {
@@ -225,6 +248,27 @@ func (t *tray) SetState(connected bool, tip string) {
 		t.nid.SzTip = [128]uint16{}
 		setTip(t.nid.SzTip[:], tip)
 		procShellNotifyIconW.Call(nimModify, uintptr(unsafe.Pointer(&t.nid)))
+	})
+}
+
+// SetLogo перекрашивает значок «подключено» под цвет интерфейса.
+func (t *tray) SetLogo(c logoColors) {
+	t.Do(func() {
+		sm, _, _ := procGetSystemMetrics.Call(49)
+		h := logoIcon(int(sm), c, icoOn)
+		if h == 0 {
+			return
+		}
+		old := t.iconOn
+		t.iconOn = h
+		if t.connected {
+			t.nid.UFlags = nifIcon
+			t.nid.HIcon = h
+			procShellNotifyIconW.Call(nimModify, uintptr(unsafe.Pointer(&t.nid)))
+		}
+		if old != 0 {
+			procDestroyIcon.Call(old)
+		}
 	})
 }
 

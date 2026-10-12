@@ -12,6 +12,7 @@ type uiHost interface {
 	Run(showWindow bool) // цикл интерфейса, блокирует
 	Show()
 	SetTheme(dark bool)
+	SetLogo(c logoColors) // перекрасить значок под интерфейс
 	Notify(text string, warn bool)
 	Refresh() // обновить подсказку и меню в трее
 	Close()
