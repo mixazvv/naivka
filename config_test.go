@@ -125,3 +125,48 @@ func TestTwitchAdFreeConfig(t *testing.T) {
 		t.Errorf("правила плейлистов: tcp=%d udp=%d", tcp, udp)
 	}
 }
+
+func TestDirectDNS(t *testing.T) {
+	for in, want := range map[string]directDNS{
+		"local":                           {Kind: "local"},
+		"77.88.8.8":                       {Kind: "udp", Host: "77.88.8.8"},
+		dnsYandexDoH:                      {Kind: "https", Host: "common.dot.dns.yandex.net", Path: "/dns-query"},
+		"tls://common.dot.dns.yandex.net": {Kind: "tls", Host: "common.dot.dns.yandex.net"},
+		"tls://1.1.1.1:853":               {Kind: "tls", Host: "1.1.1.1", Port: 853},
+		"https://1.1.1.1/dns-query":       {Kind: "https", Host: "1.1.1.1", Path: "/dns-query"},
+	} {
+		if got, err := parseDirectDNS(in); err != nil || got != want {
+			t.Errorf("%s: %+v %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"", "dns.example.com", "udp://1.1.1.1", "tls://host/path", "https://u:p@host/q", "tls://host:99999"} {
+		if _, err := parseDirectDNS(bad); err == nil {
+			t.Errorf("%q принят", bad)
+		}
+	}
+
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Type: "naive", Host: "nl.example.com", Port: 443}}
+	s.normalize()
+	if s.DNSDirect != dnsYandexDoH {
+		t.Errorf("по умолчанию DNS напрямую не зашифрован: %s", s.DNSDirect)
+	}
+	cfg, err := BuildConfig(s, ConfigEnv{APIPort: 9090})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(cfg["dns"])
+	js := string(b)
+	if !contains(js, `"type":"https","tag":"dns-direct","server":"common.dot.dns.yandex.net","domain_resolver":"dns-bootstrap"`) &&
+		!contains(js, `"domain_resolver":"dns-bootstrap"`) {
+		t.Errorf("нет DoH напрямую с bootstrap: %s", js)
+	}
+	if !contains(js, `"tag":"dns-bootstrap","type":"local"`) && !contains(js, `"type":"local","tag":"dns-bootstrap"`) {
+		t.Errorf("нет dns-bootstrap: %s", js)
+	}
+	s.DNSDirect = "https://1.1.1.1/dns-query"
+	cfg, _ = BuildConfig(s, ConfigEnv{APIPort: 9090})
+	if b, _ := json.Marshal(cfg["dns"]); contains(string(b), "dns-bootstrap") {
+		t.Error("для DoH по IP bootstrap не нужен")
+	}
+}

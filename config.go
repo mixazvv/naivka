@@ -498,11 +498,25 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 
 	// ---------- dns ----------
-	var dnsDirect M
-	if s.DNSDirect == "local" {
-		dnsDirect = M{"type": "local", "tag": tagDNSDirect}
-	} else {
-		dnsDirect = M{"type": "udp", "tag": tagDNSDirect, "server": s.DNSDirect}
+	dd, err := parseDirectDNS(s.DNSDirect)
+	if err != nil {
+		return nil, err
+	}
+	dnsServers := []any{}
+	dnsDirect := M{"type": dd.Kind, "tag": tagDNSDirect}
+	if dd.Kind != "local" {
+		dnsDirect["server"] = dd.Host
+	}
+	if dd.Port > 0 {
+		dnsDirect["server_port"] = dd.Port
+	}
+	if dd.Path != "" && dd.Path != "/dns-query" {
+		dnsDirect["path"] = dd.Path
+	}
+	if dd.Encrypted() && !isIP(dd.Host) {
+		// Адрес самого DoH/DoT-сервера узнаём у системного DNS — провайдер увидит только его имя.
+		dnsServers = append(dnsServers, M{"type": "local", "tag": "dns-bootstrap"})
+		dnsDirect["domain_resolver"] = "dns-bootstrap"
 	}
 	host, path, err := parseDoH(s.DNSRemote)
 	if err != nil {
@@ -524,7 +538,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		dnsRemote["domain_resolver"] = tagDNSDirect
 	}
 	dns := M{
-		"servers": []any{dnsDirect, dnsRemote},
+		"servers": append([]any{dnsDirect, dnsRemote}, dnsServers...),
 		"final":   dnsFinal,
 	}
 	if len(dnsRules) > 0 {

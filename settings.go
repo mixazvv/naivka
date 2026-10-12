@@ -107,7 +107,7 @@ type Settings struct {
 
 	MixedPort       int    `json:"mixedPort"`
 	DNSRemote       string `json:"dnsRemote"` // DoH через сервер: IP, домен или https://host/path
-	DNSDirect       string `json:"dnsDirect"` // UDP-DNS напрямую: IP или "local"
+	DNSDirect       string `json:"dnsDirect"` // DNS напрямую: https://… (DoH), tls://… (DoT), IP (обычный UDP) или "local"
 	IPv4Only        bool   `json:"ipv4Only"`
 	RuleSetViaProxy bool   `json:"ruleSetViaProxy"`
 
@@ -150,7 +150,7 @@ func DefaultSettings() *Settings {
 		UDPDirect:      true,
 		MixedPort:      2080,
 		DNSRemote:      "1.1.1.1",
-		DNSDirect:      "77.88.8.8",
+		DNSDirect:      dnsYandexDoH,
 		IPv4Only:       true,
 		TestURL:        "https://www.gstatic.com/generate_204",
 		TestInterval:   "3m",
@@ -426,8 +426,8 @@ func (s *Settings) Validate() error {
 	if u, err := url.Parse(s.TestURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return errors.New("Адрес для проверки серверов должен начинаться с http:// или https://")
 	}
-	if s.DNSDirect != "local" && net.ParseIP(s.DNSDirect) == nil {
-		return errors.New("«DNS напрямую» должен быть IP-адресом или словом local")
+	if _, err := parseDirectDNS(s.DNSDirect); err != nil {
+		return err
 	}
 	if _, _, err := parseDoH(s.DNSRemote); err != nil {
 		return err
@@ -487,6 +487,52 @@ func parseDoH(v string) (host, path string, err error) {
 		return "", "", errors.New("DNS через сервер: укажите IP, домен или https://адрес/путь")
 	}
 	return v, "", nil
+}
+
+// Зашифрованный DNS Яндекса: российские сайты получают «свои» адреса, как с обычным DNS провайдера,
+// но провайдер не видит, какие сайты вы открываете.
+const dnsYandexDoH = "https://common.dot.dns.yandex.net/dns-query"
+
+// directDNS — как спрашивать DNS для сайтов, которые идут напрямую.
+type directDNS struct {
+	Kind string // local | udp | https | tls
+	Host string // IP или домен
+	Port int
+	Path string // только https
+}
+
+func (d directDNS) Encrypted() bool { return d.Kind == "https" || d.Kind == "tls" }
+
+// parseDirectDNS: «local», IP (обычный UDP), https://хост/путь (DoH) или tls://хост[:порт] (DoT).
+func parseDirectDNS(v string) (directDNS, error) {
+	v = strings.TrimSpace(v)
+	bad := errors.New("«DNS напрямую»: укажите https://адрес/путь (DoH), tls://адрес (DoT), IP или local")
+	switch {
+	case v == "local":
+		return directDNS{Kind: "local"}, nil
+	case net.ParseIP(v) != nil:
+		return directDNS{Kind: "udp", Host: v}, nil
+	case strings.HasPrefix(v, "https://"), strings.HasPrefix(v, "tls://"):
+		u, err := url.Parse(v)
+		if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" {
+			return directDNS{}, bad
+		}
+		d := directDNS{Kind: u.Scheme, Host: u.Hostname()}
+		if p := u.Port(); p != "" {
+			n, err := strconv.Atoi(p)
+			if err != nil || n < 1 || n > 65535 {
+				return directDNS{}, bad
+			}
+			d.Port = n
+		}
+		if d.Kind == "https" {
+			d.Path = u.Path
+		} else if u.Path != "" && u.Path != "/" {
+			return directDNS{}, bad
+		}
+		return d, nil
+	}
+	return directDNS{}, bad
 }
 
 // ParseShareLinks разбирает ссылки вида naive+https://user:pass@host:443#Имя

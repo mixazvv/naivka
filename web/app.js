@@ -390,7 +390,7 @@ function updateStatus() {
     btn.disabled = p === 'wait';
     btn.textContent = (p === 'on' || p === 'blocked') ? 'Отключить' : p === 'wait' ? 'Подключение…' : 'Подключить';
     btn.classList.toggle('off', p === 'on' || p === 'blocked');
-    const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null)].join('|');
+    const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok')].join('|');
     patch('notices', n, buildNotices);
     renderLanes();
   }
@@ -413,6 +413,15 @@ function buildNotices() {
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
   if (SELF && SELF.available) out.push(notice('info', `Вышла Naivka ${SELF.latest} (у вас ${SELF.version}).`, h('button', { class: 'btn small', onclick: () => go('settings') }, 'Подробнее')));
+  if (S.servers.length && S.routing !== 'global' && !dnsEncrypted(S.dnsDirect) && !sessionStorage.getItem('naivka-dns-ok')) {
+    out.push(notice('info', 'DNS для сайтов «напрямую» не зашифрован: провайдер видит, какие сайты вы открываете.',
+      h('div', { class: 'row', style: 'flex-wrap:nowrap' },
+        h('button', { class: 'btn small', onclick: () => {
+          S.dnsDirect = DNS_DIRECT[0][0]; save(0);
+          toast('Включён зашифрованный DNS Яндекса — переподключитесь, чтобы применить');
+        } }, 'Зашифровать'),
+        h('button', { class: 'btn small', onclick: () => { sessionStorage.setItem('naivka-dns-ok', '1'); updateStatus(); } }, 'Не сейчас'))));
+  }
   if (ST.needsRestart) out.push(notice('info', 'Настройки изменены. Они применятся после переподключения.', h('button', { class: 'btn small', onclick: reconnect }, 'Переподключить')));
   const pi = !ST.running && ST.portIssue;
   if (pi) {
@@ -508,6 +517,39 @@ function field(key, label, opts = {}) {
     onchange: e => { S[key] = opts.type === 'number' ? parseInt(e.target.value, 10) || 0 : e.target.value.trim(); save(); },
   });
   return h('label', { class: 'field' }, h('span', null, label), input, opts.hint && h('small', { class: 'hint' }, opts.hint));
+}
+
+const DNS_DIRECT = [
+  ['https://common.dot.dns.yandex.net/dns-query', 'Яндекс, зашифрованный (DoH)'],
+  ['tls://common.dot.dns.yandex.net', 'Яндекс, зашифрованный (DoT)'],
+  ['https://dns.adguard-dns.com/dns-query', 'AdGuard, зашифрованный, без рекламы (DoH)'],
+  ['https://1.1.1.1/dns-query', 'Cloudflare, зашифрованный (DoH)'],
+  ['77.88.8.8', 'Яндекс, обычный — без шифрования'],
+  ['local', 'Системный — DNS провайдера, без шифрования'],
+];
+const dnsEncrypted = v => /^(https|tls):\/\//.test(v || '');
+
+function dnsDirectField() {
+  const known = DNS_DIRECT.some(([v]) => v === S.dnsDirect);
+  const custom = h('input', { type: 'text', value: known ? '' : S.dnsDirect, placeholder: 'https://адрес/dns-query или tls://адрес', spellcheck: 'false', hidden: known,
+    onchange: e => { S.dnsDirect = e.target.value.trim(); save(); upd(); } });
+  const note = h('small', { class: 'hint' });
+  const upd = () => {
+    note.className = dnsEncrypted(S.dnsDirect) ? 'hint' : 'hint err-text';
+    note.textContent = dnsEncrypted(S.dnsDirect)
+      ? 'Для российских сайтов. Запросы зашифрованы: провайдер не видит, какие сайты вы открываете.'
+      : 'Без шифрования провайдер видит имена всех сайтов, которые идут напрямую. Лучше выбрать зашифрованный вариант.';
+  };
+  const sel = h('select', { onchange: e => {
+    const v = e.target.value;
+    custom.hidden = v !== 'custom';
+    if (v === 'custom') { custom.focus(); return; }
+    S.dnsDirect = v; save(); upd();
+  } },
+    DNS_DIRECT.map(([v, t]) => h('option', { value: v, selected: v === S.dnsDirect }, t)),
+    h('option', { value: 'custom', selected: !known }, 'Свой адрес…'));
+  upd();
+  return h('label', { class: 'field' }, h('span', null, 'DNS напрямую'), sel, custom, note);
 }
 
 function choices(name, options, get, set) {
@@ -1644,7 +1686,7 @@ function viewSettings() {
         field('mixedPort', 'Порт локального прокси', { type: 'number', min: 1, max: 65535, hint: 'HTTP и SOCKS5 на 127.0.0.1.' }),
         h('span'),
         field('dnsRemote', 'DNS через сервер (DoH)', { placeholder: '1.1.1.1', hint: 'Для зарубежных и заблокированных сайтов.' }),
-        field('dnsDirect', 'DNS напрямую', { placeholder: '77.88.8.8', hint: 'Для российских сайтов. IP или local — системный DNS.' })),
+        dnsDirectField()),
       check('ipv4Only', 'Только IPv4', 'Меньше проблем у провайдеров с кривым IPv6.'),
       check('ruleSetViaProxy', 'Скачивать списки блокировок через сервер', 'Если GitHub у провайдера открывается плохо.')),
     more('Проверка серверов', `каждые ${S.testInterval}`,
