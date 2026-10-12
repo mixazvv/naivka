@@ -117,7 +117,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .feedback svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .feedback:hover { color: var(--tg); border-color: color-mix(in srgb, var(--tg) 55%, var(--line)); }
 
-.stage-wrap { position: relative; flex: 1; min-height: 0; display: grid; }
+.stage-wrap { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 .ambient, .main, .scrim, .drawer { grid-area: 1 / 1; }
 .ambient { pointer-events: none; z-index: 0; overflow: hidden; position: relative;
   background: radial-gradient(1000px 520px at 50% -160px, var(--glow), transparent 70%),
@@ -789,39 +789,45 @@ button.hchip:hover .bi { opacity: 1; }
    По мотивам меню Mankind Divided: почти чёрное, приглушённое золото, тонкие заглавные Jura,
    плоские полупрозрачные плитки, выбранное — золотой заливкой. Без лишних рамок и украшений. */
 :root[data-skin="gold"] {
-  --bg: #0A0A09; --nav: rgba(8, 8, 7, .9); --surface: rgba(20, 19, 16, .72); --raised: rgba(34, 32, 27, .92); --layer: #0A0A09;
-  --ink: #E9E4D8; --muted: #9A9384; --faint: #625C50; --line: rgba(222, 196, 140, .12);
+  /* Mankind Divided: мир холодный и приглушённый (сине-серый, матово-коричневый); золото — только там,
+     где оно что-то значит: путь через сервер, выбор, «свет» подключения. */
+  --bg: #0C0E11; --nav: rgba(9, 11, 14, .92); --surface: rgba(22, 25, 30, .78); --raised: rgba(36, 40, 47, .94); --layer: #0C0E11;
+  --ink: #E4E1DA; --muted: #8E949C; --faint: #5D636B; --line: rgba(200, 210, 222, .11);
   --tunnel: #D8B36A; --tunnel-soft: rgba(216, 179, 106, .12); --on-accent: #16120A;
-  --direct: #26B4CB; --direct-soft: rgba(38, 180, 203, .14);
-  --warn: #E0703A; --warn-soft: rgba(224, 112, 58, .15);
+  --direct: #7FA7D3; --direct-soft: rgba(127, 167, 211, .14);
+  --warn: #D2602E; --warn-soft: rgba(210, 96, 46, .15);
   --danger: #E5484D; --danger-soft: rgba(229, 72, 77, .16);
-  --tg: #5A86DB;
-  /* пары графиков проверены на различимость, в том числе при дальтонизме */
-  --chart-tunnel: #C2862A; --chart-direct: #0E9DB5;
+  --tg: #8A6FD0;
+  /* графики: проверены на различимость, в том числе при дальтонизме (на фоне #14171C) */
+  --chart-tunnel: #C2862A; --chart-direct: #4C86C4;
+  --brackets: linear-gradient(var(--tunnel), var(--tunnel)) left top / 12px 1.5px no-repeat, linear-gradient(var(--tunnel), var(--tunnel)) left top / 1.5px 12px no-repeat,
+              linear-gradient(var(--tunnel), var(--tunnel)) right top / 12px 1.5px no-repeat, linear-gradient(var(--tunnel), var(--tunnel)) right top / 1.5px 12px no-repeat,
+              linear-gradient(var(--tunnel), var(--tunnel)) left bottom / 12px 1.5px no-repeat, linear-gradient(var(--tunnel), var(--tunnel)) left bottom / 1.5px 12px no-repeat,
+              linear-gradient(var(--tunnel), var(--tunnel)) right bottom / 12px 1.5px no-repeat, linear-gradient(var(--tunnel), var(--tunnel)) right bottom / 1.5px 12px no-repeat;
   --logo: #A8731F;
   --gold-fill: linear-gradient(100deg, #EAD7A4 0%, #D3B068 55%, #B88E45 100%);
   --font: "Exo 2", "Segoe UI", system-ui, sans-serif;
   --display: "Jura", "Segoe UI", system-ui, sans-serif;
   --shadow: 0 18px 50px rgba(0, 0, 0, .7);
 }
-:root[data-skin="gold"] body { background: #0A0A09; }
+:root[data-skin="gold"] body { background: #0C0E11; }
 :root[data-skin="gold"] ::selection { background: rgba(216, 179, 106, .35); }
-/* Фон: тёплые размытые огни, как сцена за меню; разгораются от трафика (--energy). */
-:root[data-skin="gold"] .bokeh { display: block; position: absolute; inset: 0; }
-:root[data-skin="gold"] .ambient { background: radial-gradient(120% 90% at 50% 10%, transparent 35%, rgba(0, 0, 0, .7) 100%); }
-:root[data-skin="gold"] .ambient::after { display: none; }
-.bokeh i { position: absolute; border-radius: 50%; filter: blur(48px); z-index: -1;
-  background: radial-gradient(circle, rgba(240, 205, 150, .42), rgba(170, 110, 40, .14) 55%, transparent 72%);
-  opacity: calc(.28 + var(--energy, 0) * .5); transition: opacity 2.5s ease; animation: drift 46s ease-in-out infinite alternate; }
-.bokeh i:nth-child(1) { width: 560px; height: 560px; left: 56%; top: -200px; }
-.bokeh i:nth-child(2) { width: 300px; height: 300px; left: 84%; top: 34%; animation-duration: 38s; animation-delay: -12s; }
-.bokeh i:nth-child(3) { width: 440px; height: 440px; left: -10%; top: 56%; animation-duration: 52s; animation-delay: -30s; }
-.bokeh i:nth-child(4) { width: 180px; height: 180px; left: 32%; top: 10%; animation-duration: 33s; filter: blur(28px); }
-.bokeh i:nth-child(5) { width: 140px; height: 140px; left: 70%; top: 72%; animation-duration: 29s; animation-delay: -8s; filter: blur(22px); }
-.bokeh i:nth-child(6) { width: 260px; height: 260px; left: 18%; top: -70px; animation-duration: 41s; animation-delay: -20s; background: radial-gradient(circle, rgba(150, 200, 210, .22), transparent 70%); }
-.bokeh i:nth-child(7) { width: 90px; height: 90px; left: 48%; top: 82%; animation-duration: 25s; filter: blur(14px); }
-.bokeh i:nth-child(8) { width: 360px; height: 360px; left: 92%; top: -50px; animation-duration: 57s; animation-delay: -40s; }
-@keyframes drift { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-60px, 40px) scale(1.12); } 100% { transform: translate(50px, -30px) scale(.92); } }
+/* Свет как смысл (кьяроскуро «при свечах»): пока нет подключения, сцена холодная и тёмная;
+   подключились — от узла «Компьютер» разливается тёплый золотой свет, ярче при большом трафике. */
+:root[data-skin="gold"] body { --lit: 0; }
+:root[data-skin="gold"] body[data-state="on"] { --lit: 1; }
+:root[data-skin="gold"] .ambient { background: radial-gradient(130% 100% at 50% 20%, transparent 40%, rgba(0, 0, 0, .75) 100%), linear-gradient(180deg, #11151B, #0B0D10); }
+:root[data-skin="gold"] .ambient::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(900px 620px at 14% 52%, rgba(232, 178, 92, .5), rgba(200, 140, 60, .12) 45%, transparent 70%);
+  opacity: calc(.05 + var(--lit) * (.32 + var(--energy, 0) * .45)); transition: opacity 1.6s ease; }
+/* Осколки-треугольники из заставки Human Revolution — едва заметно, у края света. */
+:root[data-skin="gold"] .ambient::after { display: block; background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='104'%3E%3Cpath d='M0 104L60 0l60 104zM60 0L0 104M30 52h60' fill='none' stroke='%23D8B36A' stroke-opacity='.07'/%3E%3C/svg%3E") 0 0 / 120px 104px;
+  -webkit-mask-image: radial-gradient(700px 480px at 14% 52%, #000, transparent 75%); mask-image: radial-gradient(700px 480px at 14% 52%, #000, transparent 75%);
+  opacity: calc(.4 + var(--lit) * .6); transition: opacity 1.6s ease; }
+/* Скобки «прицела» на том, что можно выбрать, — при наведении. */
+:root[data-skin="gold"] .tile:hover { background: var(--brackets), var(--surface); }
+:root[data-skin="gold"] .scard:not(.sel):hover { background: var(--brackets), var(--surface); }
 
 :root[data-skin="gold"] :is(h1, h2, h3, .status-title, .brand, .nav-item, .tile-k, .tile-v, .sysline, .btn, .seg button, .card-head small, .mini-title, .tb-name, .hb-code) { font-family: var(--display); }
 :root[data-skin="gold"] :is(h1, h2, .status-title, .nav-item, .brand, .tile-k, .sysline, .btn, .mini-title) { text-transform: uppercase; }
@@ -957,11 +963,6 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] .drawer-close { border-radius: 0; border: 2px solid #000; background: #8B8B8B; color: #fff; box-shadow: inset 2px 2px 0 #B5B5B5, inset -2px -2px 0 #4A4A4A; }
 :root[data-skin="blocks"] .drawer .view h1 { color: #3F3F3F; text-shadow: none; }
 /* Земля под сценой и трава на верхней панели (свои пиксельные узоры, без чужих картинок). */
-:root[data-skin="blocks"] .ambient { background:
-    linear-gradient(rgba(0, 0, 0, .45), rgba(0, 0, 0, .55)),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%23795537'/%3E%3Cg fill='%23593D26'%3E%3Crect x='1' y='2' width='2' height='1'/%3E%3Crect x='9' y='1' width='1' height='2'/%3E%3Crect x='5' y='6' width='2' height='1'/%3E%3Crect x='12' y='5' width='2' height='2'/%3E%3Crect x='2' y='11' width='1' height='2'/%3E%3Crect x='8' y='12' width='2' height='1'/%3E%3Crect x='14' y='13' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23966C4A'%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='14' y='2' width='1' height='1'/%3E%3Crect x='0' y='7' width='1' height='1'/%3E%3Crect x='10' y='8' width='2' height='1'/%3E%3Crect x='5' y='13' width='1' height='1'/%3E%3Crect x='12' y='15' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%23656565'%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='3' y='9' width='1' height='1'/%3E%3Crect x='13' y='10' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 64px 64px;
-  image-rendering: pixelated; }
-:root[data-skin="blocks"] .ambient::after { display: none; }
 :root[data-skin="blocks"] .topbar { border: 0; border-bottom: 4px solid #3B2A1A;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%235B9E31'/%3E%3Cg fill='%234A8A26'%3E%3Crect x='1' y='1' width='2' height='1'/%3E%3Crect x='7' y='3' width='1' height='2'/%3E%3Crect x='12' y='1' width='2' height='1'/%3E%3Crect x='4' y='9' width='2' height='1'/%3E%3Crect x='10' y='11' width='1' height='2'/%3E%3Crect x='14' y='8' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%2370BA42'%3E%3Crect x='3' y='5' width='1' height='1'/%3E%3Crect x='9' y='7' width='2' height='1'/%3E%3Crect x='0' y='13' width='1' height='1'/%3E%3Crect x='13' y='14' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 64px 64px;
   image-rendering: pixelated; }
@@ -1060,3 +1061,50 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] :is(.notice, .tile, .card, .panel, .scard, .choice, .drawer, dialog, .sysline) { text-shadow: none; }
 :root[data-skin="blocks"] .sysline { text-shadow: 2px 2px 0 #3F3F3F; }
 @media (max-width: 760px) { .own-protos { grid-template-columns: 1fr; } }
+
+/* «Блоки»: небо — ночь, пока нет подключения, и день, когда подключены; снизу — трава и земля. */
+:root[data-skin="blocks"] body { --fog: #141B45; }
+:root[data-skin="blocks"] body[data-state="on"] { --fog: #9CC0FF; }
+:root[data-skin="blocks"] .ambient { image-rendering: pixelated; background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='64' shape-rendering='crispEdges'%3E%3Cg fill='%23FFFFFF'%3E%3Crect x='7' y='9' width='2' height='2'/%3E%3Crect x='51' y='4' width='2' height='2' fill-opacity='.6'/%3E%3Crect x='80' y='22' width='2' height='2'/%3E%3Crect x='30' y='40' width='2' height='2' fill-opacity='.5'/%3E%3Crect x='66' y='52' width='2' height='2' fill-opacity='.7'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 192px 128px,
+    linear-gradient(180deg, #0A0F2E, #1B2558 75%); }
+:root[data-skin="blocks"] .ambient::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, #5E8FF0, #A8C8FF 72%); opacity: 0; transition: opacity 2.2s ease; }
+:root[data-skin="blocks"] body[data-state="on"] .ambient::before { opacity: 1; }
+:root[data-skin="blocks"] .ambient::after { display: block; content: ""; position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: 150px; -webkit-mask-image: none; mask-image: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='4' shape-rendering='crispEdges'%3E%3Crect width='16' height='4' fill='%235E9E34'/%3E%3Cg fill='%234B8A28'%3E%3Crect x='1' y='2' width='2' height='2'/%3E%3Crect x='6' y='3' width='1' height='1'/%3E%3Crect x='10' y='2' width='1' height='2'/%3E%3Crect x='13' y='3' width='2' height='1'/%3E%3C/g%3E%3C/svg%3E") left top / 64px 16px repeat-x,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%23795537'/%3E%3Cg fill='%23593D26'%3E%3Crect x='1' y='2' width='2' height='1'/%3E%3Crect x='9' y='1' width='1' height='2'/%3E%3Crect x='5' y='6' width='2' height='1'/%3E%3Crect x='12' y='5' width='2' height='2'/%3E%3Crect x='2' y='11' width='1' height='2'/%3E%3Crect x='8' y='12' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%23966C4A'%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='14' y='2' width='1' height='1'/%3E%3Crect x='10' y='8' width='2' height='1'/%3E%3Crect x='5' y='13' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23656565'%3E%3Crect x='7' y='3' width='1' height='1'/%3E%3Crect x='13' y='10' width='1' height='1'/%3E%3C/g%3E%3C/svg%3E") left 16px / 64px 64px;
+  filter: brightness(calc(.55 + var(--lit, 0) * .45)); transition: filter 2.2s ease; }
+:root[data-skin="blocks"] body { --lit: 0; }
+:root[data-skin="blocks"] body[data-state="on"] { --lit: 1; }
+/* Облака: плоские белые прямоугольники, медленно плывут, видны днём. */
+:root[data-skin="blocks"] .bokeh { display: block; position: absolute; inset: 0; opacity: calc(var(--lit) * .55); transition: opacity 2.2s ease; }
+:root[data-skin="blocks"] .bokeh i { position: absolute; display: block; height: 24px; background: #FFFFFF; opacity: .85; animation: clouds 160s linear infinite; }
+:root[data-skin="blocks"] .bokeh i::after { content: ""; position: absolute; left: 24px; top: -16px; width: 50%; height: 16px; background: #FFFFFF; }
+:root[data-skin="blocks"] .bokeh i:nth-child(1) { width: 160px; top: 8%; left: -10%; }
+:root[data-skin="blocks"] .bokeh i:nth-child(2) { width: 96px; top: 20%; left: 30%; animation-duration: 200s; animation-delay: -60s; }
+:root[data-skin="blocks"] .bokeh i:nth-child(3) { width: 224px; top: 13%; left: 62%; animation-duration: 240s; animation-delay: -120s; }
+:root[data-skin="blocks"] .bokeh i:nth-child(n+4) { display: none; }
+@keyframes clouds { from { transform: translateX(0); } to { transform: translateX(110vw); } }
+/* Кнопка подключения — куб-лампа: выключена — тёмная, подключились — горит. */
+.pw-cube { display: none; }
+:root[data-skin="blocks"] .pw-cube { display: inline; }
+:root[data-skin="blocks"] .pw-h, :root[data-skin="blocks"] .pw-c { display: none; }
+:root[data-skin="blocks"] .pw-cube .cf { fill: url(#mc-lamp); }
+:root[data-skin="blocks"] body[data-state="on"] .pw-cube .cf { fill: url(#mc-lampOn); }
+:root[data-skin="blocks"] body[data-state="wait"] .pw-cube { animation: lampFlicker .6s steps(2) infinite; }
+@keyframes lampFlicker { 50% { filter: brightness(1.5) sepia(.6); } }
+:root[data-skin="blocks"] .power { color: #FFFFFF; filter: drop-shadow(0 6px 0 rgba(0, 0, 0, .35)); }
+:root[data-skin="blocks"] .power:hover:not(:disabled) { color: #FFFFA0; }
+:root[data-skin="blocks"] .pw-icon { stroke-width: 6; stroke-linecap: square; paint-order: stroke; }
+:root[data-skin="blocks"] body[data-state="on"] .power { color: #5A3300; }
+:root[data-skin="blocks"] .lane-cube { cursor: pointer; }
+:root[data-skin="blocks"] .lane-cube:hover { filter: brightness(1.18); }
+:root[data-skin="blocks"] .lane-cube:not(.on) { filter: saturate(.3) brightness(.8); }
+/* Чанки: квадраты «тумана» исчезают в случайном порядке — экран прогружается, как мир. */
+.chunks { position: fixed; z-index: 50; display: grid; pointer-events: none; }
+.chunks i { display: block; width: 64px; height: 64px; animation: chunkOut .3s steps(3) forwards; }
+@keyframes chunkOut { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { :root[data-skin="blocks"] .bokeh i { animation: none; } }
+:root[data-skin="blocks"] .lane-track { display: none; }

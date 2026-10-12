@@ -48,6 +48,7 @@ type App struct {
 	probeMu sync.Mutex
 	probes  map[string]int // служебные входы теста скорости: тег → порт
 	ui      uiHost         // окно и значок в трее (зависит от платформы)
+	sleep   sleepState     // сон и пробуждение компьютера
 	lan     *lanShare
 
 	quitOnce sync.Once
@@ -148,6 +149,7 @@ func main() {
 
 	autostart := args["--autostart"]
 	a.ui = newUI(a)
+	a.watchPower()
 	go a.startAddons()
 	if s.AutoConnect && len(s.Servers) > 0 && a.core.Present() {
 		go func() {

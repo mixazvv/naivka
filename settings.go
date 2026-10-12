@@ -176,6 +176,7 @@ type Settings struct {
 	ShowIP          bool             `json:"showIp"` // определять IP и страну через внешние сервисы
 	KillSwitch      bool             `json:"killSwitch"`
 	Watchdog        bool             `json:"watchdog"`
+	SleepReconnect  bool             `json:"sleepReconnect"` // отключаться перед сном, подключаться после пробуждения
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
 	Theme           string           `json:"theme"`       // system | dark | light | gold («Никогда не проси об этом») | blocks («Блоки»)
@@ -219,6 +220,7 @@ func DefaultSettings() *Settings {
 		ShowIP:         true,
 		KillSwitch:     true,
 		Watchdog:       true,
+		SleepReconnect: true,
 		Notify:         true,
 		Theme:          "dark",
 		Accent:         "indigo",
@@ -299,7 +301,7 @@ func (s *Settings) fingerprint() string {
 		c.Servers[i].Fav = false
 	}
 	sort.Slice(c.Servers, func(i, j int) bool { return c.Servers[i].ID < c.Servers[j].ID })
-	c.Notify, c.ShowIP, c.Watchdog, c.KillSwitch, c.AutoStart = false, false, false, false, false
+	c.Notify, c.ShowIP, c.Watchdog, c.KillSwitch, c.AutoStart, c.SleepReconnect = false, false, false, false, false, false
 	c.UpdateCheck = false
 	c.TrafficLimitGB, c.TrafficResetDay = 0, 0
 	c.Panels = nil

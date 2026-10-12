@@ -208,6 +208,7 @@ function powerButton(id, size) {
       s('rect', { class: 'pw-ring pw-h', x: 9, y: 9, width: 102, height: 102, pathLength: 100 }),
       s('rect', { class: 'pw-core pw-h', x: 18, y: 18, width: 84, height: 84 }),
       s('path', { class: 'pw-ticks pw-h', d: 'M1 17V1h16M103 1h16v16M119 103v16h-16M17 119H1v-16' }),
+      mcCube(60, 60, 100, 'lamp', 'pw-cube'),
       s('path', { class: 'pw-icon', d: 'M60 37v21M46 44.5a21 21 0 1 0 28 0' })));
 }
 
@@ -519,4 +520,93 @@ function pingBars(d) {
     else if (d.ms) { n = d.ms < 150 ? 4 : d.ms < 300 ? 3 : d.ms < 600 ? 2 : 1; cls = d.ms < 300 ? 'good' : d.ms < 800 ? 'mid' : 'bad'; }
   }
   return h('span', { class: 'bars4 ' + cls, 'aria-hidden': 'true' }, ...[1, 2, 3, 4].map(i => h('i', { class: i <= n ? 'on' : '' })));
+}
+
+// ---------- «Блоки»: кубы, текстуры, ступенчатые ветви, чанки ----------
+// Текстуры 8×8 «пикселей» рисуются здесь же (свои, не из игры) и кладутся SVG-узорами в документ.
+const MC = { ready: false };
+const MC_TEX = {
+  stone: ['#7D7D7D', ['#6A6A6A', '#8E8E8E', '#747474'], 11],
+  dirt: ['#7A5537', ['#5C3E27', '#946A47', '#6B4A2F'], 23],
+  grass: ['#5E9E34', ['#4B8A28', '#72B845', '#558F2E'], 37],
+  diamond: ['#7D7D7D', ['#6A6A6A', '#8E8E8E'], 41, ['#5DECF5', '#2BB5BF'], 7],
+  redstone: ['#7D7D7D', ['#6A6A6A', '#8E8E8E'], 53, ['#FF3B30', '#A51B12'], 7],
+  lapis: ['#7D7D7D', ['#6A6A6A', '#8E8E8E'], 67, ['#2D5BD1', '#1A3A93'], 7],
+  lamp: ['#6B4A2B', ['#4E3520', '#87613A', '#3A281A'], 71],
+  lampOn: ['#F2C14E', ['#FFE48A', '#D9962E', '#FFF2BF'], 79],
+};
+
+function mcRand(seed) { let x = seed; return () => (x = (x * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; }
+
+function mcTextures() {
+  if (MC.ready) return;
+  MC.ready = true;
+  const defs = s('defs');
+  for (const [name, [base, spots, seed, ore, oreN]] of Object.entries(MC_TEX)) {
+    const r = mcRand(seed);
+    const px = [s('rect', { width: 8, height: 8, fill: base })];
+    for (let i = 0; i < 22; i++) px.push(s('rect', { x: r() * 8 | 0, y: r() * 8 | 0, width: 1, height: 1, fill: spots[r() * spots.length | 0] }));
+    if (ore) for (let i = 0; i < oreN; i++) px.push(s('rect', { x: 1 + (r() * 6 | 0), y: 1 + (r() * 6 | 0), width: 1, height: 1, fill: ore[i % ore.length] }));
+    if (name === 'lamp' || name === 'lampOn') px.push(s('path', { d: 'M0 0h8v8H0z', fill: 'none', stroke: name === 'lamp' ? '#2E1F14' : '#B8781F', 'stroke-width': 1 }));
+    defs.append(s('pattern', { id: 'mc-' + name, width: 8, height: 8, patternUnits: 'userSpaceOnUse' }, ...px));
+  }
+  // Бок блока травы: сверху полоса травы со свисающими пикселями, ниже земля.
+  const r = mcRand(97);
+  const side = [s('rect', { width: 8, height: 8, fill: '#7A5537' })];
+  for (let i = 0; i < 14; i++) side.push(s('rect', { x: r() * 8 | 0, y: 2 + (r() * 6 | 0), width: 1, height: 1, fill: ['#5C3E27', '#946A47'][i % 2] }));
+  side.push(s('rect', { width: 8, height: 2, fill: '#5E9E34' }));
+  for (let i = 0; i < 8; i++) if (r() > .45) side.push(s('rect', { x: i, y: 2, width: 1, height: 1 + (r() * 1.6 | 0), fill: '#4B8A28' }));
+  defs.append(s('pattern', { id: 'mc-grassSide', width: 8, height: 8, patternUnits: 'userSpaceOnUse' }, ...side));
+  const holder = s('svg', { width: 0, height: 0, 'aria-hidden': 'true', style: 'position:absolute;width:0;height:0' }, defs);
+  document.body.append(holder);
+}
+
+// Куб в изометрии: верх светлее, бока темнее — как освещение блоков. S — ширина и высота куба.
+const MC_FACES = { grass: ['grass', 'grassSide', 'grassSide'], lamp: ['lamp', 'lamp', 'lamp'] };
+function mcCube(cx, cy, S, mat, cls) {
+  mcTextures();
+  const [top, left, right] = MC_FACES[mat] || [mat, mat, mat];
+  const w = S / 2, q = S / 4, sv = S / 2, y0 = cy - S / 2, k = 1 / 8;
+  const face = (m, tex, shade, fcls) => s('g', { transform: `matrix(${m.join(' ')})` },
+    s('rect', { width: 8, height: 8, fill: `url(#mc-${tex})`, class: 'cf ' + fcls }),
+    shade ? s('rect', { width: 8, height: 8, fill: '#000', opacity: shade, class: 'cf-shade' }) : null);
+  return s('g', { class: 'mc-cube ' + (cls || ''), 'shape-rendering': 'crispEdges' },
+    face([w * k, q * k, -w * k, q * k, cx, y0], top, 0, 'cf-top'),
+    face([w * k, q * k, 0, sv * k, cx - w, y0 + q], left, .22, 'cf-left'),
+    face([w * k, -q * k, 0, sv * k, cx, y0 + 2 * q], right, .38, 'cf-right'));
+}
+
+// Ступенчатая ветвь: та же кривая, но из горизонтальных и вертикальных отрезков по сетке.
+function mcStepPath(x0, y0, nx, ny, x1, y1, G) {
+  const a = x0 + (nx - x0) * 0.5, b = nx + (x1 - nx) * 0.5;
+  const bez = (p0, p1, p2, p3, t) => { const u = 1 - t; return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3; };
+  const pts = [];
+  for (let i = 0; i <= 60; i++) { const t = i / 60; pts.push([bez(x0, a, a, nx, t), bez(y0, y0, ny, ny, t)]); }
+  for (let i = 1; i <= 60; i++) { const t = i / 60; pts.push([bez(nx, b, b, x1, t), bez(ny, ny, y1, y1, t)]); }
+  const snap = v => Math.round(v / G) * G;
+  let d = `M${x0} ${snap(y0)}`, cy = snap(y0);
+  for (const [x, y] of pts) {
+    const sx = snap(x), sy = snap(y);
+    if (sy !== cy) { d += `H${sx}V${sy}`; cy = sy; }
+  }
+  return d + `H${x1}V${y1}`;
+}
+
+// Чанки: новый экран проступает из «тумана» квадратами в случайном порядке, как прогрузка мира.
+function chunkReveal(el, fog) {
+  if (!el || REDUCE.matches || document.documentElement.dataset.skin !== 'blocks') return;
+  const r = el.getBoundingClientRect();
+  if (r.width < 50 || r.height < 50) return;
+  const size = 64;
+  const cols = Math.ceil(r.width / size), rows = Math.ceil(Math.min(r.height, window.innerHeight) / size);
+  const grid = h('div', { class: 'chunks', 'aria-hidden': 'true' });
+  grid.style.cssText = `left:${r.left}px;top:${r.top}px;width:${cols * size}px;height:${rows * size}px;grid-template-columns:repeat(${cols},${size}px)`;
+  const rnd = mcRand(Date.now() & 0xffff);
+  for (let i = 0; i < cols * rows; i++) {
+    const c = document.createElement('i');
+    c.style.cssText = `background:${fog};animation-delay:${(rnd() * 0.55).toFixed(2)}s`;
+    grid.append(c);
+  }
+  document.body.append(grid);
+  setTimeout(() => grid.remove(), 1200);
 }

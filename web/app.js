@@ -193,6 +193,8 @@ function applyTheme() {
   if (S && S.oled && t === 'dark' && !root.dataset.skin) root.dataset.oled = ''; else delete root.dataset.oled;
   // Сплошной фон: в OLED и тематических стилях полупрозрачный Mica не нужен.
   if (root.dataset.skin || root.dataset.oled !== undefined) root.dataset.solid = ''; else delete root.dataset.solid;
+  if (root.dataset.skin === 'blocks' && root.dataset.prevSkin !== 'blocks' && $('#main') && $('#main').firstChild) setTimeout(() => chunkReveal($('#main'), 'var(--fog)'), 30);
+  root.dataset.prevSkin = root.dataset.skin || '';
   if (themeSent !== t) { themeSent = t; api('/api/window/theme', { dark: t === 'dark' }).catch(() => { themeSent = ''; }); }
 }
 darkQuery.addEventListener('change', () => { if (S && S.theme === 'system') applyTheme(); });
@@ -564,7 +566,7 @@ function goNow(v) {
     drawerBody.scrollTop = 0;
     drawer.hidden = false;
     $('#scrim').hidden = false;
-    requestAnimationFrame(() => drawer.classList.add('open'));
+    requestAnimationFrame(() => { drawer.classList.add('open'); setTimeout(() => chunkReveal(drawer, '#8B8B8B'), 30); });
     main.setAttribute('inert', '');
     decodeTitle(drawerBody.querySelector('h1'));
     if (was === 'overview') setTimeout(() => $('#drawerClose').focus({ preventScroll: true }), 50);
@@ -810,7 +812,8 @@ function renderLanes() {
     l.w = !l.active ? 2.5 : total > 0 ? Math.round(3 + 9 * share) : 3.5;
     l.flow = l.active && l.speed >= 50;
   });
-  const sig = JSON.stringify([phase(), S.mode, S.mixedPort, S.routing, geo.map(l => [l.key, l.w, l.flow, l.active, l.node && [l.node.title, l.node.sub, l.node.cc]])]);
+  const mc = document.documentElement.dataset.skin === 'blocks';
+  const sig = JSON.stringify([mc, phase(), S.mode, S.mixedPort, S.routing, geo.map(l => [l.key, l.w, l.flow, l.active, l.node && [l.node.title, l.node.sub, l.node.cc]])]);
   let binds = null;
   patch('lanesSvg', sig, () => {
     binds = [];
@@ -819,7 +822,7 @@ function renderLanes() {
     const paths = [], nodes = [];
     const dots = s('g', { class: 'lane-pts' });
     geo.forEach(l => {
-      const d = lanePath(95, Y0, l.nx, l.ny, 905, Y0);
+      const d = mc ? mcStepPath(95, Y0, l.nx, l.ny, 905, Y0, 12) : lanePath(95, Y0, l.nx, l.ny, 905, Y0);
       paths.push(s('path', { d, class: 'lane-track', 'stroke-width': 14 }));
       if (l.flow) paths.push(s('path', { d, class: 'lane-glow', style: `stroke:${l.color}`, 'stroke-width': l.w + 6, filter: 'url(#laneGlow)' }));
       const line = s('path', { d, class: 'lane-line' + (l.active ? '' : ' idle'), style: `stroke:${l.color}`, 'stroke-width': l.w });
@@ -827,13 +830,19 @@ function renderLanes() {
       if (l.active) binds.push([l.key, line, Math.min(4.5, 2.2 + l.w / 4), l.color]);
       if (l.node) {
         const x = l.nx, y = l.ny;
-        nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node clickable' + (l.active ? ' on' : ''), style: `stroke:${l.color}`,
-          onclick: () => go(l.key === 'proxy' ? 'servers' : 'bypass') }, s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»')));
-        nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
-        nodes.push(s('text', { x, y: y - 40, 'text-anchor': 'middle', class: 'lbl halo' }, l.node.title));
-        nodes.push(s('text', { x, y: y - 25, 'text-anchor': 'middle', class: 'sub-lbl halo' },
+        const open = () => go(l.key === 'proxy' ? 'servers' : 'bypass');
+        const tip = s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»');
+        // «Блоки»: сервер — алмазная руда, zapret — красная руда, Telegram — лазурит.
+        if (mc) nodes.push(s('g', { class: 'lane-cube clickable' + (l.active ? ' on' : ''), onclick: open }, tip, mcCube(x, y, 40, { proxy: 'diamond', zapret: 'redstone', tg: 'lapis' }[l.key] || 'stone')));
+        else {
+          nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node clickable' + (l.active ? ' on' : ''), style: `stroke:${l.color}`, onclick: open }, tip));
+          nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
+        }
+        const lift = mc ? 6 : 0;
+        nodes.push(s('text', { x, y: y - 40 - lift, 'text-anchor': 'middle', class: 'lbl halo' }, l.node.title));
+        nodes.push(s('text', { x, y: y - 25 - lift, 'text-anchor': 'middle', class: 'sub-lbl halo' },
           !flagShapes((l.node.cc || '').toUpperCase()) && l.node.cc ? s('tspan', { class: 'cc-text' }, l.node.cc + '  ') : null, l.node.sub));
-        if (l.node.cc) nodes.push(flagInSvg(l.node.cc, x - 19 - 32, y - 8, 24));
+        if (l.node.cc) nodes.push(flagInSvg(l.node.cc, x - (mc ? 24 : 19) - 32, y - 8, 24));
       } else {
         nodes.push(s('text', { x: l.nx, y: l.ny + 26, 'text-anchor': 'middle', class: 'sub-lbl halo', style: `fill:${l.color}` }, 'напрямую'));
       }
@@ -842,8 +851,7 @@ function renderLanes() {
     const end = (x, ic, title, sub) => ic === 'pc' ? [
       s('text', { x, y: Y0 + 74, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 90, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)] : [
-      s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }),
-      icon(ic, x, Y0, 24, 'var(--ink)'),
+      ...(mc ? [mcCube(x, Y0, 52, 'grass')] : [s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }), icon(ic, x, Y0, 24, 'var(--ink)')]),
       s('text', { x, y: Y0 + 46, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 62, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)];
     return s('svg', { class: 'lanes', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Схема маршрутов трафика' },
@@ -2344,6 +2352,7 @@ function viewSettings() {
     h('h2', null, 'Надёжность'),
     check('killSwitch', 'Защита от утечек', 'Если ядро упадёт, трафик не пойдёт напрямую мимо сервера, пока связь не восстановится. Работает в режиме системного прокси; в TUN ядро просто быстро перезапускается.'),
     check('watchdog', 'Следить за соединением', 'Каждые 20 секунд проверять связь через сервер. После сна, смены сети или обрыва — переподключать соединения, а если не помогло — перезапускать ядро.'),
+    check('sleepReconnect', 'Отключаться перед сном', 'Перед сном компьютера Naivka отключается, а после пробуждения ждёт сеть и подключается снова — без зависших соединений и прокси, который указывает в никуда.'),
     check('notify', 'Уведомления Windows', 'О сбоях, восстановлении связи и смене сервера автовыбором.'),
 
     h('h2', null, 'Запуск'),
@@ -2528,6 +2537,7 @@ async function boot() {
   if (view === 'conns' || view === 'logs') { diagTab = view; view = 'diag'; }
   if (!VIEWS[view]) view = 'overview';
   main.replaceChildren(viewOverview());
+  setTimeout(() => chunkReveal(main, 'var(--fog)'), 60);
   const first = view;
   view = 'overview';
   go(first);
