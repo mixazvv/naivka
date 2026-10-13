@@ -62,7 +62,7 @@ type PickState struct {
 // Подбор: адрес, не ответивший за pickTimeout, считается не открывшимся; после запуска
 // winws.exe ждём pickWarmup, пока перехват заработает.
 const (
-	pickTimeout = 3 * time.Second
+	pickTimeout = 5 * time.Second
 	pickWarmup  = 500 * time.Millisecond
 )
 
