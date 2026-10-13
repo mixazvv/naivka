@@ -231,6 +231,12 @@ func zapretRules(s *Settings) string {
 	return strings.Join(out, ",")
 }
 
+// addonsNeedRestart — изменились ли настройки zapret или tg-ws-proxy, от которых зависят маршруты ядра.
+func addonsNeedRestart(prev, ns *Settings) bool {
+	return prev.Zapret.Enabled != ns.Zapret.Enabled || prev.Zapret.RouteDirect != ns.Zapret.RouteDirect ||
+		prev.Telegram.Enabled != ns.Telegram.Enabled
+}
+
 // applyAddons — реакция на изменение настроек: включить, выключить или перезапустить.
 func (a *App) applyAddons(prev, ns *Settings) {
 	pz, nz := prev.Zapret, ns.Zapret

@@ -619,6 +619,19 @@ async function reconnect() {
   finally { busy = false; await refreshState(); }
 }
 
+// needElevation — zapret на Windows без прав администратора не запустится.
+function needElevation() {
+  return !!ST && ST.os === 'windows' && !ST.admin;
+}
+
+// elevateFor включает функцию, которой нужны права: настройка сохраняется, Naivka перезапускается
+// с правами (Windows спросит разрешение) и сама подключается снова, если была подключена.
+async function elevateFor(what) {
+  toast(what === 'zapret' ? 'Windows спросит разрешение: zapret нужны права администратора' : 'Windows спросит разрешение');
+  await elevate();
+  // Отказ в окне Windows: функция остаётся включённой и заработает при следующем запуске с правами.
+}
+
 async function elevate() {
   elevating = true;
   try { await saveNow(); await api('/api/elevate', {}); }
@@ -1508,11 +1521,22 @@ async function testServers(id) {
   renderServers();
   const btn = $('#testAll');
   if (btn) btn.disabled = true;
+  // Naivka проверяет все серверы сразу; ответы забираем каждые 0,4 с и показываем, как только они готовы,
+  // а не после самого медленного.
   try {
-    const res = await api('/api/test', { id });
-    for (const r of res) delays[r.id] = { ms: r.ms, error: r.error, kind: r.kind };
-  } catch (e) { ids.forEach(i => { delete delays[i]; }); toast(e.message, true); }
-  finally { if (btn) btn.disabled = false; renderServers(); updateStatus(); }
+    await api('/api/test', { id, async: true });
+    const left = new Set(ids);
+    const t0 = Date.now();
+    while (left.size && Date.now() - t0 < 20000) {
+      await new Promise(r => setTimeout(r, 400));
+      const v = await api('/api/test/results');
+      for (const r of v.done) if (left.has(r.id)) { delays[r.id] = { ms: r.ms, error: r.error, kind: r.kind }; left.delete(r.id); }
+      renderServers();
+    }
+    left.forEach(i => { delete delays[i]; });
+  } catch (e) { ids.forEach(i => { if (delays[i] && delays[i].pending) delete delays[i]; }); toast(e.message, true); }
+  if (btn) btn.disabled = false;
+  renderServers(); updateStatus();
 }
 
 async function qrDialog(sv) {
@@ -2758,8 +2782,7 @@ function renderBypass() {
   const z = AD.zapret, t = AD.telegram;
   const sig = JSON.stringify([z, t, AD.updates, AD.conflict, ST && ST.admin, S.zapret, S.telegram]);
   patch('bypassBox', sig, () => [
-    ST && ST.os === 'windows' && !ST.admin ? notice('warn', 'zapret работает через драйвер WinDivert и требует прав администратора. Чтобы Naivka стартовала с ними без запроса, включите автозапуск в настройках.',
-      h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')) : null,
+    needElevation() ? notice('info', 'zapret нужны права администратора. При включении Windows спросит разрешение, и Naivka сама перезапустится с правами — подключение восстановится.') : null,
     AD.conflict ? notice('error', AD.conflict) : null,
     zapretCard(z),
     telegramCard(t),
@@ -2794,7 +2817,7 @@ function zapretCard(z) {
     h('div', { class: 'addon-head' },
       h('div', null, h('h3', null, 'zapret', verLabel(z)),
         h('p', null, 'Обход DPI для YouTube, Discord и сайтов из ваших правил «Через zapret». Эти сайты идут напрямую — быстрее и мимо сервера.')),
-      installed ? sw(zs.enabled, z.pick.active || (ST && ST.os === 'windows' && !ST.admin), v => { S.zapret.enabled = v; save(0); }, zs.enabled ? 'Включён' : 'Выключен') : null),
+      installed ? sw(zs.enabled, z.pick.active, v => { S.zapret.enabled = v; if (v && needElevation()) elevateFor('zapret'); else save(0); }, zs.enabled ? 'Включён' : 'Выключен') : null),
     status,
     !installed ? h('div', { class: 'row mt' },
       h('button', { class: 'btn primary', disabled: !!z.busy, onclick: () => act('/api/zapret/install') }, 'Установить zapret'),
@@ -3162,8 +3185,8 @@ function renderSpeed() {
     const vs = r.kind !== 'direct' && direct && direct.mbps > 0 && r.mbps > 0 ? Math.round((r.mbps / direct.mbps - 1) * 100) : null;
     return h('tr', null,
       h('td', null, h('div', { class: 'cell-main' }, r.name), h('div', { class: 'cell-sub' }, r.kind === 'direct' ? 'без сервера' : r.kind === 'wl' ? 'подписка' : 'ваш сервер')),
-      h('td', { class: 'r num' }, r.state === 'done' ? `${r.ping} мс` : ''),
-      h('td', null, r.state === 'wait' ? h('span', { class: 'hint' }, 'в очереди')
+      h('td', { class: 'r num' }, r.state === 'done' || r.state === 'ping' ? `${r.ping} мс` : ''),
+      h('td', null, r.state === 'wait' || r.state === 'ping' ? h('span', { class: 'hint' }, 'в очереди')
         : r.state === 'run' ? h('span', { class: 'hint' }, 'меряю…')
         : r.state === 'error' ? h('span', { class: 'err-text' }, r.error)
         : h('div', { class: 'row', style: 'flex-wrap:nowrap' },

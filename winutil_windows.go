@@ -34,7 +34,7 @@ func isAdmin() bool {
 	return r != 0
 }
 
-func relaunchElevated(replace bool) error {
+func relaunchElevated(replace, connect bool) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -42,6 +42,9 @@ func relaunchElevated(replace bool) error {
 	args := "--no-elevate"
 	if replace {
 		args += " --replace"
+	}
+	if connect {
+		args += " --connect"
 	}
 	r, _, _ := procShellExecuteW.Call(0,
 		uintptr(unsafe.Pointer(u16("runas"))),

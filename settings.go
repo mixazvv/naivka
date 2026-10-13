@@ -310,6 +310,12 @@ func (s *Settings) clone() *Settings {
 	return c
 }
 
+// needsAdmin — нужны ли Naivka права администратора: режиму TUN и zapret (драйвер WinDivert,
+// которого нет на Windows 7 и 8 — там zapret не запускается, и права ему не нужны).
+func (s *Settings) needsAdmin() bool {
+	return s.Mode == "tun" || (s.Zapret.Enabled && !legacyWindows())
+}
+
 // fingerprint — всё, что требует перезапуска ядра (выбор сервера применяется на лету).
 func (s *Settings) fingerprint() string {
 	c := s.clone()

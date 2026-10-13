@@ -191,6 +191,7 @@ func (a *App) routes() http.Handler {
 	})
 	api("POST", "/api/select", a.apiSelect)
 	api("POST", "/api/test", a.apiTest)
+	api("GET", "/api/test/results", func(*http.Request) (any, error) { return serverTests.view(), nil })
 	api("GET", "/api/conns", func(*http.Request) (any, error) {
 		cl := a.core.Clash()
 		if cl == nil {
@@ -349,7 +350,7 @@ func (a *App) routes() http.Handler {
 		}
 		wasRunning := a.core.Running()
 		a.core.Stop()
-		if err := relaunchElevated(true); err != nil {
+		if err := relaunchElevated(true, wasRunning); err != nil {
 			if wasRunning {
 				go a.connect()
 			}
@@ -449,7 +450,13 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 		a.applySelection()
 	}
 	a.core.KeepProxyOnCrash = ns.KillSwitch // применяется сразу, без переподключения
-	go a.applyAddons(prev, ns)
+	go func() {
+		a.applyAddons(prev, ns)
+		// zapret и tg-ws-proxy меняют маршруты ядра: применяем сразу, без кнопки «Переподключить».
+		if a.core.Running() && addonsNeedRestart(prev, ns) {
+			a.restartCore()
+		}
+	}()
 	if err := a.applyAutostart(prev, ns); err != nil {
 		return nil, err
 	}
@@ -539,7 +546,8 @@ type testResult struct {
 
 func (a *App) apiTest(r *http.Request) (any, error) {
 	var req struct {
-		ID string `json:"id"` // пусто = все
+		ID    string `json:"id"`    // пусто = все
+		Async bool   `json:"async"` // не ждать: результаты забирать из /api/test/results по мере готовности
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
@@ -555,11 +563,14 @@ func (a *App) apiTest(r *http.Request) (any, error) {
 			targets = append(targets, sv)
 		}
 	}
+	// Все серверы проверяются одновременно; каждый результат сразу кладётся в serverTests.
 	results := make([]testResult, len(targets))
-	done := make(chan struct{}, len(targets))
+	var wg sync.WaitGroup
+	serverTests.begin(targets)
 	for i, sv := range targets {
+		wg.Add(1)
 		go func(i int, sv Server) {
-			defer func() { done <- struct{}{} }()
+			defer wg.Done()
 			res := testResult{ID: sv.ID}
 			if cl != nil {
 				res.Kind = "proxy"
@@ -577,12 +588,52 @@ func (a *App) apiTest(r *http.Request) (any, error) {
 				}
 			}
 			results[i] = res
+			serverTests.put(res)
 		}(i, sv)
 	}
-	for range targets {
-		<-done
+	if req.Async {
+		return map[string]int{"started": len(targets)}, nil
 	}
+	wg.Wait()
 	return results, nil
+}
+
+// serverTests — результаты идущей проверки серверов: страница забирает их по мере готовности,
+// не дожидаясь самого медленного.
+var serverTests = &testBoard{res: map[string]*testResult{}}
+
+type testBoard struct {
+	mu  sync.Mutex
+	res map[string]*testResult // nil — ещё проверяется
+}
+
+func (b *testBoard) begin(list []Server) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, sv := range list {
+		b.res[sv.ID] = nil
+	}
+}
+
+func (b *testBoard) put(r testResult) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.res[r.ID] = &r
+}
+
+// view — готовые результаты и список ещё проверяемых.
+func (b *testBoard) view() map[string]any {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	done, pending := []testResult{}, []string{}
+	for id, r := range b.res {
+		if r == nil {
+			pending = append(pending, id)
+		} else {
+			done = append(done, *r)
+		}
+	}
+	return map[string]any{"done": done, "pending": pending}
 }
 
 // tlsProbe — проверка без подключения: сколько занимает TLS-рукопожатие с сервером.
@@ -597,7 +648,7 @@ func tlsProbe(sv Server) (int, error) {
 	if sni == "" {
 		sni = sv.Host
 	}
-	d := &net.Dialer{Timeout: 8 * time.Second}
+	d := &net.Dialer{Timeout: 5 * time.Second}
 	addr := net.JoinHostPort(sv.Host, strconv.Itoa(sv.Port))
 	start := time.Now()
 	if sv.Type == "shadowsocks" || (sv.Type == "vless" && sv.Security == "none") { // без TLS — только TCP
@@ -656,10 +707,10 @@ func humanErr(err error) string {
 
 // applyAutostart включает/выключает автозапуск, когда меняется настройка или режим.
 func (a *App) applyAutostart(prev, ns *Settings) error {
-	if prev.AutoStart == ns.AutoStart && (prev.Mode == ns.Mode || !ns.AutoStart) {
+	if prev.AutoStart == ns.AutoStart && (prev.needsAdmin() == ns.needsAdmin() || !ns.AutoStart) {
 		return nil
 	}
-	if err := setAutostart(ns.AutoStart, ns.Mode == "tun"); err != nil {
+	if err := setAutostart(ns.AutoStart, ns.needsAdmin()); err != nil {
 		a.mu.Lock()
 		a.settings.AutoStart = prev.AutoStart
 		_ = SaveSettings(a.dir, a.settings)

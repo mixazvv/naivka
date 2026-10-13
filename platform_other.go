@@ -12,7 +12,7 @@ import (
 // запускается на Linux/macOS — это удобно для отладки генератора конфигов.
 
 func isAdmin() bool { return os.Geteuid() == 0 }
-func relaunchElevated(bool) error {
+func relaunchElevated(bool, bool) error {
 	return fmt.Errorf("перезапуск с правами поддерживается только в Windows")
 }
 func messageBox(title, text string)    { fmt.Fprintln(os.Stderr, title+": "+text) }

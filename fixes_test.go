@@ -94,3 +94,43 @@ func TestSanitizeKeepsTransportPath(t *testing.T) {
 		t.Errorf("удалено %d, ожидалось 2: %v", len(removed), removed)
 	}
 }
+
+// Включение и выключение zapret и tg-ws-proxy применяется к ядру сразу, остальное — нет.
+func TestAddonsNeedRestart(t *testing.T) {
+	a := DefaultSettings()
+	b := a.clone()
+	b.Zapret.Strategy = "other"
+	if addonsNeedRestart(a, b) {
+		t.Fatal("strategy change must not restart the core")
+	}
+	for _, f := range []func(*Settings){
+		func(s *Settings) { s.Zapret.Enabled = !s.Zapret.Enabled },
+		func(s *Settings) { s.Zapret.RouteDirect = !s.Zapret.RouteDirect },
+		func(s *Settings) { s.Telegram.Enabled = !s.Telegram.Enabled },
+	} {
+		c := a.clone()
+		f(c)
+		if !addonsNeedRestart(a, c) {
+			t.Fatal("addon toggle must restart the core")
+		}
+		if a.fingerprint() == c.fingerprint() {
+			t.Fatal("toggle must change the fingerprint")
+		}
+	}
+}
+
+// Результаты проверки серверов видны по одному, не дожидаясь самого медленного.
+func TestTestBoard(t *testing.T) {
+	b := &testBoard{res: map[string]*testResult{}}
+	b.begin([]Server{{ID: "a"}, {ID: "b"}})
+	b.put(testResult{ID: "a", Ms: 40})
+	v := b.view()
+	done, pending := v["done"].([]testResult), v["pending"].([]string)
+	if len(done) != 1 || done[0].ID != "a" || len(pending) != 1 || pending[0] != "b" {
+		t.Fatalf("view = %+v", v)
+	}
+	b.begin([]Server{{ID: "a"}})
+	if v := b.view(); len(v["done"].([]testResult)) != 0 {
+		t.Fatal("a new check must hide the old result")
+	}
+}

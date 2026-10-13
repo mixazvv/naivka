@@ -74,9 +74,9 @@ func main() {
 	encryptSecrets = runtime.GOOS == "windows" && !portable
 	s, serr := LoadSettings(dir)
 
-	// TUN требует прав администратора — перезапускаемся сразу, до всего остального.
-	if runtime.GOOS == "windows" && s.Mode == "tun" && !isAdmin() && !args["--no-elevate"] {
-		if err := relaunchElevated(args["--replace"]); err == nil {
+	// TUN и zapret требуют прав администратора — перезапускаемся сразу, до всего остального.
+	if runtime.GOOS == "windows" && s.needsAdmin() && !isAdmin() && !args["--no-elevate"] {
+		if err := relaunchElevated(args["--replace"], args["--connect"]); err == nil {
 			return
 		}
 		// Пользователь отказался в UAC — продолжаем без прав, интерфейс подскажет.
@@ -151,7 +151,8 @@ func main() {
 	a.ui = newUI(a)
 	a.watchPower()
 	go a.startAddons()
-	if s.AutoConnect && len(s.Servers) > 0 && a.core.Present() {
+	// --connect: перезапуск с правами из подключённого состояния — подключаемся снова сами.
+	if (s.AutoConnect || args["--connect"]) && len(s.Servers) > 0 && a.core.Present() {
 		go func() {
 			if err := a.connect(); err != nil {
 				a.core.logs.Add("[naivka] автоподключение: " + err.Error())

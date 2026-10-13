@@ -69,8 +69,8 @@ func (a *App) trayCommand(id int) {
 		_ = SaveSettings(a.dir, a.settings)
 		a.mu.Unlock()
 		a.applyAddons(prev, ns)
-		if a.core.Running() && prev.Zapret.Enabled != ns.Zapret.Enabled {
-			a.restartCore() // сайты zapret: напрямую или через сервер
+		if a.core.Running() && addonsNeedRestart(prev, ns) {
+			a.restartCore() // сайты zapret и Telegram: напрямую, через сервер или через tg-ws-proxy
 		}
 		a.ui.Refresh()
 	case id == cmdToggle:

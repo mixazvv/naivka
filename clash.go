@@ -115,7 +115,7 @@ func (c *Clash) Delay(tag, testURL string) (int, error) {
 	var v struct {
 		Delay int `json:"delay"`
 	}
-	q := url.Values{"timeout": {"8000"}, "url": {testURL}}
+	q := url.Values{"timeout": {"5000"}, "url": {testURL}} // за 5 с живой сервер успевает, мёртвый не держит проверку
 	err := c.do("GET", "/proxies/"+url.PathEscape(tag)+"/delay?"+q.Encode(), nil, &v)
 	return v.Delay, err
 }
