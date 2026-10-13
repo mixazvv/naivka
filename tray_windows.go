@@ -205,7 +205,7 @@ func newTray(onOpen func(), onMenu func() []menuItem, onCommand func(int), logo 
 	t.taskbarMsg = uint32(must(procRegisterWindowMsgW.Call(uintptr(unsafe.Pointer(u16("TaskbarCreated"))))))
 	sm, _, _ := procGetSystemMetrics.Call(49) // SM_CXSMICON — с учётом масштаба экрана
 	t.iconOn = logoIcon(int(sm), logo, icoOn)
-	t.iconOff = logoIcon(int(sm), logoOff, icoOff)
+	t.iconOff = logoIcon(int(sm), mutedLogo(logo), icoOff)
 	t.nid = notifyIconData{HWnd: t.hwnd, UID: 1, UFlags: nifMsg | nifIcon | nifTip, UCallbackMessage: wmTray, HIcon: t.iconOff}
 	t.nid.CbSize = uint32(unsafe.Sizeof(t.nid))
 	setTip(t.nid.SzTip[:], "Naivka")
@@ -251,23 +251,26 @@ func (t *tray) SetState(connected bool, tip string) {
 	})
 }
 
-// SetLogo перекрашивает значок «подключено» под цвет интерфейса.
+// SetLogo перекрашивает значки под цвет интерфейса: «подключено» — акцент, «отключено» — он же, приглушённый.
 func (t *tray) SetLogo(c logoColors) {
 	t.Do(func() {
 		sm, _, _ := procGetSystemMetrics.Call(49)
-		h := logoIcon(int(sm), c, icoOn)
-		if h == 0 {
+		on, off := logoIcon(int(sm), c, icoOn), logoIcon(int(sm), mutedLogo(c), icoOff)
+		if on == 0 || off == 0 {
 			return
 		}
-		old := t.iconOn
-		t.iconOn = h
+		oldOn, oldOff := t.iconOn, t.iconOff
+		t.iconOn, t.iconOff = on, off
+		t.nid.UFlags = nifIcon
+		t.nid.HIcon = off
 		if t.connected {
-			t.nid.UFlags = nifIcon
-			t.nid.HIcon = h
-			procShellNotifyIconW.Call(nimModify, uintptr(unsafe.Pointer(&t.nid)))
+			t.nid.HIcon = on
 		}
-		if old != 0 {
-			procDestroyIcon.Call(old)
+		procShellNotifyIconW.Call(nimModify, uintptr(unsafe.Pointer(&t.nid)))
+		for _, h := range []uintptr{oldOn, oldOff} {
+			if h != 0 {
+				procDestroyIcon.Call(h)
+			}
 		}
 	})
 }

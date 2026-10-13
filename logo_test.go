@@ -61,3 +61,13 @@ func TestLogoColors(t *testing.T) {
 		t.Fatal("bad colour accepted")
 	}
 }
+
+func TestMutedLogo(t *testing.T) {
+	m := mutedLogo(logoColors{Bg: "#B6E35A", Ink: "#11170A"})
+	if !m.valid() || m.Bg == "#B6E35A" || m.Ink != "#EEF0EC" {
+		t.Fatalf("muted = %+v", m)
+	}
+	if mutedLogo(logoColors{Bg: "bad"}) != logoOff {
+		t.Fatal("bad colour must fall back to grey")
+	}
+}

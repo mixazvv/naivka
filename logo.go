@@ -22,8 +22,21 @@ type logoColors struct {
 	Ink string `json:"ink"`
 }
 
-// Значок «отключено» всегда серый: по нему видно, что соединения нет.
+// Значок «отключено» — серый, пока цвета интерфейса неизвестны; потом — приглушённый акцент (mutedLogo).
 var logoOff = logoColors{Bg: "#5E646B", Ink: "#ECEEEA"}
+
+// mutedLogo — значок «отключено» в цвете интерфейса: плашка — акцент, наполовину ушедший в серый,
+// буква светлая. Так видно и что соединения нет, и что это та же программа.
+func mutedLogo(c logoColors) logoColors {
+	bg, ok := parseHexColor(c.Bg)
+	if !ok {
+		return logoOff
+	}
+	gray := color.NRGBA{R: 0x4A, G: 0x4E, B: 0x54, A: 255}
+	mix := func(a, b uint8) uint8 { return uint8((int(a)*35 + int(b)*65) / 100) }
+	m := color.NRGBA{R: mix(bg.R, gray.R), G: mix(bg.G, gray.G), B: mix(bg.B, gray.B), A: 255}
+	return logoColors{Bg: fmt.Sprintf("#%02X%02X%02X", m.R, m.G, m.B), Ink: "#EEF0EC"}
+}
 
 var hexColorRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 

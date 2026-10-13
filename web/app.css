@@ -72,6 +72,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 ::selection { background: var(--tunnel-soft); }
 .num { font-variant-numeric: tabular-nums; }
 
+/* Шкала текста: 11 — бейджи и подписи осей, 12 — заглавные подписи плиток, 12,5 — второстепенные строки
+   в карточках и списках, 13 — подсказки, 14 — основной текст, 17 — h2, 28 — h1. */
 /* ---------- каркас ----------
    Слева — меню разделов «линией маршрута»: узел на линии у каждого раздела, пройденный до текущего
    отрезок подсвечен. Главный экран — «сцена» со схемой ветвей; разделы выезжают панелью справа. */
@@ -122,7 +124,21 @@ body[data-state="wait"] .ambient { animation: glowPulse 1.6s ease-in-out infinit
               linear-gradient(90deg, color-mix(in srgb, var(--ink) 4%, transparent) 1px, transparent 1px) 0 0 / 28px 28px;
   -webkit-mask-image: radial-gradient(70% 60% at 50% 45%, #000, transparent); mask-image: radial-gradient(70% 60% at 50% 45%, #000, transparent); }
 .main { overflow: auto; position: relative; outline: none; z-index: 1; }
-.scrim { z-index: 2; background: rgba(4, 8, 14, .45); animation: fadeIn .2s ease both; }
+.scrim { z-index: 2; background: rgba(6, 8, 10, .62); -webkit-backdrop-filter: blur(3px) saturate(.7); backdrop-filter: blur(3px) saturate(.7); animation: fadeIn .2s ease both; }
+/* Оглавление длинного раздела: прилипает к верху панели, текущий блок подсвечен. */
+.toc { position: sticky; top: 0; z-index: 3; display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 6px -34px 4px; padding: 10px 34px 12px; background: var(--bg);
+  border-bottom: 1px solid transparent; transition: border-color .2s; }
+.toc.stuck { border-bottom-color: var(--line); }
+.toc::-webkit-scrollbar { display: none; }
+.toc button { flex: none; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.toc button:hover { color: var(--ink); border-color: var(--faint); }
+.toc button[aria-current="true"] { color: var(--on-accent); background: var(--tunnel); border-color: var(--tunnel); }
+:root.mica:not([data-solid]) .toc { background: var(--layer); }
+:root[data-skin="gold"] .toc { background: rgba(10, 10, 9, .97); }
+:root[data-skin="gold"] .toc button { border-radius: 0; }
+:root[data-skin="blocks"] .toc { background: #17181B; }
+:root[data-skin="blocks"] .toc button { border-radius: 0; clip-path: var(--px-r); border: 0; background: #26282D; }
+:root[data-skin="blocks"] .toc button[aria-current="true"] { background: var(--tunnel); }
 .drawer { z-index: 3; justify-self: end; width: min(860px, calc(100% - 80px)); height: 100%; overflow: hidden; display: flex; flex-direction: column; position: relative;
   background: var(--bg); border-left: 1px solid var(--line); box-shadow: -24px 0 60px -20px rgba(0, 0, 0, .55);
   transform: translateX(40px); opacity: 0; transition: transform .26s cubic-bezier(.2, .8, .2, 1), opacity .2s; }
@@ -170,6 +186,22 @@ p { margin: 0 0 10px; }
 .stage-controls { display: flex; gap: 10px 26px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 8px; }
 .stage-controls label { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; }
 .stage-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+/* Пока не подключено, вместо плиток с нулями — полоса «готово к подключению». */
+.stage-ready { display: none; align-items: center; gap: 18px; margin-top: 22px; padding: 16px 18px 16px 20px; border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--tunnel) 30%, var(--line)); background: linear-gradient(100deg, var(--tunnel-soft), transparent 70%), var(--surface); }
+body[data-state="off"] .stage-tiles { display: none; }
+body[data-state="off"] .stage-ready { display: flex; }
+.ready-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ready-text b { font: 600 16px/1.3 var(--display); }
+.ready-text span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ready-act { display: flex; align-items: center; gap: 14px; flex: none; }
+.ready-keys { color: var(--faint); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.ready-keys kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; font: 600 11px/1 var(--font); color: var(--muted); background: var(--raised); }
+/* Кнопка «Компьютер» мягко «дышит», пока не подключено: сразу видно, куда нажимать. */
+body[data-state="off"] .lanes-box .power::after { content: ""; position: absolute; inset: -6%; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--tunnel) 45%, transparent); animation: powerBreathe 2.6s ease-out infinite; }
+@keyframes powerBreathe { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tunnel) 40%, transparent); } 70%, 100% { box-shadow: 0 0 0 18px transparent; } }
+@media (prefers-reduced-motion: reduce) { body[data-state="off"] .lanes-box .power::after { animation: none; } }
 .tile { display: grid; grid-template-rows: auto auto 1fr; gap: 4px; text-align: left; padding: 14px 16px; min-height: 96px; border-radius: 14px; border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--ink); cursor: pointer; position: relative; overflow: hidden; transition: border-color .15s, transform .15s; }
 .tile:hover { border-color: color-mix(in srgb, var(--tunnel) 45%, var(--line)); transform: translateY(-1px); }
@@ -309,7 +341,7 @@ label.field > span { font-size: 13px; color: var(--muted); }
 
 /* ---------- метки ---------- */
 .cc { display: inline-block; min-width: 26px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .04em; line-height: 18px; padding: 0 4px; border-radius: 4px; margin-right: 6px; background: var(--tunnel-soft); color: var(--tunnel); }
-.proto { font-size: 11.5px; font-weight: 600; border-radius: 4px; padding: 1px 6px; margin-left: 8px; background: var(--raised); color: var(--muted); border: 1px solid var(--line); }
+.proto { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px; margin-left: 8px; background: var(--raised); color: var(--muted); border: 1px solid var(--line); }
 .proto.vless { color: var(--direct); border-color: transparent; background: var(--direct-soft); }
 .route-tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
 .route-tag.proxy { background: var(--tunnel-soft); color: var(--tunnel); }
@@ -330,7 +362,11 @@ label.field > span { font-size: 13px; color: var(--muted); }
 .cell-main { font-weight: 600; }
 .cell-sub { color: var(--muted); font-size: 12.5px; }
 .trunc { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.empty { padding: 26px 10px; color: var(--muted); }
+.empty { padding: 26px 10px; color: var(--muted); text-align: center; }
+/* Пустые состояния: небольшая «пустая ветка» в стиле схемы над текстом. */
+.empty::before { content: ""; display: block; width: 96px; height: 38px; margin: 0 auto 12px; background: var(--faint); opacity: .7;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20120%2048%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.4%27%20stroke-linecap%3D%27round%27%3E%3Ccircle%20cx%3D%2712%27%20cy%3D%2724%27%20r%3D%277%27/%3E%3Ccircle%20cx%3D%27108%27%20cy%3D%2724%27%20r%3D%277%27/%3E%3Cpath%20d%3D%27M19%2024c18%200%2022-14%2041-14s23%2014%2041%2014%27%20stroke-dasharray%3D%271%206%27/%3E%3Cpath%20d%3D%27M19%2024c18%200%2022%2014%2041%2014s23-14%2041-14%27%20opacity%3D%27.5%27%20stroke-dasharray%3D%271%206%27/%3E%3Ccircle%20cx%3D%2760%27%20cy%3D%2710%27%20r%3D%274%27%20fill%3D%27black%27%20stroke%3D%27none%27/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20120%2048%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.4%27%20stroke-linecap%3D%27round%27%3E%3Ccircle%20cx%3D%2712%27%20cy%3D%2724%27%20r%3D%277%27/%3E%3Ccircle%20cx%3D%27108%27%20cy%3D%2724%27%20r%3D%277%27/%3E%3Cpath%20d%3D%27M19%2024c18%200%2022-14%2041-14s23%2014%2041%2014%27%20stroke-dasharray%3D%271%206%27/%3E%3Cpath%20d%3D%27M19%2024c18%200%2022%2014%2041%2014s23-14%2041-14%27%20opacity%3D%27.5%27%20stroke-dasharray%3D%271%206%27/%3E%3Ccircle%20cx%3D%2760%27%20cy%3D%2710%27%20r%3D%274%27%20fill%3D%27black%27%20stroke%3D%27none%27/%3E%3C/svg%3E") center / contain no-repeat; }
+td.empty::before { margin-bottom: 8px; }
 .hits { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .hits.hot { color: var(--ink); font-weight: 600; }
 .tag-select { border: 0; border-radius: 10px; min-height: 0; padding: 2px 8px; font-size: 12.5px; cursor: pointer; }
@@ -435,7 +471,7 @@ dialog h2 { margin-top: 0; }
 .switch input:checked + i::after { transform: translateX(18px); }
 .switch input:focus-visible + i { outline: 2px solid var(--tunnel); outline-offset: 2px; }
 .switch input:disabled + i { opacity: .5; }
-.addon-status { margin-top: 12px; display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
+.addon-status { margin-top: 12px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .addon-status .k { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
 .addon-status .k.on { background: var(--direct); }
 .addon-status .k.warn { background: var(--warn); }
@@ -485,7 +521,7 @@ dialog h2 { margin-top: 0; }
 .leg-chip.off { opacity: .55; }
 .leg-dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 .leg-name { color: var(--muted); }
-.leg-share { color: var(--faint); font-size: 11.5px; }
+.leg-share { color: var(--faint); font-size: 11px; }
 .area { opacity: .6; }
 .dot.zapret { background: var(--warn); }
 .dot.tg { background: var(--tg); }
@@ -687,6 +723,12 @@ body[data-state="blocked"] .pw-core { fill: var(--danger-soft); }
 .scard-sub { color: var(--muted); font-size: 12.5px; max-width: none; }
 .scard-actions { display: flex; gap: 4px; margin: 0 -6px -4px; opacity: .72; transition: opacity .2s; }
 .scard:hover .scard-actions, .scard:focus-within .scard-actions { opacity: 1; }
+.scard-tools { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .15s; }
+.scard:hover .scard-tools, .scard:focus-within .scard-tools { opacity: 1; }
+.tool { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.tool:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.tool .bi { width: 16px; height: 16px; opacity: 1; }
+@media (hover: none) { .scard-tools { opacity: 1; } }
 .scard-grip { position: absolute; left: 50%; top: 1px; transform: translateX(-50%) rotate(90deg); color: var(--faint); font-size: 11px; line-height: 1; letter-spacing: -2px; opacity: 0; cursor: grab; transition: opacity .2s; }
 .scard:hover .scard-grip { opacity: 1; }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
@@ -753,7 +795,7 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
 .mflag .flag { margin: 0; }
 .mauto { width: 21px; height: 14px; border-radius: 3px; display: grid; place-items: center; font-size: 10px; font-weight: 700; background: var(--tunnel-soft); color: var(--tunnel); }
 .mrow-main { flex: 1; min-width: 0; }
-.mrow-main b { display: block; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow-main b { display: block; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mrow-main small { display: block; color: var(--muted); font-size: 12px; }
 .mini-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 
@@ -1089,3 +1131,20 @@ button.hchip:hover .bi { opacity: 1; }
 .node-flag { pointer-events: none; }
 .node-flag.idle { opacity: .55; }
 :root[data-skin="blocks"] .node-flag { shape-rendering: crispEdges; }
+
+/* Смена сервера на схеме: кольцо расходится от узла, флаг и подпись проявляются, по ветке пробегает вспышка. */
+.swap-ring { fill: none; stroke-width: 3; transform-box: fill-box; transform-origin: center; pointer-events: none; animation: swapRing .9s ease-out both; }
+@keyframes swapRing { from { transform: scale(1); opacity: .9; } to { transform: scale(2.6); opacity: 0; } }
+.swap-in { animation: swapIn .5s cubic-bezier(.2, .9, .3, 1.3) both; transform-box: fill-box; transform-origin: center; }
+@keyframes swapIn { from { transform: scale(.4); opacity: 0; } }
+.swap-text { animation: fadeIn .45s ease both; }
+.swap-line { animation: swapLine 1s ease-out both; }
+@keyframes swapLine { 0% { filter: brightness(2.2) drop-shadow(0 0 6px currentColor); } 100% { filter: none; } }
+.mini .empty::before { width: 72px; height: 28px; margin-bottom: 8px; }
+:root[data-skin="gold"] .stage-ready, :root[data-skin="gold"] .tool, :root[data-skin="gold"] .ready-keys kbd { border-radius: 0; }
+:root[data-skin="gold"] .stage-ready { background: linear-gradient(100deg, rgba(216, 179, 106, .12), transparent 70%), rgba(0, 0, 0, .5); border-color: rgba(222, 196, 140, .25); }
+:root[data-skin="gold"] .ready-text b { font-weight: 300; letter-spacing: .12em; text-transform: uppercase; }
+:root[data-skin="blocks"] .stage-ready { border: 0; border-radius: 0; clip-path: var(--px-r); background: #1D1E22; box-shadow: var(--px-bevel); }
+:root[data-skin="blocks"] .tool, :root[data-skin="blocks"] .ready-keys kbd { border-radius: 0; }
+:root[data-skin="blocks"] .ready-text b { font-family: var(--px); font-weight: 400; font-size: 13px; text-transform: uppercase; }
+:root[data-skin="blocks"] .empty::before { opacity: .5; }
