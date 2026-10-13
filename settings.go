@@ -185,6 +185,7 @@ type Settings struct {
 	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
 	NativeFrame     bool             `json:"nativeFrame"` // обычная рамка Windows вместо своей строки заголовка
 	OwnServer       bool             `json:"ownServer"`   // показывать раздел «Свой сервер»
+	Lang            string           `json:"lang"`        // язык интерфейса: ru | en
 	Window          *WindowGeom      `json:"window,omitempty"`
 	Zapret          ZapretSettings   `json:"zapret"`
 	Telegram        TelegramSettings `json:"telegram"`
@@ -227,6 +228,7 @@ func DefaultSettings() *Settings {
 		Accent:         accentDefault,
 		TrayMini:       true,
 		OwnServer:      true,
+		Lang:           "ru",
 		UpdateCheck:    true,
 		Zapret:         ZapretSettings{Strategy: "general", GameFilter: "off", IPSet: "none", RouteDirect: true, Fallback: true},
 		Telegram:       TelegramSettings{Port: 1443},
@@ -323,7 +325,7 @@ func (s *Settings) fingerprint() string {
 	c.AutoConnect = false
 	c.ExitWithWindow = false
 	c.Window = nil
-	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer = "", "", false, false, false, false
+	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang = "", "", false, false, false, false, ""
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
 		c.Servers[i].Fav = false
@@ -432,6 +434,9 @@ func (s *Settings) normalize() {
 		s.Theme = "dark"
 	}
 	s.Accent = normalizeAccent(s.Accent)
+	if s.Lang != "en" {
+		s.Lang = "ru"
+	}
 	for i := range s.Servers {
 		sv := &s.Servers[i]
 		if sv.ID == "" {

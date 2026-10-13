@@ -432,7 +432,7 @@ func (u *nativeUI) mainProc(hwnd, msg, wp, lp uintptr) uintptr {
 		}
 		if !u.hinted {
 			u.hinted = true
-			u.t.Balloon("Naivka работает в трее. Щёлкните по значку, чтобы открыть окно.", false)
+			u.t.Balloon(u.a.tr("Naivka работает в трее. Щёлкните по значку, чтобы открыть окно."), false)
 		}
 		return 0
 	case wmGetMinMaxInfo:

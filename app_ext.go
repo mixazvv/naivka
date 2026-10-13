@@ -43,7 +43,7 @@ func (a *App) notify(text string, warn bool) {
 	on := a.settings.Notify
 	a.mu.Unlock()
 	if on && a.ui != nil {
-		a.ui.Notify(text, warn)
+		a.ui.Notify(a.tr(text), warn)
 	}
 }
 

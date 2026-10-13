@@ -23,32 +23,32 @@ const (
 func (a *App) trayMenu() []menuItem {
 	s := a.settingsCopy()
 	st := a.core.Status()
-	items := []menuItem{{Text: "Открыть Naivka", ID: cmdOpen}, {Sep: true}}
+	items := []menuItem{{Text: a.tr("Открыть Naivka"), ID: cmdOpen}, {Sep: true}}
 	switch {
 	case st.Starting:
-		items = append(items, menuItem{Text: "Подключение…", ID: cmdToggle, Disabled: true})
+		items = append(items, menuItem{Text: a.tr("Подключение…"), ID: cmdToggle, Disabled: true})
 	case st.Running || st.Blocked:
-		items = append(items, menuItem{Text: "Отключить", ID: cmdToggle})
+		items = append(items, menuItem{Text: a.tr("Отключить"), ID: cmdToggle})
 	default:
-		items = append(items, menuItem{Text: "Подключить", ID: cmdToggle, Disabled: len(s.Servers) == 0})
+		items = append(items, menuItem{Text: a.tr("Подключить"), ID: cmdToggle, Disabled: len(s.Servers) == 0})
 	}
 	if len(s.Servers) > 0 {
-		sub := []menuItem{{Text: "Автовыбор", ID: cmdAuto, Checked: s.Selected == "auto"}, {Sep: true}}
+		sub := []menuItem{{Text: a.tr("Автовыбор"), ID: cmdAuto, Checked: s.Selected == "auto"}, {Sep: true}}
 		for i, sv := range s.Servers {
 			sub = append(sub, menuItem{Text: fmt.Sprintf("%s (%s)", sv.Name, protoTitle(sv)), ID: cmdServer0 + i, Checked: s.Selected == sv.ID})
 		}
 		if s.WL.Enabled {
-			sub = append(sub, menuItem{Sep: true}, menuItem{Text: "Белые списки (подписка)", ID: cmdWL, Checked: s.Selected == "wl"})
+			sub = append(sub, menuItem{Sep: true}, menuItem{Text: a.tr("Белые списки (подписка)"), ID: cmdWL, Checked: s.Selected == "wl"})
 		}
-		items = append(items, menuItem{Text: "Сервер", Sub: sub})
+		items = append(items, menuItem{Text: a.tr("Сервер"), Sub: sub})
 	}
 	if a.zapret.root() != "" {
-		items = append(items, menuItem{Text: "Обход zapret", ID: cmdZapret, Checked: s.Zapret.Enabled && a.zapret.Running()})
+		items = append(items, menuItem{Text: a.tr("Обход zapret"), ID: cmdZapret, Checked: s.Zapret.Enabled && a.zapret.Running()})
 	}
 	if a.tgws.snapshot().Installed != "" {
-		items = append(items, menuItem{Text: "Telegram без сервера", ID: cmdTg, Checked: s.Telegram.Enabled && a.tgws.Running()})
+		items = append(items, menuItem{Text: a.tr("Telegram без сервера"), ID: cmdTg, Checked: s.Telegram.Enabled && a.tgws.Running()})
 	}
-	return append(items, menuItem{Sep: true}, menuItem{Text: "Выход", ID: cmdQuit})
+	return append(items, menuItem{Sep: true}, menuItem{Text: a.tr("Выход"), ID: cmdQuit})
 }
 
 func (a *App) trayCommand(id int) {
@@ -107,9 +107,9 @@ func (a *App) trayTip() (bool, string) {
 	st := a.core.Status()
 	switch {
 	case st.Blocked:
-		return false, "Naivka: ядро упало, трафик заблокирован"
+		return false, a.tr("Naivka: ядро упало, трафик заблокирован")
 	case st.Starting:
-		return false, "Naivka: подключение…"
+		return false, a.tr("Naivka: подключение…")
 	case st.Running:
 		name := ""
 		if cl := a.core.Clash(); cl != nil {
@@ -121,9 +121,9 @@ func (a *App) trayTip() (bool, string) {
 				name = ", " + a.serverName(tag)
 			}
 		}
-		return true, "Naivka: подключено" + name
+		return true, a.tr("Naivka: подключено") + name
 	}
-	return false, "Naivka: отключено"
+	return false, a.tr("Naivka: отключено")
 }
 
 func (a *App) trayLoop(t *tray) {

@@ -429,6 +429,7 @@ async function miniRefresh(full) {
     miniBusy = true;
     try {
       if (full || !S) S = await api('/api/settings');
+      if ((S.lang === 'en' ? 'en' : 'ru') !== LANG) { try { localStorage.setItem('naivka-lang', S.lang === 'en' ? 'en' : 'ru'); } catch (_) { /* как есть */ } location.reload(); return; }
       ST = await api('/api/state');
       if (ST.running) { PX = await api('/api/proxies'); if (PX && PX.running === false) PX = null; } else PX = null;
       STATS = await api('/api/stats?n=40');

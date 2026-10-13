@@ -83,24 +83,27 @@ function rid() {
 }
 
 function fmtBytes(n) {
-  const u = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+  const u = LANG === 'en' ? ['B', 'KB', 'MB', 'GB', 'TB'] : ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
   let i = 0;
   n = n || 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return n.toLocaleString('ru-RU', { maximumFractionDigits: i > 0 && n < 10 ? 1 : 0 }) + ' ' + u[i];
+  return n.toLocaleString(LOCALE, { maximumFractionDigits: i > 0 && n < 10 ? 1 : 0 }) + ' ' + u[i];
 }
-const fmtSpeed = n => fmtBytes(n) + '/с';
+const fmtSpeed = n => fmtBytes(n) + (LANG === 'en' ? '/s' : '/с');
 
 function fmtDur(sec) {
   sec = Math.max(0, Math.floor(sec));
   const hh = Math.floor(sec / 3600), mm = Math.floor(sec % 3600 / 60);
+  if (LANG === 'en') return hh ? `${hh} h ${mm} min` : mm ? `${mm} min` : `${sec} s`;
   if (hh) return `${hh} ч ${mm} мин`;
   if (mm) return `${mm} мин`;
   return `${sec} с`;
 }
-const fmtTime = t => new Date(t * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+const fmtTime = t => new Date(t * 1000).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
 
+// Форма слова для числа. В английском две формы: для 1 и для остальных (слово переведёт i18n.js).
 function plural(n, one, few, many) {
+  if (LANG === 'en') return n === 1 ? one : many;
   const m10 = n % 10, m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
@@ -2524,6 +2527,15 @@ function viewSettings() {
     h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: openFeedback }, 'Написать автору в Telegram'),
       h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
 
+    h('h2', null, 'Язык · Language'),
+    segmented([['ru', 'Русский'], ['en', 'English']], () => S.lang === 'en' ? 'en' : 'ru', async v => {
+      S.lang = v;
+      save();
+      await saveNow();
+      try { localStorage.setItem('naivka-lang', v); } catch (_) { /* перезагрузка всё равно возьмёт из настроек */ }
+      location.reload();
+    }, 'Язык'),
+
     h('h2', null, 'Внешний вид'),
     segmented([['dark', 'Обычная'], ['gold', 'Никогда не проси об этом'], ['blocks', 'Пиксели']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
     h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
@@ -2705,6 +2717,10 @@ async function boot() {
   $('#feedbackBtn').addEventListener('click', openFeedback);
   try { S = await api('/api/settings'); }
   catch (e) { setOffline(true); setOffline(true); setOffline(true); return; }
+  // Язык хранится в настройках; страница узнаёт его до загрузки из localStorage, чтобы не мигать русским.
+  if ((S.lang === 'en' ? 'en' : 'ru') !== LANG) {
+    try { localStorage.setItem('naivka-lang', S.lang === 'en' ? 'en' : 'ru'); location.reload(); return; } catch (_) { /* остаётся как есть */ }
+  }
   applyTheme();
   applySections();
   // Сервер могли сменить в мини-окне или меню трея — подтягиваем настройки, когда окно снова на экране.
@@ -2817,7 +2833,7 @@ function zapretCard(z) {
     h('div', { class: 'addon-head' },
       h('div', null, h('h3', null, 'zapret', verLabel(z)),
         h('p', null, 'Обход DPI для YouTube, Discord и сайтов из ваших правил «Через zapret». Эти сайты идут напрямую — быстрее и мимо сервера.')),
-      installed ? sw(zs.enabled, z.pick.active, v => { S.zapret.enabled = v; if (v && needElevation()) elevateFor('zapret'); else save(0); }, zs.enabled ? 'Включён' : 'Выключен') : null),
+      installed ? sw(zs.enabled, z.pick.active, v => { S.zapret.enabled = v; save(0); if (v && needElevation()) elevateFor('zapret'); }, zs.enabled ? 'Включён' : 'Выключен') : null),
     status,
     !installed ? h('div', { class: 'row mt' },
       h('button', { class: 'btn primary', disabled: !!z.busy, onclick: () => act('/api/zapret/install') }, 'Установить zapret'),
@@ -3007,7 +3023,7 @@ function trialPanel(z) {
 function wlCard() {
   const w = WL || {};
   const on = S.wl.enabled;
-  const upd = w.fetched ? 'обновлена ' + new Date(w.fetched * 1000).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'ещё не загружена';
+  const upd = w.fetched ? 'обновлена ' + new Date(w.fetched * 1000).toLocaleString(LOCALE, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'ещё не загружена';
   const src = w.source ? w.source.replace(/^https:\/\/([^/]+).*$/, '$1') : '';
   return h('section', { class: 'card addon' },
     h('div', { class: 'addon-head' },
@@ -3039,7 +3055,7 @@ let TRAFFIC = null;
 const tsum = v => v ? v[0] + v[1] : 0;
 const aroundOf = k => tsum(k.direct) + tsum(k.zapret) + tsum(k.telegram);
 const fmtDay = d => { const [y, m, dd] = d.split('-'); return `${dd}.${m}`; };
-const fmtDayLong = d => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+const fmtDayLong = d => new Date(d + 'T12:00:00').toLocaleDateString(LOCALE, { day: 'numeric', month: 'long' });
 
 async function refreshTraffic() {
   try { TRAFFIC = await api('/api/traffic'); } catch (_) { return; }
@@ -3191,7 +3207,7 @@ function renderSpeed() {
         : r.state === 'error' ? h('span', { class: 'err-text' }, r.error)
         : h('div', { class: 'row', style: 'flex-wrap:nowrap' },
           h('div', { class: 'score-bar', style: 'flex:1;height:8px' }, h('span', { style: `width:${r.mbps / max * 100}%;background:${r.kind === 'direct' ? 'var(--direct)' : 'var(--tunnel)'}` })),
-          h('b', { class: 'num', style: 'min-width:92px;text-align:right' }, `${r.mbps.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} Мбит/с`))),
+          h('b', { class: 'num', style: 'min-width:92px;text-align:right' }, `${r.mbps.toLocaleString(LOCALE, { maximumFractionDigits: 1 })} Мбит/с`))),
       h('td', { class: 'r num ' + (vs === null ? 'cell-sub' : vs >= -15 ? 'delay good' : vs >= -50 ? 'delay mid' : 'delay bad') },
         vs === null ? '—' : (vs > 0 ? '+' : '') + vs + '%'));
   }));
