@@ -2781,6 +2781,12 @@ function sw(checked, disabled, onchange, label) {
   return h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked, disabled, onchange: e => onchange(e.target.checked) }), h('i'), label);
 }
 
+// Подбор стратегии zapret: быстрый — до первой, открывшей всё; полный — все по очереди.
+async function pickStrategy(full) {
+  try { await api('/api/zapret/pick', { full }); } catch (e) { toast(e.message.split('\n')[0], true); }
+  refreshAddons();
+}
+
 async function act(path, okText) {
   try { await api(path, {}); if (okText) toast(okText); } catch (e) { toast(e.message.split('\n')[0], true); }
   refreshAddons();
@@ -2845,7 +2851,8 @@ function zapretCard(z) {
       h('span', { class: 'hint' }, 'Стратегия'),
       h('select', { disabled: pick.active, onchange: e => { S.zapret.strategy = e.target.value; save(0); } },
         z.strategies.map(n => h('option', { value: n, selected: n === zs.strategy }, n))),
-      h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => act('/api/zapret/pick') }, 'Подобрать автоматически'),
+      h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => pickStrategy(false), title: 'Останавливается на первой стратегии, которая открыла всё' }, 'Подобрать автоматически'),
+      h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => pickStrategy(true), title: 'Проверяет все стратегии и выбирает самую быструю' }, 'Проверить все стратегии'),
       h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => startTrial(z) }, 'Проверить вручную'),
       z.latest && z.installed !== z.latest ? h('button', { class: 'btn primary', disabled: !!z.busy, onclick: () => act('/api/zapret/install') }, `Обновить до ${z.latest}`) : null) : null,
     pickBox,
@@ -2915,7 +2922,7 @@ function pickTable(pick, zs) {
   const rows = pick.results.slice().sort((a, b) => b.ok - a.ok || a.ms - b.ms);
   const mineTotal = (rows[0] && rows[0].sites || []).filter(x => x.mine).length;
   return more('Результаты подбора', pick.best ? `лучшая — «${pick.best}»` : (pick.error || ''),
-    null,
+    pick.early ? h('p', { class: 'hint' }, 'Быстрый подбор остановился на первой стратегии, которая открыла всё. Чтобы сравнить все, нажмите «Проверить все стратегии».') : null,
     h('div', { style: 'overflow-x:auto' }, h('table', { class: 'table pick-table' },
       h('thead', null, h('tr', null, h('th', null, 'Стратегия'), h('th', null, 'Открылось'),
         mineTotal ? h('th', null, 'Ваши сайты') : null, h('th', null, 'Не открылись'), h('th', { class: 'r' }, 'Время'), h('th'))),

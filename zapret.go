@@ -55,6 +55,49 @@ type PickState struct {
 	Results []PickResult `json:"results"`
 	Best    string       `json:"best"`
 	Error   string       `json:"error"`
+	Full    bool         `json:"full"`  // полный перебор, а не быстрый подбор
+	Early   bool         `json:"early"` // быстрый подбор остановился на первой стратегии, открывшей всё
+}
+
+// Подбор: адрес, не ответивший за pickTimeout, считается не открывшимся; после запуска
+// winws.exe ждём pickWarmup, пока перехват заработает.
+const (
+	pickTimeout = 3 * time.Second
+	pickWarmup  = 500 * time.Millisecond
+)
+
+// pickOrder — порядок проверки: сначала выбранная сейчас стратегия, потом лучшие по прошлому
+// подбору, потом остальные в обычном порядке (general, ALT, ALT2…). Так быстрый подбор
+// обычно находит рабочую с первой-второй попытки.
+func pickOrder(strats []string, current string, prev []PickResult) []string {
+	have := map[string]bool{}
+	for _, s := range strats {
+		have[s] = true
+	}
+	out, seen := []string{}, map[string]bool{}
+	add := func(s string) {
+		if have[s] && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	add(current)
+	ranked := append([]PickResult(nil), prev...)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].OK != ranked[j].OK {
+			return ranked[i].OK > ranked[j].OK
+		}
+		return ranked[i].Ms < ranked[j].Ms
+	})
+	for _, r := range ranked {
+		if r.OK > 0 {
+			add(r.Strategy)
+		}
+	}
+	for _, s := range strats {
+		add(s)
+	}
+	return out
 }
 
 type Zapret struct {
@@ -582,7 +625,10 @@ func (z *Zapret) probeTargets(ts []target, timeout time.Duration) (ok, avgMs int
 }
 
 // Pick перебирает стратегии и выбирает ту, с которой открывается больше всего адресов.
-func (z *Zapret) Pick() error {
+// Pick подбирает стратегию. Быстрый подбор (full = false) останавливается на первой стратегии,
+// которая открыла все адреса; полный проверяет все и выбирает лучшую по числу открывшихся и скорости.
+// Стратегии проверяются по одной: winws.exe перехватывает весь трафик, две сразу мешали бы друг другу.
+func (z *Zapret) Pick(full bool) error {
 	if runtime.GOOS != "windows" {
 		return errors.New("zapret работает только в Windows")
 	}
@@ -602,7 +648,8 @@ func (z *Zapret) Pick() error {
 		z.pmu.Unlock()
 		return nil
 	}
-	z.pick = PickState{Active: true, Count: len(strats) + 1, Results: []PickResult{}}
+	strats = pickOrder(strats, z.a.settingsCopy().Zapret.Strategy, z.pick.Results)
+	z.pick = PickState{Active: true, Count: len(strats) + 1, Results: []PickResult{}, Full: full}
 	z.cancel = false
 	z.pmu.Unlock()
 
@@ -613,7 +660,7 @@ func (z *Zapret) Pick() error {
 		set := func(f func(p *PickState)) { z.pmu.Lock(); f(&z.pick); z.pmu.Unlock() }
 		z.Stop()
 		set(func(p *PickState) { p.Current = "без обхода"; p.Index = 0 })
-		ok, ms, sites := z.probeTargets(ts, 6*time.Second)
+		ok, ms, sites := z.probeTargets(ts, pickTimeout)
 		set(func(p *PickState) {
 			p.Results = append(p.Results, PickResult{"без обхода", ok, len(ts), ms, sites})
 		})
@@ -628,8 +675,8 @@ func (z *Zapret) Pick() error {
 			set(func(p *PickState) { p.Current = st; p.Index = i + 1 })
 			r := PickResult{Strategy: st, Total: len(ts)}
 			if err := z.startStrategy(s, st); err == nil {
-				time.Sleep(time.Second)
-				r.OK, r.Ms, r.Sites = z.probeTargets(ts, 6*time.Second)
+				time.Sleep(pickWarmup)
+				r.OK, r.Ms, r.Sites = z.probeTargets(ts, pickTimeout)
 				z.a.core.logs.Add(fmt.Sprintf("[zapret] подбор: «%s» — открылось %d из %d", st, r.OK, r.Total))
 			} else {
 				z.a.core.logs.Add(fmt.Sprintf("[zapret] подбор: «%s» не запустилась: %s", st, firstLine(err.Error())))
@@ -638,6 +685,10 @@ func (z *Zapret) Pick() error {
 			set(func(p *PickState) { p.Results = append(p.Results, r) })
 			if r.OK > bestOK || (r.OK == bestOK && r.Ms < bestMs) {
 				best, bestOK, bestMs = st, r.OK, r.Ms
+			}
+			if !full && r.OK == len(ts) && len(ts) > 0 {
+				set(func(p *PickState) { p.Early = true })
+				break
 			}
 		}
 		set(func(p *PickState) { p.Active = false; p.Current = ""; p.Best = best })

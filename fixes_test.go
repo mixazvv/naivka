@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -132,5 +133,16 @@ func TestTestBoard(t *testing.T) {
 	b.begin([]Server{{ID: "a"}})
 	if v := b.view(); len(v["done"].([]testResult)) != 0 {
 		t.Fatal("a new check must hide the old result")
+	}
+}
+
+// Подбор zapret начинает с выбранной стратегии и лучших по прошлому разу.
+func TestPickOrder(t *testing.T) {
+	strats := []string{"general", "general (ALT)", "general (ALT2)", "general (FAKE TLS)"}
+	prev := []PickResult{{Strategy: "general", OK: 1}, {Strategy: "general (ALT2)", OK: 4, Ms: 90}, {Strategy: "gone", OK: 4}}
+	got := pickOrder(strats, "general (FAKE TLS)", prev)
+	want := []string{"general (FAKE TLS)", "general (ALT2)", "general", "general (ALT)"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
 }

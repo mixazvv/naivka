@@ -304,7 +304,13 @@ func (a *App) routes() http.Handler {
 	})
 	api("POST", "/api/addons/check", func(*http.Request) (any, error) { a.checkUpdates(false); return a.updatesView(), nil })
 	api("POST", "/api/zapret/install", func(*http.Request) (any, error) { return nil, a.zapret.Install() })
-	api("POST", "/api/zapret/pick", func(*http.Request) (any, error) { return nil, a.zapret.Pick() })
+	api("POST", "/api/zapret/pick", func(r *http.Request) (any, error) {
+		var req struct {
+			Full bool `json:"full"` // проверить все стратегии, а не остановиться на первой рабочей
+		}
+		_ = decode(r, &req)
+		return nil, a.zapret.Pick(req.Full)
+	})
 	api("POST", "/api/zapret/pick/cancel", func(*http.Request) (any, error) { a.zapret.CancelPick(); return nil, nil })
 	api("POST", "/api/zapret/trial/start", func(r *http.Request) (any, error) {
 		var req struct {
