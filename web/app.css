@@ -78,29 +78,39 @@ button, input, select, textarea { font: inherit; color: inherit; }
    Слева — меню разделов «линией маршрута»: узел на линии у каждого раздела, пройденный до текущего
    отрезок подсвечен. Главный экран — «сцена» со схемой ветвей; разделы выезжают панелью справа. */
 .shell { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
-.sidebar { width: 224px; display: flex; flex-direction: column; gap: 18px; padding: 18px 14px 14px; min-height: 0; overflow: hidden auto; scrollbar-width: none;
+.sidebar { width: 224px; display: flex; flex-direction: column; gap: 18px; padding: 18px 14px 14px; min-height: 0; overflow: hidden; scrollbar-width: none;
   position: relative; z-index: 3; border-right: 1px solid var(--line); background: var(--nav); }
 .brand { display: flex; align-items: center; gap: 11px; font: 700 21px/1 var(--display); letter-spacing: .06em; color: var(--ink); background: none; border: 0; padding: 4px 6px; margin: 0 -2px; cursor: pointer; border-radius: 10px; }
 .brand svg { width: 30px; height: 30px; flex: none; }
 .brand:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-.rail { --row: 40px; --gap: 2px; --track: 17px; position: relative; display: flex; flex-direction: column; gap: var(--gap); }
-.rail::before, .rail::after { content: ""; position: absolute; left: var(--track); top: calc(var(--row) / 2); width: 2px; border-radius: 2px; pointer-events: none; }
-.rail::before { bottom: calc(var(--row) / 2); background: var(--line); }
-.rail::after { height: calc(var(--nav-i, 0) * (var(--row) + var(--gap))); background: linear-gradient(var(--tunnel), color-mix(in srgb, var(--tunnel) 55%, transparent)); transition: height .35s cubic-bezier(.2, .8, .2, 1); }
-.nav-item { position: relative; z-index: 1; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 13px; height: var(--row); padding: 0 8px 0 13px;
-  background: none; border: 0; border-radius: 10px; cursor: pointer; color: var(--muted); font-weight: 500; text-align: left; white-space: nowrap; }
+/* Меню — колесо с лепестками: разделы стоят по дуге окружности, центр которой спрятан за левым краем.
+   Текущий раздел — впереди; при переходе колесо поворачивается, дальние лепестки гаснут.
+   --o — номер лепестка относительно текущего (−2…2), --d — его модуль; их ставит railMark. */
+@property --o { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --d { syntax: "<number>"; inherits: true; initial-value: 0; }
+.rail { --cx: -112px; --R: 196px; --step: 23deg; position: relative; flex: 1; min-height: 300px; margin: 0 -14px; overflow: hidden; }
+.rail::before { content: ""; position: absolute; left: calc(var(--cx) - var(--R)); top: calc(50% - var(--R)); width: calc(var(--R) * 2); height: calc(var(--R) * 2);
+  border-radius: 50%; border: 1px solid var(--line); pointer-events: none; }
+.nav-item { --a: calc(var(--o) * var(--step)); position: absolute; left: var(--cx); top: 50%; display: flex; align-items: center; gap: 12px;
+  transform: rotate(var(--a)) translateX(var(--R)) rotate(calc(var(--a) * -1)) translate(-17px, -50%);
+  transition: --o .45s cubic-bezier(.3, .8, .25, 1), --d .45s, color .2s, visibility .45s; opacity: max(0, calc(1 - var(--d) * .36));
+  padding: 0; border: 0; background: none; color: var(--muted); font-weight: 500; white-space: nowrap; cursor: pointer; text-align: left; }
+.nav-item[data-far] { pointer-events: none; visibility: hidden; }
 .nav-item[hidden] { display: none; }
-.nav-node { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--faint); background: var(--nav); transition: background .2s, border-color .2s, box-shadow .2s; }
-:root.mica[data-theme="dark"]:not([data-solid]) .nav-node { background: #1B1D20; }
-.nav-label { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.nav-key { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--line); border-radius: 5px; font: 600 10.5px/1 var(--font); color: var(--faint); opacity: .7; }
+/* Лепесток: квадрат со скруглёнными противоположными углами, повёрнутый по радиусу — остриём наружу. */
+.petal { position: relative; flex: none; width: 34px; height: 34px; display: grid; place-items: center; }
+.petal::before { content: ""; position: absolute; inset: 5px; border-radius: 3px 70% 3px 70%; border: 1.5px solid var(--faint); background: var(--nav);
+  transform: rotate(calc(var(--a) - 45deg)) scale(calc(1 - var(--d) * .12)); transition: background .25s, border-color .25s; }
+.nav-key { position: relative; font: 600 11px/1 var(--font); color: var(--faint); }
 .nav-key:empty { display: none; }
-.nav-item:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
-.nav-item:hover .nav-node { border-color: var(--ink); }
-.nav-item.passed .nav-node { border-color: var(--tunnel); }
-.nav-item[aria-current="page"] { color: var(--ink); background: linear-gradient(90deg, var(--tunnel-soft), transparent 90%); }
-.nav-item[aria-current="page"] .nav-node { background: var(--tunnel); border-color: var(--tunnel); box-shadow: 0 0 0 4px var(--tunnel-soft), 0 0 14px color-mix(in srgb, var(--tunnel) 60%, transparent); }
-.nav-item[aria-current="page"] .nav-key { color: var(--ink); opacity: 1; }
+.nav-label { font-size: calc(14px + (1 - min(var(--d), 1)) * 2px); }
+.nav-item:hover { color: var(--ink); }
+.nav-item:hover .petal::before { border-color: var(--ink); }
+.nav-item[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.nav-item[aria-current="page"] .petal::before { background: var(--tunnel); border-color: var(--tunnel); }
+.nav-item[aria-current="page"] .nav-key { color: var(--on-accent); }
+@media (prefers-reduced-motion: reduce) { .nav-item { transition: none; } }
+.nav-label { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 .pill { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--state-soft); border: 1px solid color-mix(in srgb, var(--state) 22%, var(--line)); color: var(--ink); font-size: 13px; line-height: 1.35; min-width: 0; transition: background .3s, border-color .3s; }
 .pill > span:last-child { display: flex; flex-direction: column; min-width: 0; }
@@ -439,8 +449,9 @@ dialog h2 { margin-top: 0; }
 /* Узкое окно: меню сжимается до линии с узлами, названия — во всплывающих подсказках. */
 @media (max-width: 900px) {
   .sidebar { width: 64px; }
-  .brand span, .nav-label, .nav-key, .feedback span, .pill > span:last-child { display: none; }
-  .nav-item { grid-template-columns: 10px; padding-right: 0; }
+  .brand span, .nav-label, .feedback span, .pill > span:last-child { display: none; }
+  .rail { --cx: -150px; --R: 186px; }
+  .nav-item { gap: 0; }
   .pill { justify-content: center; padding: 10px 0; }
   .pill .led { margin: 0; }
   .feedback { padding: 0; }
@@ -884,15 +895,7 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="gold"] :is(h1, h2, h3, .status-title, .brand, .nav-item, .tile-k, .tile-v, .sysline, .btn, .seg button, .card-head small, .mini-title, .tb-name) { font-family: var(--display); }
 :root[data-skin="gold"] :is(h1, h2, .status-title, .nav-item, .brand, .tile-k, .sysline, .btn, .mini-title) { text-transform: uppercase; }
 :root[data-skin="gold"] .sidebar { background: linear-gradient(90deg, rgba(0, 0, 0, .88), rgba(0, 0, 0, .6)); border-right-color: rgba(222, 196, 140, .12); }
-:root[data-skin="gold"] .rail::before { width: 1px; background: rgba(222, 196, 140, .22); }
-:root[data-skin="gold"] .rail::after { width: 1px; background: var(--gold-fill); }
-:root[data-skin="gold"] .nav-node { border-radius: 0; transform: rotate(45deg) scale(.85); border-width: 1px; background: #000; }
 :root[data-skin="gold"] .brand { font-weight: 300; letter-spacing: .2em; font-size: 16px; }
-:root[data-skin="gold"] .nav-item { border-radius: 0; font-weight: 600; font-size: 12px; letter-spacing: .14em; }
-:root[data-skin="gold"] .nav-item[aria-current="page"] { background: var(--gold-fill); color: var(--on-accent); }
-:root[data-skin="gold"] .nav-item[aria-current="page"] .nav-node { background: var(--on-accent); border-color: var(--on-accent); box-shadow: none; }
-:root[data-skin="gold"] .nav-item[aria-current="page"] .nav-key { color: var(--on-accent); border-color: currentColor; }
-:root[data-skin="gold"] .nav-key { border-radius: 50%; }
 :root[data-skin="gold"] .pill, :root[data-skin="gold"] .feedback, :root[data-skin="gold"] .sysline { border-radius: 0; }
 :root[data-skin="gold"] .pill { background: rgba(0, 0, 0, .5); border-left: 3px solid var(--state); }
 :root[data-skin="gold"] .pill .led { border-radius: 0; transform: rotate(45deg); box-shadow: none; }
@@ -1030,7 +1033,7 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] body[data-state="on"] { --glow: rgba(79, 208, 138, .22); }
 :root[data-skin="blocks"] .ambient::after { image-rendering: pixelated; }
 /* Карточки, кнопки, поля: те же формы, скругления — ступенькой, объём — фаской сверху и снизу. */
-:root[data-skin="blocks"] :is(.card, .panel, .scard, .tile, .notice, .choice, .preset, dialog, .own-proto, .mini-speed, .pill, .feedback, .sysline, .seg, .leg-chip, .hchip, .drawer-close, .btn:not(.link), input[type=text], input[type=number], input[type=password], select, textarea, .proto, .route-tag, .chip, code, code.fp, .toast, .nav-item) {
+:root[data-skin="blocks"] :is(.card, .panel, .scard, .tile, .notice, .choice, .preset, dialog, .own-proto, .mini-speed, .pill, .feedback, .sysline, .seg, .leg-chip, .hchip, .drawer-close, .btn:not(.link), input[type=text], input[type=number], input[type=password], select, textarea, .proto, .route-tag, .chip, code, code.fp, .toast) {
   border-radius: 0; clip-path: var(--px-r); }
 :root[data-skin="blocks"] :is(.card, .panel, .scard, .tile, .notice, .choice, .preset, dialog, .own-proto, .mini-speed) { border: 0; background: #1D1E22; box-shadow: var(--px-bevel); }
 :root[data-skin="blocks"] :is(.tile, .scard):hover { transform: none; box-shadow: var(--px-bevel), inset 0 0 0 2px #3C3F46; }
@@ -1063,14 +1066,6 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] dialog::backdrop { background: rgba(6, 8, 7, .72); }
 /* Верхняя панель, вкладки и выезжающая панель — как в основной теме; черта под вкладкой — пиксельная, 4 px. */
 :root[data-skin="blocks"] .sidebar { background: #141518; border-right: 2px solid #26282D; }
-:root[data-skin="blocks"] .rail::before, :root[data-skin="blocks"] .rail::after { width: 4px; left: calc(var(--track) - 1px); border-radius: 0; }
-:root[data-skin="blocks"] .rail::before { background: repeating-linear-gradient(#26282D 0 4px, transparent 4px 8px); }
-:root[data-skin="blocks"] .rail::after { background: var(--tunnel); transition-timing-function: steps(6); }
-:root[data-skin="blocks"] .nav-node { border-radius: 0; background: #141518; }
-:root[data-skin="blocks"] .nav-item[aria-current="page"] { background: #1D1E22; }
-:root[data-skin="blocks"] .nav-item[aria-current="page"] .nav-node { box-shadow: 0 0 0 3px #141518, 0 0 0 5px color-mix(in srgb, var(--tunnel) 45%, transparent); }
-:root[data-skin="blocks"] .nav-key { border-radius: 0; border: 0; background: #26282D; }
-:root[data-skin="blocks"] .nav-item:hover { background: #1D1E22; }
 :root[data-skin="blocks"] .drawer { background: #17181B; border-left: 2px solid #2E3036; box-shadow: -24px 0 60px -20px rgba(0, 0, 0, .7); }
 :root[data-skin="blocks"] .drawer-close { border: 0; background: #2A2C32; }
 :root[data-skin="blocks"] .scrim { background: rgba(6, 8, 7, .55); }
@@ -1148,3 +1143,23 @@ button.hchip:hover .bi { opacity: 1; }
 :root[data-skin="blocks"] .tool, :root[data-skin="blocks"] .ready-keys kbd { border-radius: 0; }
 :root[data-skin="blocks"] .ready-text b { font-family: var(--px); font-weight: 400; font-size: 13px; text-transform: uppercase; }
 :root[data-skin="blocks"] .empty::before { opacity: .5; }
+
+/* Без неонового свечения: линии, кнопки, узлы и фон — плоские. В «Никогда не проси об этом»
+   огни — часть замысла темы, там свечение остаётся. */
+:root:not([data-skin="gold"]) .ambient { background: none; }
+:root:not([data-skin="gold"]) :is(.lane-glow, .pt-glow, .map-glow, .map-arc-glow, .pw-halo) { display: none; }
+:root:not([data-skin="gold"]) .lane-dot { filter: none; }
+:root:not([data-skin="gold"]) .leg-dot { box-shadow: none; }
+:root:not([data-skin="gold"]) .btn.primary { box-shadow: none; }
+:root:not([data-skin="gold"]) .scard.sel { box-shadow: 0 0 0 1px var(--tunnel); }
+:root:not([data-skin="gold"]) .swap-line { animation: none; }
+:root:not([data-skin="gold"]) body[data-state="off"] .lanes-box .power::after { display: none; }
+:root[data-skin="blocks"] .ambient::before, :root[data-skin="blocks"] .pw-px-halo { display: none; }
+
+:root[data-skin="gold"] .rail::before { border-color: rgba(222, 196, 140, .2); }
+:root[data-skin="gold"] .petal::before { border-radius: 0; border-width: 1px; background: #000; transform: rotate(45deg) scale(calc(.8 - var(--d) * .1)); }
+:root[data-skin="gold"] .nav-item[aria-current="page"] .petal::before { background: var(--gold-fill); }
+:root[data-skin="gold"] .nav-item { font-size: 12px; letter-spacing: .14em; }
+:root[data-skin="blocks"] .rail::before { border: 2px dashed #26282D; }
+:root[data-skin="blocks"] .petal::before { border-radius: 0; transform: none; }
+:root[data-skin="blocks"] .nav-item { transition-timing-function: steps(5), steps(5), linear; }

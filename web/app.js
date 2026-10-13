@@ -674,8 +674,26 @@ function railMark() {
   const rail = $('#rail');
   if (!rail) return;
   const order = navOrder(), at = Math.max(0, order.indexOf(view));
-  rail.style.setProperty('--nav-i', at);
-  rail.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('passed', order.indexOf(b.dataset.view) < at && !b.hidden));
+  rail.querySelectorAll('.nav-item').forEach(b => {
+    const i = order.indexOf(b.dataset.view);
+    if (i < 0) return;
+    const o = i - at;
+    b.style.setProperty('--o', o);
+    b.style.setProperty('--d', Math.abs(o));
+    if (Math.abs(o) > 2) b.dataset.far = ''; else delete b.dataset.far;
+    b.tabIndex = 0;
+  });
+}
+
+// Колёсико мыши над меню листает разделы, как барабан.
+let railWheelAt = 0;
+function railWheel(e) {
+  e.preventDefault();
+  if (Math.abs(e.deltaY) < 4 || performance.now() - railWheelAt < 380) return;
+  railWheelAt = performance.now();
+  const order = navOrder(), at = Math.max(0, order.indexOf(view));
+  const next = order[Math.min(order.length - 1, Math.max(0, at + (e.deltaY > 0 ? 1 : -1)))];
+  if (next !== view) go(next);
 }
 
 // Главный экран («сцена» с ветвями) всегда на месте; разделы открываются панелью справа поверх него.
@@ -2766,6 +2784,7 @@ async function boot() {
   setupChrome();
   if (MINI) { miniBoot(); return; }
   document.querySelectorAll('.nav-item, .brand').forEach(b => b.addEventListener('click', () => go(b.dataset.view === view ? 'overview' : b.dataset.view)));
+  $('#rail').addEventListener('wheel', railWheel, { passive: false });
   $('#drawerClose').addEventListener('click', () => go('overview'));
   $('#scrim').addEventListener('click', () => go('overview'));
   $('#feedbackBtn').addEventListener('click', openFeedback);
