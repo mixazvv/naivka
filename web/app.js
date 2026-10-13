@@ -189,6 +189,7 @@ function applyTheme() {
   const blocks = !!S && S.theme === 'blocks';
   const root = document.documentElement;
   root.dataset.theme = 'dark';
+  root.dataset.nav = S && S.nav === 'wheel' ? 'wheel' : 'list';
   if (gold || blocks) root.dataset.skin = gold ? 'gold' : 'blocks'; else delete root.dataset.skin;
   applyAccent(S && S.accent);
   if (S && S.oled && !root.dataset.skin) root.dataset.oled = ''; else delete root.dataset.oled;
@@ -674,10 +675,12 @@ function railMark() {
   const rail = $('#rail');
   if (!rail) return;
   const order = navOrder(), at = Math.max(0, order.indexOf(view));
+  rail.style.setProperty('--nav-i', at); // список: подсвеченный отрезок линии до текущего раздела
   rail.querySelectorAll('.nav-item').forEach(b => {
     const i = order.indexOf(b.dataset.view);
     if (i < 0) return;
-    const o = i - at;
+    b.classList.toggle('passed', i < at);
+    const o = i - at; // колесо: положение лепестка относительно текущего
     b.style.setProperty('--o', o);
     b.style.setProperty('--d', Math.abs(o));
     if (Math.abs(o) > 2) b.dataset.far = ''; else delete b.dataset.far;
@@ -688,6 +691,7 @@ function railMark() {
 // Колёсико мыши над меню листает разделы, как барабан.
 let railWheelAt = 0;
 function railWheel(e) {
+  if (document.documentElement.dataset.nav !== 'wheel') return;
   e.preventDefault();
   if (Math.abs(e.deltaY) < 4 || performance.now() - railWheelAt < 380) return;
   railWheelAt = performance.now();
@@ -2614,6 +2618,8 @@ function viewSettings() {
     h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
     accentPicker(),
     h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme)),
+    h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
+      segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),
     h('h2', null, 'Разделы'),
     check('ownServer', 'Свой сервер', 'Установка своего сервера на VPS. Выключите, если не нужно.', applySections),
 
