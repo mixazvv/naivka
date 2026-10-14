@@ -1,0 +1,6 @@
+Naivka.exe
+Naivka-debug.exe
+Naivka-win7*.exe
+# личный ключ подписи релизов — НИКОГДА не загружать
+keys/
+dist/

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Naivka</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23B6E35A'/%3E%3Cpath d='M9 23.5V9l14 14.5V12.5' fill='none' stroke='%2311170A' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='23' cy='9.3' r='3' fill='%2311170A'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="fonts/fonts.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body data-state="off">
+  <header class="titlebar" id="titlebar" hidden>
+    <div class="tb-drag" id="tbDrag">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="8"/><path class="logo-ink" d="M9 23.5V9l14 14.5V12.5"/><circle class="logo-dot" cx="23" cy="9.3" r="3"/></svg>
+      <span class="tb-name">Naivka</span>
+      <span class="tb-status"><span class="led"></span><span id="tbStatus">Отключено</span></span>
+    </div>
+    <div class="tb-buttons">
+      <button class="tb-btn" data-cmd="min" aria-label="Свернуть" title="Свернуть"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></button>
+      <button class="tb-btn" data-cmd="max" id="tbMax" aria-label="Развернуть" title="Развернуть"><svg viewBox="0 0 10 10"><rect class="tb-max" x=".5" y=".5" width="9" height="9" rx="1"/><path class="tb-restore" d="M2.5 2.5V1.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1M.5 3.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1z"/></svg></button>
+      <button class="tb-btn close" data-cmd="close" aria-label="Закрыть" title="Закрыть"><svg viewBox="0 0 10 10"><path d="M.5.5l9 9M9.5.5l-9 9"/></svg></button>
+    </div>
+    <div class="tb-edge n" data-edge="n"></div><div class="tb-edge nw" data-edge="nw"></div><div class="tb-edge ne" data-edge="ne"></div>
+  </header>
+  <div class="shell">
+    <aside class="sidebar">
+      <button class="brand" type="button" data-view="overview" title="Главный экран"><svg viewBox="0 0 32 32" aria-hidden="true"><rect class="logo-bg" width="32" height="32" rx="8"/><path class="logo-ink" d="M9 23.5V9l14 14.5V12.5"/><circle class="logo-dot" cx="23" cy="9.3" r="3"/></svg><span>Naivka</span></button>
+      <nav class="rail" id="rail" aria-label="Разделы">
+        <button class="nav-item" data-view="overview"><i class="petal" aria-hidden="true"><kbd class="nav-key"></kbd></i><span class="nav-label">Главная</span></button>
+        <button class="nav-item" data-view="servers"><i class="petal" aria-hidden="true"><kbd class="nav-key"></kbd></i><span class="nav-label">Серверы</span></button>
+        <button class="nav-item" data-view="bypass"><i class="petal" aria-hidden="true"><kbd class="nav-key"></kbd></i><span class="nav-label">Обход<span class="nav-badge" id="navBadge" hidden></span></span></button>
+        <button class="nav-item" data-view="rules"><i class="petal" aria-hidden="true"><kbd class="nav-key"></kbd></i><span class="nav-label">Правила</span></button>
+        <button class="nav-item" data-view="diag"><i class="petal" aria-hidden="true"><kbd class="nav-key"></kbd></i><span class="nav-label">Сводка</span></button>
+        <button class="nav-item" data-view="settings"><i class="petal" aria-hidden="true"><kbd class="nav-key"></kbd></i><span class="nav-label">Настройки</span></button>
+        <button class="nav-item nav-extra" data-view="own" id="navOwn"><i class="petal" aria-hidden="true"><kbd class="nav-key"></kbd></i><span class="nav-label">Свой сервер</span></button>
+      </nav>
+      <div class="side-foot">
+        <div class="pill" id="navStatus"><span class="led"></span><span><span id="navTitle">Отключено</span><small id="navSub"></small></span></div>
+        <button class="feedback" type="button" id="feedbackBtn" title="Написать автору в Telegram: @mixazvv">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4L3 11.5l6.5 2.2M21 4l-3 16-8.5-6.3M21 4L9.5 13.7v5.8l3.2-3.7"/></svg><span>Обратная связь</span>
+        </button>
+      </div>
+    </aside>
+    <div class="stage-wrap">
+      <div class="ambient" aria-hidden="true"><div class="bokeh"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+      <main class="main stage" id="main" tabindex="-1"></main>
+      <div class="scrim" id="scrim" hidden></div>
+      <aside class="drawer" id="drawer" aria-label="Раздел" hidden>
+        <button class="drawer-close" type="button" id="drawerClose" title="Закрыть (Esc)" aria-label="Закрыть">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <div class="drawer-body" id="drawerBody"></div>
+      </aside>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="offline" id="offline" hidden>
+    <div>
+      <h2>Naivka не отвечает</h2>
+      <p id="offlineText">Приложение закрыто или перезапускается. Запустите Naivka снова, и окно откроется.</p>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept=".json,.txt,.list,.conf,.lst,text/plain,application/json" hidden>
+  <div class="mini" id="mini" hidden></div>
+  <script src="qrcode.js"></script>
+  <script src="worldmap.js"></script>
+  <script src="i18n/en.js"></script>
+  <script src="i18n.js"></script>
+  <script src="design.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
