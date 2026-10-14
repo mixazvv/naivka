@@ -144,6 +144,10 @@ function patch(id, sig, build) {
   if (!el) return;
   const key = id + ':' + view;
   if (sigs[key] === sig && el.dataset.built) return;
+  // Человек печатает в поле или выбирает в списке внутри блока — не выдёргиваем их из-под рук,
+  // пересоберём на следующем обновлении.
+  const f = document.activeElement;
+  if (el.dataset.built && f && el.contains(f) && /^(INPUT|SELECT|TEXTAREA)$/.test(f.tagName) && f.type !== 'checkbox' && f.type !== 'radio') return;
   sigs[key] = sig;
   el.dataset.built = '1';
   el.replaceChildren(...[build()].flat().filter(Boolean));
@@ -385,6 +389,7 @@ async function refreshLogs() {
   const box = $('#logBox');
   if (box) {
     box.append(...lines.map(l => logLine(l.text)));
+    while (box.childElementCount > 3000) box.firstElementChild.remove(); // окно журнала не растёт без конца
     if ($('#logFollow')?.checked) box.scrollTop = box.scrollHeight;
   }
 }
@@ -733,6 +738,11 @@ function goNow(v) {
   }
   updateStatus();
   renderOverviewLive(); renderIP(); refreshIP(false); refreshServerGeo(false); refreshStats();
+  refreshView(v);
+}
+
+// refreshView — заполнить только что построенный раздел данными.
+function refreshView(v = view) {
   if (v === 'servers') { renderServers(); refreshProxies(); }
   if (v === 'own') renderOwn();
   if (v === 'rules') { renderRules(); renderLists(); }
@@ -853,10 +863,17 @@ function jsonArea(key, placeholder, wantArray) {
   return h('div', null, ta, err);
 }
 
+function moreId(id, d) { d.id = id; return d; }
+
+// Раскрытые блоки «ещё» запоминаются по заголовку: окно часто пересобирает разделы
+// (обновились данные, изменилась настройка), и без этого блок закрывался сам.
+const MORE_OPEN = new Set();
 function more(title, note, ...content) {
-  return h('details', { class: 'more' },
+  const d = h('details', { class: 'more', open: MORE_OPEN.has(title) },
     h('summary', null, h('span', null, title), note && h('small', null, note)),
     h('div', { class: 'more-body' }, ...content));
+  d.addEventListener('toggle', () => { if (d.open) MORE_OPEN.add(title); else MORE_OPEN.delete(title); });
+  return d;
 }
 
 function openDialog(...content) {
@@ -1813,7 +1830,8 @@ function editServer(srv) {
         d.port = parseInt(d.port, 10) || 443;
         if (!d.host) { err.textContent = 'Укажите адрес сервера.'; return; }
         if (!d.name.trim()) d.name = d.host;
-        if (isNew) S.servers.push(d); else S.servers[S.servers.findIndex(x => x.id === d.id)] = d;
+        const at = S.servers.findIndex(x => x.id === d.id);
+        if (isNew || at < 0) S.servers.push(d); else S.servers[at] = d;
         save(0);
         if (await saveNow()) { dlg.close(); renderServers(); refreshServerGeo(false); toast(isNew ? 'Сервер добавлен' : 'Сервер сохранён'); }
         else if (isNew) S.servers.pop();
@@ -2053,7 +2071,6 @@ function panelsBox() {
   const list = S.panels || [];
   if (!list.length) return null;
   return h('div', null,
-    h('h2', null, 'Панели'),
     h('div', { class: 'panel' }, h('table', { class: 'table' }, h('tbody', null, list.map(p => h('tr', null,
       h('td', null, h('div', { class: 'cell-main' }, PANEL_TITLE[p.type] || p.type, p.version ? h('span', { class: 'ver' }, ' ', p.version) : null),
         h('div', { class: 'cell-sub' }, p.host + ' · ' + (p.access === 'public' ? 'из интернета по HTTPS' : 'через SSH-туннель'))),
@@ -2062,7 +2079,7 @@ function panelsBox() {
         h('button', { class: 'btn small', onclick: () => panelCreds(p) }, 'Логин и пароль'),
         h('button', { class: 'btn small', onclick: async () => {
           if (!confirm(`Убрать панель ${PANEL_TITLE[p.type]} на ${p.host} из списка? На сервере она останется.`)) return;
-          S.panels = S.panels.filter(x => x.id !== p.id); save(0); await saveNow(); renderServers();
+          S.panels = S.panels.filter(x => x.id !== p.id); save(0); await saveNow(); renderServers(); renderOwn();
         } }, 'Убрать')))))))),
     h('p', { class: 'hint' }, 'Панель откроется в браузере через защищённый SSH-туннель.'));
 }
@@ -2206,13 +2223,13 @@ function viewRules() {
     h('div', { id: 'listBox' }),
 
     h('div', { class: 'mt-lg' }),
-    more('Особые случаи', specialNote(),
+    moreId('specialMore', more('Особые случаи', specialNote(),
       check('ruInsideDirect', 'Сайты, которые работают только из России, всегда напрямую', 'Госуслуги, банки и другие сервисы, которые не пускают иностранные IP.', refreshSpecialNote),
       check('blockQuic', 'Блокировать QUIC', 'Нужно для серверов Naive.', refreshSpecialNote),
       check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки — мимо сервера.', refreshSpecialNote),
       check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Для серверов VLESS, Hysteria2, TUIC, Trojan и Shadowsocks. Работает в режиме TUN.', refreshSpecialNote),
       check('adBlock', 'Блокировать рекламу и трекеры', 'Баннеры, счётчики и рекламные сети. Рекламу в видео YouTube так не убрать.', refreshSpecialNote),
-      check('twitchAdFree', 'Twitch без рекламы', 'Для трансляций. Если они перестали открываться — выключите.', refreshSpecialNote)),
+      check('twitchAdFree', 'Twitch без рекламы', 'Для трансляций. Если они перестали открываться — выключите.', refreshSpecialNote))),
     more('Правила sing-box вручную', S.extraRules.trim() ? 'есть свои правила' : 'для опытных',
       h('p', { class: 'hint' }, 'JSON-массив для route.rules, вставляется сразу после ваших правил. Можно ссылаться на outbound proxy, direct, auto и на свои outbounds из настроек.'),
       jsonArea('extraRules', '[\n  { "domain_keyword": ["openai"], "outbound": "proxy" }\n]', true)));
@@ -2316,7 +2333,7 @@ function specialNote() {
   return on.length ? on.join(', ') : 'всё выключено';
 }
 function refreshSpecialNote() {
-  const s = document.querySelector('details.more summary small');
+  const s = document.querySelector('#specialMore summary small');
   if (s) s.textContent = specialNote();
 }
 
@@ -2381,7 +2398,12 @@ function renderRules() {
   const q = ruleFilter.trim().toLowerCase();
   const visible = S.rules.map((r, i) => [r, i]).filter(([r]) => !q || r.value.toLowerCase().includes(q) || shownValue(r).toLowerCase().includes(q));
   const LIMIT = 300;
-  if (!S.rules.length) {
+  // Таблицу (до 300 строк) пересобираем, только когда изменились правила, поиск или счётчики —
+  // а не каждую секунду: иначе терялся клик по «×» и фокус, а английский перевод шёл заново.
+  const tableSig = JSON.stringify([S.rules, q, visible.slice(0, LIMIT).map(([r]) => hitsOf(r))]);
+  const same = body.dataset.sig === tableSig;
+  body.dataset.sig = tableSig;
+  if (same) { /* без изменений */ } else if (!S.rules.length) {
     body.replaceChildren(h('tr', null, h('td', { class: 'empty', colspan: 5 }, 'Своих правил пока нет.')));
   } else if (!visible.length) {
     body.replaceChildren(h('tr', null, h('td', { class: 'empty', colspan: 5 }, 'Ничего не найдено.')));
@@ -2813,7 +2835,22 @@ async function boot() {
   // Сервер могли сменить в мини-окне или меню трея — подтягиваем настройки, когда окно снова на экране.
   const resync = async () => {
     if (savePending || document.hidden) return;
-    try { const fresh = await api('/api/settings'); if (!savePending) { S = fresh; applyTheme(); applySections(); updateStatus(); if (view === 'servers') renderServers(); } } catch (_) { /* не важно */ }
+    try {
+      const fresh = await api('/api/settings');
+      // Ничего не изменилось — оставляем прежний объект: на него ссылаются кнопки открытого раздела.
+      if (savePending || JSON.stringify(fresh) === JSON.stringify(S)) return;
+      S = fresh;
+      applyTheme(); applySections(); updateStatus();
+      // Раздел пересобираем с новыми настройками (раскрытые блоки и прокрутка сохраняются),
+      // иначе его кнопки меняли бы уже ненужную копию настроек.
+      if (view !== 'overview' && VIEWS[view] && !drawerBody.contains(document.activeElement)) {
+        const top = drawerBody.scrollTop;
+        Object.keys(sigs).forEach(k => delete sigs[k]);
+        drawerBody.replaceChildren(VIEWS[view]());
+        drawerBody.scrollTop = top;
+        refreshView();
+      }
+    } catch (_) { /* не важно */ }
   };
   window.addEventListener('focus', resync);
   // Клавиши: 1–7 — разделы по порядку в меню, Ctrl+Enter — подключить или отключить.
@@ -2845,7 +2882,12 @@ async function boot() {
 let AD = null;
 
 async function refreshAddons() {
+  const wasPicking = !!(AD && AD.zapret && AD.zapret.pick && AD.zapret.pick.active);
   try { AD = await api('/api/addons' + (view === 'bypass' ? '?full=1' : '')); } catch (_) { return; }
+  // Автоподбор сам сохранил стратегию — берём её, иначе следующее сохранение настроек из окна вернуло бы старую.
+  if (wasPicking && !AD.zapret.pick.active && !savePending) {
+    try { S.zapret = (await api('/api/settings')).zapret; } catch (_) { /* не важно */ }
+  }
   const u = AD.updates;
   const newer = x => x.installed && x.latest && x.installed !== x.latest;
   const badge = $('#navBadge');
@@ -2889,7 +2931,8 @@ function viewBypass() {
 function renderBypass() {
   if (!AD) return;
   const z = AD.zapret, t = AD.telegram;
-  const sig = JSON.stringify([z, t, AD.updates, AD.conflict, ST && ST.admin, S.zapret, S.telegram]);
+  // Счётчик соединений Telegram меняется постоянно, а в этом блоке не показывается.
+  const sig = JSON.stringify([z, { ...t, conns: 0 }, AD.updates, AD.conflict, ST && ST.admin, S.zapret, S.telegram]);
   patch('bypassBox', sig, () => [
     needElevation() ? notice('info', 'zapret нужны права администратора. При включении Windows спросит разрешение, и Naivka сама перезапустится с правами — подключение восстановится.') : null,
     AD.conflict ? notice('error', AD.conflict) : null,
@@ -3350,6 +3393,19 @@ async function pickProcesses() {
 }
 
 // ---------- раздача на другие устройства ----------
+// shareRefresh — перерисовать блок, но не пока человек печатает в его поле (иначе поле исчезло бы
+// у него из-под рук вместе с набранным): дождёмся, когда он из него выйдет.
+function shareRefresh() {
+  const box = $('#shareBox');
+  if (!box) return;
+  const f = document.activeElement;
+  if (f && box.contains(f) && /^(INPUT|SELECT|TEXTAREA)$/.test(f.tagName) && f.type !== 'checkbox') {
+    box.addEventListener('focusout', () => setTimeout(shareRefresh, 300), { once: true });
+    return;
+  }
+  shareBox();
+}
+
 async function shareBox() {
   const box = $('#shareBox');
   if (!box) return;
@@ -3357,7 +3413,7 @@ async function shareBox() {
   try { info = await api('/api/share'); } catch (_) { return; }
   const sh = S.share;
   box.replaceChildren(
-    sw(sh.enabled, false, v => { S.share.enabled = v; save(0); setTimeout(shareBox, 500); }, sh.enabled ? 'Раздача включена' : 'Раздача выключена'),
+    sw(sh.enabled, false, v => { S.share.enabled = v; save(0); setTimeout(shareRefresh, 500); }, sh.enabled ? 'Раздача включена' : 'Раздача выключена'),
     sh.enabled ? h('div', { class: 'card mt' },
       h('p', null, 'На телевизоре, приставке или другом компьютере в той же сети укажите прокси (HTTP или SOCKS5):'),
       info.ips.length ? h('div', { class: 'share-addr' }, info.ips.map(ip => h('code', null, `${ip}:${info.port}`)))
@@ -3368,11 +3424,11 @@ async function shareBox() {
         h('button', { class: 'btn', onclick: () => act('/api/share/firewall', 'Брандмауэр Windows разрешил подключения из домашней сети') }, 'Разрешить в брандмауэре'),
         h('span', { class: 'hint' }, 'Один раз: иначе Windows не пустит другие устройства. Попросит права администратора.')),
       more('Настройки раздачи', `порт ${sh.port}` + (sh.auth ? ', с паролем' : ', без пароля'),
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sh.auth, onchange: e => { S.share.auth = e.target.checked; save(0); setTimeout(shareBox, 500); } }),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sh.auth, onchange: e => { S.share.auth = e.target.checked; save(0); setTimeout(shareRefresh, 500); } }),
           h('span', null, h('b', null, 'Требовать логин и пароль'), h('small', null, 'Многие телевизоры не умеют прокси с паролем — тогда выключите.'))),
         h('div', { class: 'grid2' },
-          h('label', { class: 'field' }, h('span', null, 'Порт'), h('input', { type: 'number', value: sh.port, onchange: e => { S.share.port = parseInt(e.target.value, 10) || 2090; save(0); setTimeout(shareBox, 500); } })),
-          h('label', { class: 'field' }, h('span', null, 'Пароль'), h('input', { type: 'text', value: sh.password, spellcheck: 'false', onchange: e => { S.share.password = e.target.value.trim(); save(0); setTimeout(shareBox, 500); } }))))) : null);
+          h('label', { class: 'field' }, h('span', null, 'Порт'), h('input', { type: 'number', value: sh.port, onchange: e => { S.share.port = parseInt(e.target.value, 10) || 2090; save(0); setTimeout(shareRefresh, 500); } })),
+          h('label', { class: 'field' }, h('span', null, 'Пароль'), h('input', { type: 'text', value: sh.password, spellcheck: 'false', onchange: e => { S.share.password = e.target.value.trim(); save(0); setTimeout(shareRefresh, 500); } }))))) : null);
 }
 
 function xrayBlock(w) {

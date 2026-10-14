@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -297,7 +298,13 @@ func LoadSettings(dir string) (*Settings, error) {
 	return s, nil
 }
 
+// saveMu: сохранения идут из разных мест (окно, трей, подбор zapret) — по одному, иначе
+// два одновременных могли бы испортить общий временный файл.
+var saveMu sync.Mutex
+
 func SaveSettings(dir string, s *Settings) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
 	b, err := json.MarshalIndent(sealSettings(s), "", "  ")
 	if err != nil {
 		return err

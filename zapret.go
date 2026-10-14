@@ -104,7 +104,12 @@ type Zapret struct {
 	addonBase
 	a *App
 
-	pmu       sync.Mutex
+	pmu     sync.Mutex
+	startMu sync.Mutex // запуск и остановка winws — строго по одному, иначе второй мог остаться работать
+
+	domMu     sync.Mutex // кэш доменов из списков Flowseal
+	domKey    string
+	domList   []string
 	cmd       *exec.Cmd
 	done      chan struct{}
 	running   bool
@@ -224,7 +229,9 @@ func (z *Zapret) install() error {
 		}
 	}
 	if wasRunning {
-		return z.Start(z.a.settingsCopy())
+		err := z.Start(z.a.settingsCopy())
+		go z.a.applyZapretRoute()
+		return err
 	}
 	return nil
 }
@@ -414,11 +421,28 @@ func zapretServersKey(s *Settings, wl []Server) string {
 }
 
 // Domains — домены из списков Flowseal и правил «Через zapret»: их Naivka пускает напрямую.
+// Domains берёт списки из кэша: их спрашивают каждую секунду (окно, статистика), а меняются
+// они только при обновлении zapret. Кэш сбрасывается, когда у файлов меняется время или размер.
 func (z *Zapret) Domains(s *Settings) []string {
 	root := z.root()
 	if root == "" {
 		return nil
 	}
+	key := root
+	for _, name := range []string{"list-general.txt", "list-google.txt"} {
+		if st, err := os.Stat(filepath.Join(root, "lists", name)); err == nil {
+			key += fmt.Sprintf("|%d|%d", st.ModTime().UnixNano(), st.Size())
+		}
+	}
+	z.domMu.Lock()
+	defer z.domMu.Unlock()
+	if z.domKey != key {
+		z.domList, z.domKey = readZapretDomains(root), key
+	}
+	return z.domList
+}
+
+func readZapretDomains(root string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, name := range []string{"list-general.txt", "list-google.txt"} {
@@ -485,7 +509,9 @@ func (z *Zapret) startStrategy(s *Settings, strategy string) error {
 	if root == "" {
 		return errors.New("zapret ещё не установлен")
 	}
-	z.Stop()
+	z.startMu.Lock()
+	defer z.startMu.Unlock()
+	z.stop()
 	if c := zapretConflict(); c != "" {
 		return errors.New(c)
 	}
@@ -593,6 +619,12 @@ func (z *Zapret) revive(msg string) {
 }
 
 func (z *Zapret) Stop() {
+	z.startMu.Lock()
+	defer z.startMu.Unlock()
+	z.stop()
+}
+
+func (z *Zapret) stop() {
 	z.pmu.Lock()
 	cmd, done := z.cmd, z.done
 	if cmd == nil {
@@ -771,6 +803,7 @@ func (z *Zapret) Pick(full bool) error {
 				z.a.mon.Event("error", "zapret: "+err.Error(), false)
 			}
 		}
+		z.a.applyZapretRoute() // заработал — его сайты снова напрямую, не заработал — через сервер
 	}()
 	return nil
 }
@@ -904,6 +937,13 @@ func (z *Zapret) active(s *Settings) bool {
 	return trial || !(z.degraded && s.Zapret.Fallback)
 }
 
+// busy — идёт автоподбор или ручная проверка: zapret сейчас запускают они.
+func (z *Zapret) busy() bool {
+	z.pmu.Lock()
+	defer z.pmu.Unlock()
+	return z.pick.Active || z.trial.Active
+}
+
 func (z *Zapret) TrialActive() bool {
 	z.pmu.Lock()
 	defer z.pmu.Unlock()
@@ -949,10 +989,13 @@ func (z *Zapret) TrialStart(strategy string) error {
 		z.pmu.Unlock()
 		return nil // ошибка видна в окне проверки, можно перейти к следующей
 	}
-	if first {
-		z.a.applyZapretRoute() // сайты zapret на время проверки — напрямую
-	}
-	go z.TrialProbe()
+	// В фоне: если для этого нужен перезапуск ядра, окно не должно его ждать.
+	go func() {
+		if first {
+			z.a.applyZapretRoute() // сайты zapret на время проверки — напрямую
+		}
+		z.TrialProbe()
+	}()
 	return nil
 }
 

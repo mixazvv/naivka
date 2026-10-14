@@ -136,7 +136,7 @@ type Core struct {
 
 	// KeepProxyOnCrash: при падении ядра не возвращать системный прокси —
 	// трафик упрётся в закрытый порт и не уйдёт напрямую (защита от утечек).
-	KeepProxyOnCrash bool
+	keepProxy bool // под c.mu: см. SetKeepProxyOnCrash
 	// OnCrash вызывается при неожиданном завершении ядра.
 	OnCrash func(msg string)
 	// ExtraEnv дополняет параметры конфига (zapret, tg-ws-proxy).
@@ -239,6 +239,13 @@ func (c *Core) Status() CoreStatus {
 		st.StartedAt = c.startedAt.Unix()
 	}
 	return st
+}
+
+// SetKeepProxyOnCrash — защита от утечек: при падении ядра не возвращать системный прокси.
+func (c *Core) SetKeepProxyOnCrash(v bool) {
+	c.mu.Lock()
+	c.keepProxy = v
+	c.mu.Unlock()
 }
 
 func (c *Core) Running() bool {
@@ -403,17 +410,18 @@ func (c *Core) Start(s *Settings) (err error) {
 		}
 	}()
 	done := make(chan struct{})
+	// Запоминаем процесс до того, как начнём ждать его выхода: если ядро сразу упадёт,
+	// onExit должен узнать «своё» ядро, иначе состояние так и осталось бы указывать на мёртвый процесс.
+	c.mu.Lock()
+	c.cmd, c.done, c.apiPort, c.secret, c.stopping = cmd, done, port, secret, false
+	c.probeD, c.probeP = probeD, probeP
+	c.mu.Unlock()
 	go func() {
 		werr := cmd.Wait()
 		pw.Close()
 		c.onExit(cmd, werr)
 		close(done)
 	}()
-
-	c.mu.Lock()
-	c.cmd, c.done, c.apiPort, c.secret = cmd, done, port, secret
-	c.probeD, c.probeP = probeD, probeP
-	c.mu.Unlock()
 
 	// Ждём, пока поднимется Clash API (ядро может качать наборы правил).
 	cl := NewClash(port, secret)
@@ -464,7 +472,7 @@ func (c *Core) onExit(cmd *exec.Cmd, werr error) {
 	wasRunning := c.running
 	crashed := !c.stopping && wasRunning
 	c.sysProxy = 0
-	keep := crashed && c.KeepProxyOnCrash && c.mode == "proxy"
+	keep := crashed && c.keepProxy && c.mode == "proxy"
 	c.running = false
 	c.cmd = nil
 	c.stopping = false
