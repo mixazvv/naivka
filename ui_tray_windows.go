@@ -27,7 +27,7 @@ func (a *App) trayMenu() []menuItem {
 	switch {
 	case st.Starting:
 		items = append(items, menuItem{Text: a.tr("Подключение…"), ID: cmdToggle, Disabled: true})
-	case st.Running || st.Blocked:
+	case st.Running || st.Blocked || a.life.trying.Load() > 0:
 		items = append(items, menuItem{Text: a.tr("Отключить"), ID: cmdToggle})
 	default:
 		items = append(items, menuItem{Text: a.tr("Подключить"), ID: cmdToggle, Disabled: len(s.Servers) == 0})
@@ -74,8 +74,8 @@ func (a *App) trayCommand(id int) {
 		}
 		a.ui.Refresh()
 	case id == cmdToggle:
-		if st := a.core.Status(); st.Running || st.Blocked {
-			a.core.Stop()
+		if st := a.core.Status(); st.Running || st.Blocked || st.Starting || a.life.trying.Load() > 0 {
+			a.disconnect()
 			a.mon.Event("info", "Отключено", false)
 		} else if err := a.connect(); err != nil {
 			a.notify("Не удалось подключиться: "+firstLine(err.Error()), true)
@@ -86,6 +86,7 @@ func (a *App) trayCommand(id int) {
 		a.settings.Selected = "wl"
 		_ = SaveSettings(a.dir, a.settings)
 		a.mu.Unlock()
+		a.fo.clear()
 		a.applySelection()
 		a.ui.Refresh()
 	case id >= cmdAuto:
@@ -98,6 +99,7 @@ func (a *App) trayCommand(id int) {
 		a.settings.Selected = sel
 		_ = SaveSettings(a.dir, a.settings)
 		a.mu.Unlock()
+		a.fo.clear()
 		a.applySelection()
 		a.ui.Refresh()
 	}
@@ -110,6 +112,8 @@ func (a *App) trayTip() (bool, string) {
 		return false, a.tr("Naivka: ядро упало, трафик заблокирован")
 	case st.Starting:
 		return false, a.tr("Naivka: подключение…")
+	case !st.Running && a.life.trying.Load() > 0:
+		return false, a.tr("Naivka: восстанавливаю соединение…")
 	case st.Running:
 		name := ""
 		if cl := a.core.Clash(); cl != nil {

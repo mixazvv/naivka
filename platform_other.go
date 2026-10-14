@@ -21,6 +21,8 @@ func attachToJob(*os.Process)          {}
 func setSystemProxy(string, int) error { return nil }
 func restoreSystemProxy(string)        {}
 
+func systemProxyOurs(int) (bool, string) { return true, "" }
+
 func openWindow(url, profile string) *exec.Cmd {
 	fmt.Println("Откройте в браузере:", url)
 	return nil

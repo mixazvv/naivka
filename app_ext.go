@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 )
 
 // uiHost — окно и значок в трее. Реализации: своё окно (Windows) или браузер.
@@ -52,51 +51,6 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
-}
-
-// onCrash: ядро упало. Защита от утечек уже удерживает трафик (если включена),
-// а сторож пробует поднять ядро снова.
-func (a *App) onCrash(msg string) {
-	s := a.settingsCopy()
-	if s.KillSwitch && s.Mode == "proxy" {
-		a.mon.Event("error", "Ядро упало. Трафик заблокирован защитой от утечек, пока соединение не восстановится", true)
-	} else {
-		a.mon.Event("error", "Ядро упало: "+msg, true)
-	}
-	if a.ui != nil {
-		a.ui.Refresh()
-	}
-	if !s.Watchdog {
-		return
-	}
-	for i := 0; i < 3; i++ {
-		time.Sleep(time.Duration(2+i*3) * time.Second)
-		if a.core.Running() || !a.mon.allowRestart() {
-			return
-		}
-		if err := a.connect(); err == nil {
-			a.mon.Event("ok", "Ядро перезапущено, соединение восстановлено", true)
-			if a.ui != nil {
-				a.ui.Refresh()
-			}
-			return
-		}
-	}
-	a.mon.Event("error", "Не удалось восстановить соединение автоматически", true)
-}
-
-// restartCore перезапускает ядро. Если перезапуск уже идёт, второй не начинается —
-// идущий просто повторится один раз в конце с самыми свежими настройками.
-func (a *App) restartCore() {
-	a.restarter.Run(func() {
-		a.core.Stop()
-		if err := a.connect(); err != nil {
-			a.mon.Event("error", "Перезапуск не удался: "+firstLine(err.Error()), true)
-		}
-	})
-	if a.ui != nil {
-		a.ui.Refresh()
-	}
 }
 
 func (a *App) isRestarting() bool { return a.restarter.Busy() }

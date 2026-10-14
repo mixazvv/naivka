@@ -109,11 +109,8 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/import", a.apiImport)
 	api("POST", "/api/connect", func(*http.Request) (any, error) { return nil, a.connect() })
 	api("POST", "/api/disconnect", func(*http.Request) (any, error) {
-		a.core.Stop()
+		a.disconnect()
 		a.mon.Event("info", "Отключено", false)
-		a.mu.Lock()
-		a.applied = ""
-		a.mu.Unlock()
 		return nil, nil
 	})
 	api("POST", "/api/port/auto", func(*http.Request) (any, error) {
@@ -168,6 +165,9 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/speedtest", func(*http.Request) (any, error) { return nil, a.StartSpeedTest() })
 	api("GET", "/api/speedtest", func(*http.Request) (any, error) { return speedView(), nil })
 	api("GET", "/api/processes", func(*http.Request) (any, error) { return a.Processes(), nil })
+	api("GET", "/api/report", func(*http.Request) (any, error) {
+		return map[string]string{"name": "naivka-report-" + time.Now().Format("2006-01-02-1504") + ".txt", "text": a.buildReport()}, nil
+	})
 	api("GET", "/api/share", func(*http.Request) (any, error) {
 		s := a.settingsCopy()
 		ips := lanIPs()
@@ -178,10 +178,7 @@ func (a *App) routes() http.Handler {
 			"password": s.Share.Password, "running": a.core.Running()}, nil
 	})
 	api("POST", "/api/share/firewall", func(*http.Request) (any, error) { return nil, allowLANPort(a.settingsCopy().Share.Port) })
-	api("POST", "/api/reconnect", func(*http.Request) (any, error) {
-		a.core.Stop()
-		return nil, a.connect()
-	})
+	api("POST", "/api/reconnect", func(*http.Request) (any, error) { return nil, a.reconnect() })
 	api("GET", "/api/proxies", func(*http.Request) (any, error) {
 		cl := a.core.Clash()
 		if cl == nil {
@@ -355,7 +352,7 @@ func (a *App) routes() http.Handler {
 			return nil, errors.New("Naivka уже запущена с правами администратора")
 		}
 		wasRunning := a.core.Running()
-		a.core.Stop()
+		a.pause()
 		if err := relaunchElevated(true, wasRunning); err != nil {
 			if wasRunning {
 				go a.connect()
@@ -402,13 +399,34 @@ type stateResp struct {
 	Protected    bool   `json:"protected"` // ядро в Program Files
 	Legacy       bool   `json:"legacy"`    // Windows 7/8
 	Install      bool   `json:"install"`   // есть установка своего сервера по SSH
+
+	Conflicts []ConflictInfo `json:"conflicts"`          // мешающие программы
+	Reviving  bool           `json:"reviving"`           // ядро упало, сторож поднимает его снова
+	Failover  *failoverView  `json:"failover,omitempty"` // временно работаем через другой сервер
+}
+
+type failoverView struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 func (a *App) apiState(*http.Request) (any, error) {
 	st := a.core.Status()
+	var fo *failoverView
+	if from, to := a.fo.get(); from != "" && st.Running {
+		fo = &failoverView{From: a.serverName(from), To: a.serverName(to)}
+	}
+	conflicts := a.conflicts()
+	if conflicts == nil {
+		conflicts = []ConflictInfo{}
+	}
+	reviving := a.life.trying.Load() > 0 && !st.Running
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return stateResp{
+		Conflicts:    conflicts,
+		Reviving:     reviving,
+		Failover:     fo,
 		CoreStatus:   st,
 		Admin:        isAdmin(),
 		OS:           runtime.GOOS,
@@ -453,6 +471,7 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 	a.settings = ns
 	a.mu.Unlock()
 	if prevSel != ns.Selected {
+		a.fo.clear()
 		a.applySelection()
 	}
 	a.core.KeepProxyOnCrash = ns.KillSwitch // применяется сразу, без переподключения
@@ -487,6 +506,9 @@ func (a *App) applySelection() {
 	}
 	if strings.HasPrefix(a.settings.Selected, "w-") && !a.wl.Active() {
 		tag = a.settings.Selected
+	}
+	if from, to := a.fo.get(); from != "" && from == tag {
+		tag = to // выбранный сервер не отвечает — пока работаем через замену
 	}
 	a.mu.Unlock()
 	if err := cl.Select(tag); err != nil {
@@ -539,6 +561,7 @@ func (a *App) apiSelect(r *http.Request) (any, error) {
 	}
 	a.settings = ns
 	a.mu.Unlock()
+	a.fo.clear()
 	a.applySelection()
 	return nil, nil
 }

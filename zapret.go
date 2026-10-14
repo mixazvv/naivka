@@ -120,6 +120,8 @@ type Zapret struct {
 	trial            TrialState
 	trialPrev        string
 	trialPrevRunning bool
+
+	revives crashBudget
 }
 
 func newZapret(a *App) *Zapret {
@@ -510,10 +512,12 @@ func (z *Zapret) startStrategy(s *Settings, strategy string) error {
 			}
 		}
 		msg := z.lastErr
+		ranFor := time.Since(z.startedAt)
 		z.pmu.Unlock()
 		close(done)
-		if crashed {
-			z.a.mon.Event("error", "zapret: "+msg+". Подробности — в журнале", true)
+		// Упал при запуске — об этом скажет сам Start; упал на ходу — поднимаем снова.
+		if crashed && ranFor > 3*time.Second {
+			go z.revive(msg)
 		}
 	}()
 	select {
@@ -529,6 +533,36 @@ func (z *Zapret) startStrategy(s *Settings, strategy string) error {
 		z.a.core.logs.Add("[zapret] запущена стратегия «" + strategy + "»")
 	}
 	return nil
+}
+
+// revive: winws.exe закрылся на ходу. Пока его нет, сайты из списков zapret, которые идут
+// напрямую, не открываются, — поэтому поднимаем его снова, а если не выходит, пускаем их через сервер.
+func (z *Zapret) revive(msg string) {
+	z.a.mon.Event("warn", "zapret: "+msg+" — запускаю снова", false)
+	for _, d := range []time.Duration{2 * time.Second, 5 * time.Second, 15 * time.Second} {
+		time.Sleep(d)
+		s := z.a.settingsCopy()
+		z.pmu.Lock()
+		busy := z.pick.Active || z.trial.Active
+		z.pmu.Unlock()
+		if !s.Zapret.Enabled || z.Running() || busy {
+			return
+		}
+		if !z.revives.allow(5, 10*time.Minute) {
+			break
+		}
+		if err := z.Start(s); err == nil {
+			z.a.mon.Event("ok", "zapret снова работает", false)
+			return
+		}
+	}
+	msg = "zapret не удаётся запустить снова. Подробности — в журнале"
+	s := z.a.settingsCopy()
+	if s.Zapret.RouteDirect && z.a.core.Running() {
+		msg += ". Пока его сайты идут через сервер"
+		go z.a.restartCore() // zapret не работает — ядро пустит его сайты через сервер
+	}
+	z.a.mon.Event("error", msg, true)
 }
 
 func (z *Zapret) Stop() {

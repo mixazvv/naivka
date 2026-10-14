@@ -49,7 +49,7 @@
 @property --glow { syntax: "<color>"; inherits: true; initial-value: transparent; }
 body { --glow: transparent; transition: --glow .9s ease; }
 body[data-state="on"] { --glow: color-mix(in srgb, var(--tunnel) 26%, transparent); }
-body[data-state="wait"] { --glow: color-mix(in srgb, var(--warn) 22%, transparent); }
+body[data-state="wait"], body[data-state="revive"] { --glow: color-mix(in srgb, var(--warn) 22%, transparent); }
 body[data-state="err"], body[data-state="blocked"] { --glow: color-mix(in srgb, var(--danger) 24%, transparent); }
 
 :root {
@@ -60,7 +60,7 @@ body[data-state="err"], body[data-state="blocked"] { --glow: color-mix(in srgb, 
   --state-soft: transparent;
 }
 body[data-state="on"] { --state: var(--tunnel); --state-soft: var(--tunnel-soft); }
-body[data-state="wait"] { --state: var(--warn); --state-soft: var(--warn-soft); }
+body[data-state="wait"], body[data-state="revive"] { --state: var(--warn); --state-soft: var(--warn-soft); }
 body[data-state="err"], body[data-state="blocked"] { --state: var(--danger); --state-soft: var(--danger-soft); }
 
 * { box-sizing: border-box; }
@@ -144,7 +144,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ambient { pointer-events: none; z-index: 0; overflow: hidden; position: relative;
   background: radial-gradient(1000px 520px at 50% -160px, var(--glow), transparent 70%),
               radial-gradient(760px 440px at 4% 112%, color-mix(in srgb, var(--glow) 55%, transparent), transparent 70%); }
-body[data-state="wait"] .ambient { animation: glowPulse 1.6s ease-in-out infinite; }
+body[data-state="wait"] .ambient, body[data-state="revive"] .ambient { animation: glowPulse 1.6s ease-in-out infinite; }
 @keyframes glowPulse { 50% { opacity: .45; } }
 /* Миллиметровка под схемой — «чертёж» маршрутов. */
 .ambient::after { content: ""; position: absolute; inset: 0;

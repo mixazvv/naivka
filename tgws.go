@@ -27,6 +27,7 @@ type TgWs struct {
 	running  bool
 	stopping bool
 	lastErr  string
+	revives  crashBudget
 
 	// Посредник: Telegram Desktop → Naivka (порт из настроек) → tg-ws-proxy (внутренний порт).
 	// Так Naivka видит трафик Telegram, хотя tg-ws-proxy ходит в интернет сама.
@@ -196,11 +197,32 @@ func (t *TgWs) Start(s *Settings) error {
 		}
 		msg := t.lastErr
 		t.pmu.Unlock()
-		if crashed {
+		switch {
+		case crashed && werr == nil:
+			// Код выхода 0 — скорее всего, закрыли через «Выход» в его меню: не навязываемся.
 			t.a.mon.Event("warn", msg+" (возможно, через «Выход» в его меню)", false)
+		case crashed:
+			go t.revive(msg)
 		}
 	}()
 	return nil
+}
+
+// revive: tg-ws-proxy упал с ошибкой — поднимаем снова, но не больше 3 раз за 10 минут.
+func (t *TgWs) revive(msg string) {
+	if !t.revives.allow(3, 10*time.Minute) {
+		t.a.mon.Event("error", msg+". Он падает раз за разом — Telegram через него не работает. Подробности — в журнале", true)
+		return
+	}
+	t.a.mon.Event("warn", msg+" — запускаю снова", false)
+	time.Sleep(2 * time.Second)
+	s := t.a.settingsCopy()
+	if !s.Telegram.Enabled || t.Running() {
+		return
+	}
+	if err := t.Start(s); err != nil {
+		t.a.mon.Event("error", "tg-ws-proxy не запустился: "+firstLine(err.Error()), true)
+	}
 }
 
 func (t *TgWs) Stop() {

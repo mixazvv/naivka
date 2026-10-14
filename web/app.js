@@ -460,11 +460,12 @@ function phase() {
   if (busy || ST.starting) return 'wait';
   if (ST.blocked) return 'blocked';
   if (ST.running) return 'on';
+  if (ST.reviving) return 'revive';
   if (ST.error) return 'err';
   return 'off';
 }
 
-const TITLES = { on: 'Подключено', off: 'Отключено', wait: 'Подключение…', err: 'Не удалось подключиться', blocked: 'Трафик заблокирован' };
+const TITLES = { on: 'Подключено', off: 'Отключено', wait: 'Подключение…', err: 'Не удалось подключиться', blocked: 'Трафик заблокирован', revive: 'Восстанавливаю соединение…' };
 const ROUTING = { 'ru-direct': 'Россия напрямую', 'blocked-only': 'Только заблокированное', 'global': 'Всё через сервер' };
 
 function currentServer() {
@@ -508,6 +509,7 @@ function updateStatus() {
     if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - ST.startedAt)}`;
     else if (p === 'wait') sub = 'Запускаю sing-box и проверяю конфиг.';
     else if (p === 'err') sub = 'Подробности ниже и в журнале.';
+    else if (p === 'revive') sub = 'Связь пропала. Naivka подключится снова сама, как только получится.';
     else if (p === 'blocked') sub = 'Ядро упало, защита от утечек не выпускает трафик напрямую. Naivka пробует восстановить связь.';
     $('#statusSub').textContent = sub;
     const btn = $('#connectBtn');
@@ -516,7 +518,7 @@ function updateStatus() {
     btn.title = powerLabel(p) + ' (Ctrl+Enter)';
     renderTiles();
     renderReady();
-    const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok')].join('|');
+    const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null)].join('|');
     patch('notices', n, buildNotices);
     renderLanes();
   }
@@ -575,6 +577,8 @@ function buildNotices() {
         } }, 'Зашифровать'),
         h('button', { class: 'btn small', onclick: () => { sessionStorage.setItem('naivka-dns-ok', '1'); updateStatus(); } }, 'Не сейчас'))));
   }
+  if (ST.failover) out.push(notice('warn', `Сервер «${ST.failover.from}» не отвечает — временно работаю через «${ST.failover.to}». Вернусь, когда он оживёт.`));
+  for (const c of ST.conflicts || []) out.push(notice('warn', h('span', null, h('b', null, `Запущен ${c.name}. `), c.hint)));
   if (ST.needsRestart) out.push(notice('info', 'Настройки изменены. Они применятся после переподключения.', h('button', { class: 'btn small', onclick: reconnect }, 'Переподключить')));
   const pi = !ST.running && ST.portIssue;
   if (pi) {
@@ -605,7 +609,7 @@ async function toggleConnect() {
   busy = true;
   updateStatus();
   try {
-    if (ST && (ST.running || ST.blocked)) await api('/api/disconnect', {});
+    if (ST && (ST.running || ST.blocked || ST.reviving)) await api('/api/disconnect', {});
     else { await saveNow(); await api('/api/connect', {}); PXAt = 0; }
   } catch (e) {
     toast(e.message.split('\n')[0], true);
@@ -1071,7 +1075,7 @@ function renderLanes() {
       s('text', { x, y: Y0 + 62, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)];
     return s('svg', { class: 'lanes', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Схема маршрутов трафика' },
       defs, ...paths, dots, ...nodes,
-      ...end(95, 'pc', 'Компьютер', phase() === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : 'нажмите, чтобы подключить'),
+      ...end(95, 'pc', 'Компьютер', phase() === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : phase() === 'revive' ? 'нажмите, чтобы отключить' : 'нажмите, чтобы подключить'),
       ...end(905, 'globe', 'Интернет', ROUTING[S.routing]));
   });
   // Кнопка подключения стоит точно на месте узла «Компьютер».
@@ -1368,7 +1372,10 @@ function viewDiag() {
           h('label', { class: 'check', style: 'padding:0' }, h('input', { type: 'checkbox', id: 'logFollow', checked: true }), h('span', null, 'Прокручивать к новым')),
           h('span', { class: 'spacer' }),
           h('button', { class: 'btn small', onclick: async () => { try { await navigator.clipboard.writeText(logBuf.join('\n')); toast('Журнал скопирован'); } catch (e) { toast('Не удалось скопировать', true); } } }, 'Скопировать'),
-          h('button', { class: 'btn small', onclick: () => { logBuf = []; box.replaceChildren(); } }, 'Очистить окно')),
+          h('button', { class: 'btn small', onclick: () => { logBuf = []; box.replaceChildren(); } }, 'Очистить окно'),
+          h('button', { class: 'btn small', title: 'Состояние, мешающие программы, настройки и журнал одним файлом — пароли, ключи и адреса серверов в него не попадают. В журнале могут остаться адреса открытых сайтов: посмотрите файл перед отправкой.', onclick: async () => {
+            try { const r = await api('/api/report'); download(r.name, r.text, 'text/plain'); toast('Отчёт сохранён в «Загрузки»'); } catch (e) { toast(e.message, true); }
+          } }, 'Собрать отчёт')),
         box);
       setTimeout(() => { box.scrollTop = box.scrollHeight; });
       refreshLogs();
@@ -2637,6 +2644,7 @@ function viewSettings() {
     h('h2', null, 'Надёжность'),
     check('killSwitch', 'Защита от утечек', 'Если соединение упадёт, трафик не пойдёт мимо сервера.'),
     check('watchdog', 'Следить за соединением', 'Переподключаться после сбоев и смены сети.'),
+    check('failover', 'Переходить на рабочий сервер', 'Если выбранный сервер перестал отвечать — временно работать через другой свой, потом вернуться.'),
     check('sleepReconnect', 'Отключаться перед сном', 'После пробуждения компьютера Naivka подключится снова.'),
     check('notify', 'Уведомления Windows', 'О сбоях, восстановлении связи и смене сервера автовыбором.'),
 

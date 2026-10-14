@@ -154,6 +154,24 @@ func setSystemProxy(dir string, port int) error {
 	return nil
 }
 
+// systemProxyOurs — указывает ли системный прокси Windows на Naivka; current — что там сейчас.
+func systemProxyOurs(port int) (ours bool, current string) {
+	k, err := openKey(inetKey, syscall.KEY_READ)
+	if err != nil {
+		return true, "" // не смогли прочитать — не поднимаем тревогу
+	}
+	defer syscall.RegCloseKey(k)
+	en, _ := readDWORD(k, "ProxyEnable")
+	srv, _ := readString(k, "ProxyServer")
+	if en != 1 {
+		return false, ""
+	}
+	if srv == fmt.Sprintf("127.0.0.1:%d", port) {
+		return true, srv
+	}
+	return false, srv
+}
+
 func loadBackup(dir string) proxyBackup {
 	var b proxyBackup
 	data, err := os.ReadFile(backupPath(dir))

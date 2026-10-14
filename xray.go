@@ -31,6 +31,9 @@ type Xray struct {
 	done  chan struct{}
 	key   string
 	ports map[string]int
+
+	stopping bool
+	revives  crashBudget
 }
 
 func newXray(a *App) *Xray {
@@ -250,17 +253,22 @@ func (x *Xray) start(cfgPath string, ports map[string]int) error {
 	}()
 	done := make(chan struct{})
 	go func() {
-		_ = cmd.Wait()
+		werr := cmd.Wait()
 		pw.Close()
 		x.pmu.Lock()
+		// Упал уже работавший Xray (входы были открыты), а не при запуске и не по Stop.
+		crashed := x.cmd == cmd && !x.stopping && x.key != ""
 		if x.cmd == cmd {
 			x.cmd, x.key, x.ports = nil, "", nil
 		}
 		x.pmu.Unlock()
 		close(done)
+		if crashed {
+			x.onCrash(werr)
+		}
 	}()
 	x.pmu.Lock()
-	x.cmd, x.done = cmd, done
+	x.cmd, x.done, x.stopping = cmd, done, false
 	x.pmu.Unlock()
 	// ждём, пока Xray откроет входы
 	var any int
@@ -283,9 +291,31 @@ func (x *Xray) start(cfgPath string, ports map[string]int) error {
 	return errors.New("Xray не открыл входы за 4 секунды")
 }
 
+// onCrash: Xray закрылся сам — серверы xHTTP перестали работать. Входы Xray получают
+// новые порты, поэтому поднимаем его вместе с ядром.
+func (x *Xray) onCrash(werr error) {
+	msg := "Xray неожиданно закрылся"
+	if werr != nil {
+		msg += ": " + werr.Error()
+	}
+	if !x.a.core.Running() {
+		return
+	}
+	if !x.revives.allow(3, 10*time.Minute) {
+		x.a.mon.Event("error", msg+". Он падает раз за разом — серверы xHTTP не работают до переподключения. Подробности — в журнале", true)
+		return
+	}
+	x.a.mon.Event("warn", msg+" — запускаю снова", false)
+	time.Sleep(2 * time.Second)
+	x.a.restartCore()
+}
+
 func (x *Xray) Stop() {
 	x.pmu.Lock()
 	cmd, done := x.cmd, x.done
+	if cmd != nil {
+		x.stopping = true
+	}
 	x.pmu.Unlock()
 	if cmd == nil {
 		return

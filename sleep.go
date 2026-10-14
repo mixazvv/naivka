@@ -30,7 +30,7 @@ func (a *App) onSuspend() {
 	if !was {
 		return
 	}
-	a.core.Stop()
+	a.pause()
 	a.mon.Event("info", "Компьютер засыпает — отключено, после пробуждения подключусь снова", false)
 	if a.ui != nil {
 		a.ui.Refresh()
@@ -49,6 +49,7 @@ func (a *App) onResume() {
 	if !was || !a.settingsCopy().SleepReconnect {
 		return
 	}
+	gen := a.life.gen.Load()
 	// Сеть (особенно Wi-Fi) поднимается не сразу — ждём до полуминуты.
 	time.Sleep(2 * time.Second)
 	for i := 0; i < 14 && !networkUp(); i++ {
@@ -57,9 +58,12 @@ func (a *App) onResume() {
 	if a.core.Running() {
 		return
 	}
-	if err := a.connect(); err != nil {
+	if _, err := a.resume(gen); err != nil {
 		a.mon.Event("error", "После пробуждения не удалось подключиться: "+firstLine(err.Error()), true)
-	} else {
+		if a.settingsCopy().Watchdog {
+			go a.keepTrying(gen, 1)
+		}
+	} else if a.core.Running() {
 		a.mon.Event("ok", "Компьютер проснулся — снова подключено", false)
 	}
 	if a.ui != nil {
