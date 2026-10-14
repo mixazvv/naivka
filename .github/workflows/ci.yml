@@ -1,0 +1,30 @@
+name: CI
+
+# Проверка на каждый PR и пуш в main: тесты с поиском гонок (когда несколько частей программы
+# одновременно трогают одни данные) и сборка под Windows.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: |
+          go vet -mod=vendor ./...
+          GOOS=windows go vet -mod=vendor ./...
+      - name: Тесты с поиском гонок
+        run: go test -race -mod=vendor -count=1 ./...
+      - name: Сборка под Windows
+        run: |
+          GOOS=windows GOARCH=amd64 go build -mod=vendor -o /dev/null .
+          GOOS=windows GOARCH=arm64 go build -mod=vendor -o /dev/null .

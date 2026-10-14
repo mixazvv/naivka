@@ -142,9 +142,11 @@ func (m *Monitor) run() {
 		if n%5 == 0 {
 			m.checkAuto(cl)
 			m.checkNetwork(cl)
+			m.a.guardSystemProxy()
 		}
 		if n%60 == 0 {
 			m.recordDelays(cl)
+			go m.a.failback(cl)
 		}
 		if n%120 == 0 {
 			go m.a.wl.checkOwn(cl)
@@ -461,19 +463,35 @@ func (m *Monitor) checkNetwork(cl *Clash) {
 
 // healthCheck: запрос к адресу проверки строго через сервер.
 // Две неудачи подряд — закрываем зависшие соединения, четыре — перезапускаем ядро.
+// spareTestURL — второй адрес для проверки связи: сбоем считаем, только когда не открылись оба,
+// чтобы недоступность одного сайта не рвала соединения и не перезапускала ядро зря.
+func spareTestURL(main string) string {
+	if strings.Contains(main, "cloudflare") {
+		return "https://www.gstatic.com/generate_204"
+	}
+	return "https://cp.cloudflare.com/generate_204"
+}
+
+func probeVia(port int, u string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := geoClient(port).Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	return err == nil && resp.StatusCode < 500
+}
+
 func (m *Monitor) healthCheck(s *Settings, force bool) {
 	_, proxyPort := m.a.core.ProbePorts()
 	if proxyPort == 0 {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", s.TestURL, nil)
-	resp, err := geoClient(proxyPort).Do(req)
-	ok := err == nil && resp.StatusCode < 500
-	if resp != nil {
-		resp.Body.Close()
-	}
+	ok := probeVia(proxyPort, s.TestURL) || probeVia(proxyPort, spareTestURL(s.TestURL))
 	m.mu.Lock()
 	// Первую минуту-полторы после сна сеть ещё поднимается — сбои не считаем, чтобы не дёргать ядро зря.
 	if !ok && time.Since(m.wakeAt) < wakeGrace {
@@ -494,6 +512,13 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 	case ok && prev == "fail":
 		m.Event("ok", "Связь через сервер восстановлена", true)
 	case !ok && fails == 2:
+		// Сначала — другой свой сервер, если выбран конкретный; нет живых — подписка «белые списки».
+		if m.a.failover(s) {
+			m.mu.Lock()
+			m.fails = 0
+			m.mu.Unlock()
+			return
+		}
 		m.Event("warn", "Нет связи через сервер — переподключаю соединения", true)
 		if cl := m.a.core.Clash(); cl != nil {
 			_ = cl.CloseAll()
@@ -505,7 +530,6 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 	}
 }
 
-// allowRestart ограничивает перезапуски: не больше 5 за 10 минут.
 func (m *Monitor) allowRestart() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -124,6 +124,7 @@ type Core struct {
 	startedAt time.Time
 	lastErr   string
 	mode      string
+	sysProxy  int // порт, на который указывает включённый нами системный прокси; 0 — не включали
 	apiPort   int
 	secret    string
 	probeD    int
@@ -247,6 +248,17 @@ func (c *Core) Running() bool {
 }
 
 // Clash возвращает клиент API работающего ядра (или nil).
+// SystemProxyPort — порт системного прокси, который сейчас держит Naivka; 0 — не держит
+// (режим TUN, ядро остановлено или останавливается).
+func (c *Core) SystemProxyPort() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.running || c.stopping {
+		return 0
+	}
+	return c.sysProxy
+}
+
 func (c *Core) Clash() *Clash {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -435,6 +447,9 @@ func (c *Core) Start(s *Settings) (err error) {
 			c.logs.Add("[naivka] не удалось включить системный прокси: " + err.Error())
 		} else {
 			c.logs.Add(fmt.Sprintf("[naivka] системный прокси: 127.0.0.1:%d", s.MixedPort))
+			c.mu.Lock()
+			c.sysProxy = s.MixedPort
+			c.mu.Unlock()
 		}
 	}
 	return nil
@@ -448,6 +463,7 @@ func (c *Core) onExit(cmd *exec.Cmd, werr error) {
 	}
 	wasRunning := c.running
 	crashed := !c.stopping && wasRunning
+	c.sysProxy = 0
 	keep := crashed && c.KeepProxyOnCrash && c.mode == "proxy"
 	c.running = false
 	c.cmd = nil
@@ -482,6 +498,7 @@ func (c *Core) Stop() {
 		return
 	}
 	c.stopping = true
+	c.sysProxy = 0
 	c.mu.Unlock()
 
 	// Сначала возвращаем системный прокси — иначе интернет пропадёт до перезапуска.

@@ -43,7 +43,10 @@ type App struct {
 	traffic   *trafficStore
 	installer *serverInstaller
 
-	restarter serialRunner // перезапуски ядра — по одному
+	restarter  serialRunner  // перезапуски ядра — по одному
+	life       lifeState     // включение и выключение — по одному, и чего хочет пользователь
+	fo         failoverState // временный переход на другой сервер
+	proxyGuard proxyGuard    // чтобы чужая программа не перехватила системный прокси
 
 	probeMu sync.Mutex
 	probes  map[string]int // служебные входы теста скорости: тег → порт
@@ -168,7 +171,8 @@ func (a *App) url() string {
 	return fmt.Sprintf("http://127.0.0.1:%d/?k=%s", a.port, a.token)
 }
 
-func (a *App) connect() error {
+// connectLocked — подключение; вызывать только под a.life.mu (см. lifecycle.go).
+func (a *App) connectLocked() error {
 	a.mu.Lock()
 	s := a.settings.clone()
 	a.mu.Unlock()
@@ -188,6 +192,8 @@ func (a *App) connect() error {
 		mode = "весь трафик (TUN)"
 	}
 	a.mon.Event("ok", "Подключено, "+mode, false)
+	a.proxyGuard.reset()
+	go a.warnConflicts()
 	a.mu.Lock()
 	a.applied = s.fingerprint()
 	a.mu.Unlock()
@@ -199,6 +205,8 @@ func (a *App) connect() error {
 
 func (a *App) Quit() {
 	a.quitOnce.Do(func() {
+		a.life.want.Store(false)
+		a.life.gen.Add(1)
 		a.core.Stop()
 		a.traffic.save(true)
 		restoreSystemProxy(a.dir)

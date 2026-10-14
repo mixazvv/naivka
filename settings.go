@@ -176,6 +176,7 @@ type Settings struct {
 	ShowIP          bool             `json:"showIp"` // определять IP и страну через внешние сервисы
 	KillSwitch      bool             `json:"killSwitch"`
 	Watchdog        bool             `json:"watchdog"`
+	Failover        bool             `json:"failover"`       // выбранный сервер не отвечает — временно через другой
 	SleepReconnect  bool             `json:"sleepReconnect"` // отключаться перед сном, подключаться после пробуждения
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
@@ -223,6 +224,7 @@ func DefaultSettings() *Settings {
 		ShowIP:         true,
 		KillSwitch:     true,
 		Watchdog:       true,
+		Failover:       true,
 		SleepReconnect: true,
 		Notify:         true,
 		Theme:          "dark",
@@ -334,6 +336,7 @@ func (s *Settings) fingerprint() string {
 	}
 	sort.Slice(c.Servers, func(i, j int) bool { return c.Servers[i].ID < c.Servers[j].ID })
 	c.Notify, c.ShowIP, c.Watchdog, c.KillSwitch, c.AutoStart, c.SleepReconnect = false, false, false, false, false, false
+	c.Failover = false
 	c.UpdateCheck = false
 	c.TrafficLimitGB, c.TrafficResetDay = 0, 0
 	c.Panels = nil

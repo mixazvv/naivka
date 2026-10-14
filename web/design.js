@@ -225,7 +225,7 @@ function btnIcon(name) {
 }
 
 function powerLabel(p) {
-  return p === 'on' || p === 'blocked' ? 'Отключить' : p === 'wait' ? 'Подключение…' : 'Подключить';
+  return p === 'on' || p === 'blocked' || p === 'revive' ? 'Отключить' : p === 'wait' ? 'Подключение…' : 'Подключить';
 }
 
 // ---------- карта ----------
