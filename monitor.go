@@ -130,15 +130,16 @@ func (m *Monitor) run() {
 			m.resetSession()
 		}
 		wasRunning = running
+		s := m.a.settingsCopy() // один снимок настроек на секунду
 		if !running {
-			m.sample(nil) // только Telegram: tg-ws-proxy работает и без сервера
+			m.sample(nil, s) // только Telegram: tg-ws-proxy работает и без сервера
 			continue
 		}
 		cl := m.a.core.Clash()
 		if cl == nil {
 			continue
 		}
-		m.sample(cl)
+		m.sample(cl, s)
 		if n%5 == 0 {
 			m.checkAuto(cl)
 			m.checkNetwork(cl)
@@ -151,7 +152,6 @@ func (m *Monitor) run() {
 		if n%120 == 0 {
 			go m.a.wl.checkOwn(cl)
 		}
-		s := m.a.settingsCopy()
 		// Сон: часы прыгнули вперёд — старые соединения мертвы.
 		if gap > 20*time.Second {
 			m.mu.Lock()
@@ -243,7 +243,7 @@ func isTgWsProc(proc string) bool {
 	return strings.HasPrefix(strings.ToLower(proc), "tgwsproxy")
 }
 
-func (m *Monitor) sample(cl *Clash) {
+func (m *Monitor) sample(cl *Clash, s *Settings) {
 	v := &ConnsView{}
 	if cl != nil {
 		var err error
@@ -251,7 +251,6 @@ func (m *Monitor) sample(cl *Clash) {
 			return
 		}
 	}
-	s := m.a.settingsCopy()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.refreshZapretSet(s)
@@ -375,9 +374,10 @@ func (m *Monitor) countHit(c Conn, s *Settings) {
 	host := strings.ToLower(c.Metadata.Host)
 	ip := net.ParseIP(c.Metadata.DestIP)
 	proc := strings.ToLower(filepath.Base(strings.ReplaceAll(c.Metadata.ProcessPath, `\`, "/")))
+	rule := strings.ToLower(c.Rule)
 	for _, r := range s.Rules {
 		v := strings.ToLower(r.Value)
-		if !strings.Contains(strings.ToLower(c.Rule), v) {
+		if !strings.Contains(rule, v) {
 			continue
 		}
 		hit := false

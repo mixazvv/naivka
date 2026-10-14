@@ -18,12 +18,16 @@ type Clash struct {
 	hc     *http.Client
 }
 
+// clashTransport — один на всю программу: раньше каждый вызов Core.Clash() создавал свой,
+// и его открытое соединение с ядром так и оставалось висеть (несколько в секунду, пока подключены).
+var clashTransport = &http.Transport{Proxy: nil, MaxIdleConnsPerHost: 4, IdleConnTimeout: 30 * time.Second}
+
 func NewClash(port int, secret string) *Clash {
 	return &Clash{
 		base:   fmt.Sprintf("http://127.0.0.1:%d", port),
 		secret: secret,
 		// Без прокси из окружения: API всегда локальный.
-		hc: &http.Client{Timeout: 12 * time.Second, Transport: &http.Transport{Proxy: nil}},
+		hc: &http.Client{Timeout: 12 * time.Second, Transport: clashTransport},
 	}
 }
 

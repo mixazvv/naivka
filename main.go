@@ -177,9 +177,9 @@ func (a *App) connectLocked() error {
 	a.mu.Lock()
 	s := a.settings.clone()
 	a.mu.Unlock()
-	a.core.KeepProxyOnCrash = s.KillSwitch
+	a.core.SetKeepProxyOnCrash(s.KillSwitch)
 	// zapret поднимаем до ядра: от него зависит, пускать ли его сайты напрямую.
-	if s.Zapret.Enabled && !a.zapret.Running() && a.zapret.root() != "" {
+	if s.Zapret.Enabled && !a.zapret.Running() && a.zapret.root() != "" && !a.zapret.busy() {
 		if err := a.zapret.Start(s); err != nil {
 			a.mon.Event("warn", "zapret не запустился: "+firstLine(err.Error())+" — его сайты пойдут через сервер", false)
 		}
@@ -200,7 +200,7 @@ func (a *App) connectLocked() error {
 	a.mu.Unlock()
 	// sing-box помнит прошлый выбор сервера в cache.db и берёт его вместо default —
 	// выставляем выбор из настроек Naivka явно.
-	a.applySelection()
+	a.applySelectionNow()
 	return nil
 }
 
@@ -208,6 +208,14 @@ func (a *App) Quit() {
 	a.quitOnce.Do(func() {
 		a.life.want.Store(false)
 		a.life.gen.Add(1)
+		// Если сейчас идёт подключение, ждём его (недолго): иначе оно могло бы включить
+		// системный прокси уже после нашей остановки ядра — и интернет пропал бы до следующего запуска.
+		locked := false
+		for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
+			if locked = a.life.mu.TryLock(); locked {
+				break
+			}
+		}
 		a.core.Stop()
 		a.traffic.save(true)
 		restoreSystemProxy(a.dir)
@@ -219,6 +227,11 @@ func (a *App) Quit() {
 			a.ui.Close()
 		}
 		removeInstance(a.dir, a.token)
+		a.core.Stop()
+		restoreSystemProxy(a.dir) // последним шагом: что бы ни успело случиться за время остановки
+		if locked {
+			a.life.mu.Unlock()
+		}
 		log.Println("exit")
 		os.Exit(0)
 	})

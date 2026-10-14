@@ -104,7 +104,9 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 	env.TgWsProxy = s.Telegram.Enabled
 	a.fillLists(s, env, env.APIPort > 0)
 	env.WLServers = a.wl.Servers(s)
-	a.wl.markApplied(env.WLServers)
+	if env.APIPort > 0 { // превью конфига не должно считаться «применённым» списком
+		a.wl.markApplied(env.WLServers)
+	}
 	// серверы xHTTP (свои и из подписки) работают через Xray
 	xs := map[string]Server{}
 	for _, sv := range s.Servers {

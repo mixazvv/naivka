@@ -155,7 +155,8 @@ func parseIPAPI(b []byte) (*GeoInfo, error) {
 
 // geoClient — HTTP-клиент: напрямую (proxyPort == 0) или через служебный вход sing-box.
 func geoClient(proxyPort int) *http.Client {
-	tr := &http.Transport{Proxy: nil, TLSHandshakeTimeout: 8 * time.Second}
+	// Клиент одноразовый: без keep-alive соединение закрывается сразу, а не висит в пуле, который больше никто не возьмёт.
+	tr := &http.Transport{Proxy: nil, TLSHandshakeTimeout: 8 * time.Second, DisableKeepAlives: true}
 	if proxyPort > 0 {
 		u, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
 		tr.Proxy = http.ProxyURL(u)

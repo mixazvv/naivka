@@ -142,15 +142,19 @@ func (a *App) keepTrying(gen int64, first int) {
 	defer a.life.trying.Add(-1)
 	warned := false
 	for i := first; ; i++ {
-		d := watchdogDelay(i)
-		if !a.mon.allowRestart() {
-			d = 2 * time.Minute // ядро падает слишком часто — даём передышку
-		}
-		if !a.sleepUnless(d, gen) || !a.settingsCopy().Watchdog {
+		if !a.sleepUnless(watchdogDelay(i), gen) || !a.settingsCopy().Watchdog {
 			return
 		}
 		if !networkUp() {
 			i-- // сети нет — попытку не считаем, ждём её
+			continue
+		}
+		if !a.mon.allowRestart() {
+			// Ядро падает слишком часто — даём передышку. Попытки считаем только при живой сети,
+			// иначе время без сети съедало бы их, и после её возвращения пришлось бы ждать.
+			if !a.sleepUnless(2*time.Minute, gen) {
+				return
+			}
 			continue
 		}
 		done, err := a.resume(gen)

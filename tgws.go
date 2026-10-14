@@ -182,12 +182,15 @@ func (t *TgWs) Start(s *Settings) error {
 	go func() {
 		werr := cmd.Wait()
 		t.pmu.Lock()
-		crashed := t.cmd == cmd && !t.stopping
-		if t.cmd == cmd {
+		mine := t.cmd == cmd
+		crashed := mine && !t.stopping
+		if mine {
 			t.running, t.cmd = false, nil
 		}
 		t.pmu.Unlock()
-		t.stopRelay()
+		if mine { // запоздавшее ожидание старого процесса не должно закрыть посредника нового
+			t.stopRelay()
+		}
 		t.pmu.Lock()
 		if crashed {
 			t.lastErr = "tg-ws-proxy закрылся"

@@ -321,7 +321,14 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/zapret/trial/probe", func(*http.Request) (any, error) { go a.zapret.TrialProbe(); return nil, nil })
 	api("POST", "/api/zapret/trial/accept", func(*http.Request) (any, error) { return nil, a.zapret.TrialAccept() })
 	api("POST", "/api/zapret/trial/cancel", func(*http.Request) (any, error) { a.zapret.TrialCancel(); return nil, nil })
-	api("POST", "/api/zapret/restart", func(*http.Request) (any, error) { return nil, a.zapret.Start(a.settingsCopy()) })
+	api("POST", "/api/zapret/restart", func(*http.Request) (any, error) {
+		if a.zapret.busy() {
+			return nil, errors.New("Дождитесь окончания подбора или проверки стратегий")
+		}
+		err := a.zapret.Start(a.settingsCopy())
+		go a.applyZapretRoute() // заработал — его сайты напрямую, нет — через сервер
+		return nil, err
+	})
 	api("POST", "/api/tg/install", func(*http.Request) (any, error) { return nil, a.tgws.Install() })
 	api("POST", "/api/tg/open", func(*http.Request) (any, error) {
 		if !a.tgws.Running() {
@@ -474,7 +481,7 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 		a.fo.clear()
 		a.applySelection()
 	}
-	a.core.KeepProxyOnCrash = ns.KillSwitch // применяется сразу, без переподключения
+	a.core.SetKeepProxyOnCrash(ns.KillSwitch) // применяется сразу, без переподключения
 	go func() {
 		a.applyAddons(prev, ns)
 		// zapret и tg-ws-proxy меняют маршруты ядра: применяем сразу, без кнопки «Переподключить».
@@ -489,9 +496,17 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 }
 
 func (a *App) applySelection() {
+	// Ядро перезапускается — выбор выставит само подключение (connectLocked) в конце перезапуска.
+	if a.isRestarting() {
+		return
+	}
+	a.applySelectionNow()
+}
+
+// applySelectionNow выставляет выбор сервера в ядре сейчас же (вызывается и из подключения).
+func (a *App) applySelectionNow() {
 	cl := a.core.Clash()
-	// Ядро перезапускается — выбор и так возьмётся из настроек при старте.
-	if cl == nil || a.isRestarting() || !a.core.Running() {
+	if cl == nil || !a.core.Running() {
 		return
 	}
 	a.mu.Lock()
