@@ -10,7 +10,8 @@ on:
   push:
     tags: ["v*"]
     branches: [main]
-    paths: [VERSION]
+    # Смена сценария тоже пересобирает текущую версию: релиз с тем же тегом обновится, файлы заменятся.
+    paths: [VERSION, .github/workflows/release.yml]
   workflow_dispatch:
     inputs:
       tag:
@@ -19,7 +20,7 @@ on:
       prerelease:
         description: "Пометить как предварительный выпуск"
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -80,7 +81,8 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Naivka ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
-          prerelease: ${{ github.event_name == 'push' || inputs.prerelease }}
+          prerelease: ${{ inputs.prerelease == true }}
+          make_latest: true
           body: |
             Сборка из исходников (${{ github.sha }}).
 
