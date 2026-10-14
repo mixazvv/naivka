@@ -114,6 +114,7 @@ type Zapret struct {
 	lastErr   string
 	degraded  bool
 	fails     int
+	oks       int // удачных проверок подряд, пока zapret считается не справляющимся
 	pick      PickState
 	cancel    bool
 
@@ -348,7 +349,7 @@ func (z *Zapret) writeLists(s *Settings) error {
 	}
 	// Соединения с нашими серверами zapret трогать не должен (особенно в режиме ipset any).
 	var exDom, exIP []string
-	for _, sv := range s.Servers {
+	for _, sv := range zapretExcludedServers(s, z.a.wl.Servers(s)) {
 		if ip := net.ParseIP(sv.Host); ip != nil {
 			exIP = append(exIP, ip.String())
 			continue
@@ -384,6 +385,32 @@ func (z *Zapret) writeLists(s *Settings) error {
 		return os.WriteFile(ipset, b, 0o644)
 	}
 	return nil
+}
+
+// zapretExcludedServers — серверы, соединения с которыми zapret трогать не должен:
+// свои и из подписки «белые списки» (без повторов).
+func zapretExcludedServers(s *Settings, wl []Server) []Server {
+	seen := map[string]bool{}
+	var out []Server
+	for _, sv := range append(append([]Server(nil), s.Servers...), wl...) {
+		h := strings.ToLower(strings.TrimSpace(sv.Host))
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, sv)
+	}
+	return out
+}
+
+// zapretServersKey — по чему видно, что список исключений zapret устарел.
+func zapretServersKey(s *Settings, wl []Server) string {
+	var hs []string
+	for _, sv := range zapretExcludedServers(s, wl) {
+		hs = append(hs, strings.ToLower(sv.Host))
+	}
+	sort.Strings(hs)
+	return strings.Join(hs, ",")
 }
 
 // Domains — домены из списков Flowseal и правил «Через zapret»: их Naivka пускает напрямую.
@@ -553,14 +580,14 @@ func (z *Zapret) revive(msg string) {
 		}
 		if err := z.Start(s); err == nil {
 			z.a.mon.Event("ok", "zapret снова работает", false)
+			z.a.applyZapretRoute()
 			return
 		}
 	}
 	msg = "zapret не удаётся запустить снова. Подробности — в журнале"
-	s := z.a.settingsCopy()
-	if s.Zapret.RouteDirect && z.a.core.Running() {
+	if z.a.core.Running() {
 		msg += ". Пока его сайты идут через сервер"
-		go z.a.restartCore() // zapret не работает — ядро пустит его сайты через сервер
+		z.a.applyZapretRoute() // zapret не работает — его сайты через сервер, остальное не трогаем
 	}
 	z.a.mon.Event("error", msg, true)
 }
@@ -792,11 +819,11 @@ func (z *Zapret) healthLoop() {
 		}
 		z.pmu.Lock()
 		if ok == 0 {
-			z.fails++
+			z.fails, z.oks = z.fails+1, 0
 		} else {
-			z.fails = 0
+			z.fails, z.oks = 0, z.oks+1
 		}
-		fails, degraded := z.fails, z.degraded
+		fails, oks, degraded := z.fails, z.oks, z.degraded
 		z.pmu.Unlock()
 		switch {
 		case fails == 2 && !degraded:
@@ -806,7 +833,9 @@ func (z *Zapret) healthLoop() {
 				msg += ". Пока они идут через сервер"
 			}
 			z.a.mon.Event("warn", msg, true)
-		case ok > 0 && degraded:
+		case oks >= 2 && degraded:
+			// Возвращаемся только после двух удачных проверок подряд (6 минут), чтобы сайты
+			// не перескакивали между zapret и сервером при каждой случайной удаче или сбое.
 			z.setDegraded(false)
 			z.a.mon.Event("ok", "zapret снова справляется — сайты из его списков идут напрямую", true)
 		}
@@ -815,11 +844,17 @@ func (z *Zapret) healthLoop() {
 
 func (z *Zapret) setDegraded(v bool) {
 	z.pmu.Lock()
-	z.degraded = v
+	z.degraded, z.oks = v, 0
 	z.pmu.Unlock()
-	if z.a.settingsCopy().Zapret.Fallback && z.a.core.Running() {
-		go z.a.restartCore()
+	if z.a.settingsCopy().Zapret.Fallback {
+		z.a.applyZapretRoute()
 	}
+}
+
+// routed — в конфиге ядра есть переключатель zapret-out: zapret включён (или идёт ручная проверка)
+// и установлен. Тогда сайты zapret переводятся между ним и сервером без перезапуска ядра.
+func (z *Zapret) routed(s *Settings) bool {
+	return (s.Zapret.Enabled || z.TrialActive()) && z.root() != ""
 }
 
 type ZapretView struct {
@@ -914,8 +949,8 @@ func (z *Zapret) TrialStart(strategy string) error {
 		z.pmu.Unlock()
 		return nil // ошибка видна в окне проверки, можно перейти к следующей
 	}
-	if first && z.a.core.Running() {
-		z.a.restartCore() // сайты zapret на время проверки — напрямую
+	if first {
+		z.a.applyZapretRoute() // сайты zapret на время проверки — напрямую
 	}
 	go z.TrialProbe()
 	return nil
@@ -960,9 +995,7 @@ func (z *Zapret) TrialAccept() error {
 			return err
 		}
 	}
-	if z.a.core.Running() {
-		go z.a.restartCore()
-	}
+	go z.a.applyZapretRoute()
 	return nil
 }
 
@@ -983,9 +1016,7 @@ func (z *Zapret) TrialCancel() {
 	} else {
 		z.Stop()
 	}
-	if z.a.core.Running() {
-		go z.a.restartCore()
-	}
+	go z.a.applyZapretRoute()
 }
 
 // routineZapretLine — обычные строки запуска winws, которые не несут информации:

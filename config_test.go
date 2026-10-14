@@ -39,6 +39,8 @@ func TestConfigsWithSingbox(t *testing.T) {
 		{"win7", "proxy", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", NoNaive: true}},
 		{"mobile", "proxy", ConfigEnv{Mobile: true}},
 		{"zapret+tg", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretActive: true, ZapretDomains: []string{"youtube.com", "discord.com"}, TgWsProxy: true}},
+		{"zapret-route", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretActive: true, ZapretRoute: true, ZapretDomains: []string{"youtube.com", "discord.com"}}},
+		{"zapret-route-off", "proxy", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretRoute: true, ZapretDomains: []string{"youtube.com"}}},
 		{"twitch", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db"}},
 		{"twitch-mobile", "proxy", ConfigEnv{Mobile: true}},
 	} {

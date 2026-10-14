@@ -17,7 +17,19 @@ const (
 	tagAuto      = "auto"
 	tagDNSDirect = "dns-direct"
 	tagDNSRemote = "dns-remote"
+	// tagZapretOut — куда идут сайты zapret: напрямую (обход делает zapret) или через сервер,
+	// если zapret не справляется. Переключается на ходу, без перезапуска ядра, и рвёт только
+	// соединения с этими сайтами — соединения через сервер не трогает.
+	tagZapretOut = "zapret-out"
 )
+
+// zapretDNS — через какой DNS узнавать адреса сайтов zapret: напрямую, пока zapret справляется.
+func zapretDNS(env ConfigEnv) string {
+	if env.ZapretActive {
+		return tagDNSDirect
+	}
+	return tagDNSRemote
+}
 
 // Наборы правил: SagerNet (гео-базы) и runetfreedom (списки блокировок РФ).
 var ruleSetURL = map[string]string{
@@ -69,6 +81,8 @@ type ConfigEnv struct {
 	// ZapretActive — zapret запущен и справляется: правила «через zapret» идут напрямую
 	// (обход DPI делает zapret), иначе — через сервер.
 	ZapretActive bool
+	// ZapretRoute — сайты zapret идут через переключатель zapret-out (zapret включён).
+	ZapretRoute bool
 	// ZapretDomains — домены из списков zapret, которые пускаем напрямую.
 	ZapretDomains []string
 	// TgWsProxy — tg-ws-proxy включён: его соединения всегда напрямую.
@@ -213,6 +227,15 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 	outbounds = append(outbounds, M{"type": "selector", "tag": tagProxy, "outbounds": selOut,
 		"default": selected, "interrupt_exist_connections": true})
+	zapretRoute := env.ZapretRoute && !env.Mobile
+	if zapretRoute {
+		def := tagProxy
+		if env.ZapretActive {
+			def = tagDirect
+		}
+		outbounds = append(outbounds, M{"type": "selector", "tag": tagZapretOut, "outbounds": []any{tagDirect, tagProxy},
+			"default": def, "interrupt_exist_connections": true})
+	}
 
 	// UDP (голос Discord, игры): Naive его не передаёт, VLESS, Hysteria2, TUIC, Trojan и Shadowsocks — да.
 	udpTarget := ""
@@ -366,9 +389,12 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			case "direct":
 				m["outbound"] = tagDirect
 			case "zapret":
-				if env.ZapretActive {
+				switch {
+				case zapretRoute:
+					m["outbound"] = tagZapretOut
+				case env.ZapretActive:
 					m["outbound"] = tagDirect
-				} else {
+				default:
 					m["outbound"] = tagProxy
 				}
 			default:
@@ -386,6 +412,8 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "action": "reject"})
 			case "direct":
 				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "server": tagDNSDirect})
+			case "zapret":
+				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "server": zapretDNS(env)})
 			default:
 				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "server": tagDNSRemote})
 			}
@@ -444,8 +472,15 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		rules = append(rules, M{"rule_set": rs("ads"), "action": "reject"})
 		dnsRules = append([]any{M{"rule_set": rs("ads"), "action": "reject"}}, dnsRules...)
 	}
-	if env.ZapretActive && len(env.ZapretDomains) > 0 && !env.Mobile {
-		rules = append(rules, M{"domain_suffix": strs(env.ZapretDomains), "outbound": tagDirect})
+	if len(env.ZapretDomains) > 0 && !env.Mobile && (zapretRoute || env.ZapretActive) {
+		out := tagDirect
+		if zapretRoute {
+			out = tagZapretOut
+		}
+		rules = append(rules, M{"domain_suffix": strs(env.ZapretDomains), "outbound": out})
+		// Адреса этих сайтов узнаём там же, откуда к ним пойдём: иначе DNS через сервер
+		// отдаёт зарубежный узел (YouTube, Discord), и напрямую до него далеко и медленно.
+		dnsRules = append(dnsRules, M{"domain_suffix": strs(env.ZapretDomains), "server": zapretDNS(env)})
 	}
 
 	if t := strings.TrimSpace(s.ExtraRules); t != "" {

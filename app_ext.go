@@ -94,8 +94,12 @@ func (r *serialRunner) Busy() bool {
 
 func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 	env.ZapretActive = a.zapret.active(s)
-	if env.ZapretActive && s.Zapret.RouteDirect {
+	env.ZapretRoute = a.zapret.routed(s)
+	if (env.ZapretActive || env.ZapretRoute) && s.Zapret.RouteDirect {
 		env.ZapretDomains = a.zapret.Domains(s)
+	}
+	if env.APIPort > 0 { // настоящий запуск, а не превью конфига
+		a.zr.set(env.ZapretRoute, zapretRouteTarget(env.ZapretActive))
 	}
 	env.TgWsProxy = s.Telegram.Enabled
 	a.fillLists(s, env, env.APIPort > 0)
@@ -207,7 +211,9 @@ func (a *App) applyAddons(prev, ns *Settings) {
 		a.zapret.Stop()
 		a.mon.Event("info", "zapret выключен", false)
 	case nz.Enabled && a.zapret.Running() && (nz.Strategy != pz.Strategy || nz.GameFilter != pz.GameFilter ||
-		nz.IPSet != pz.IPSet || zapretRules(prev) != zapretRules(ns)):
+		nz.IPSet != pz.IPSet || zapretRules(prev) != zapretRules(ns) ||
+		// новый сервер: zapret должен знать его адрес, чтобы не трогать соединения с ним
+		zapretServersKey(prev, nil) != zapretServersKey(ns, nil)):
 		if err := a.zapret.Start(ns); err != nil {
 			a.mon.Event("error", "zapret: "+firstLine(err.Error()), false)
 		}
