@@ -168,3 +168,94 @@ func TestCrashBudgetConcurrent(t *testing.T) {
 		t.Fatalf("разрешено %d попыток, ожидалось 5", n)
 	}
 }
+
+// Сайты zapret идут через переключатель zapret-out: его можно перевести на сервер и обратно
+// без перезапуска ядра. Адреса этих сайтов, пока zapret справляется, — через прямой DNS.
+func TestZapretRouteConfig(t *testing.T) {
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Type: "naive", Name: "A", Host: "a.example", Port: 443, Username: "u", Password: "p"}}
+	s.Selected = "a"
+	s.Routing = "blocked-only"
+	s.Rules = []Rule{{Kind: "domain", Value: "rutracker.org", Action: "zapret"}}
+	s.normalize()
+	find := func(cfg map[string]any) (sel map[string]any, routeOut, dnsSrv, ruleOut string) {
+		b, _ := json.Marshal(cfg)
+		var c struct {
+			Outbounds []map[string]any `json:"outbounds"`
+			Route     struct {
+				Rules []map[string]any `json:"rules"`
+			} `json:"route"`
+			DNS struct {
+				Rules []map[string]any `json:"rules"`
+			} `json:"dns"`
+		}
+		_ = json.Unmarshal(b, &c)
+		for _, o := range c.Outbounds {
+			if o["tag"] == tagZapretOut {
+				sel = o
+			}
+		}
+		has := func(r map[string]any, d string) bool {
+			l, _ := r["domain_suffix"].([]any)
+			for _, x := range l {
+				if x == d {
+					return true
+				}
+			}
+			return false
+		}
+		for _, r := range c.Route.Rules {
+			if has(r, "youtube.com") && routeOut == "" {
+				routeOut, _ = r["outbound"].(string)
+			}
+			if has(r, "rutracker.org") && ruleOut == "" {
+				ruleOut, _ = r["outbound"].(string)
+			}
+		}
+		for _, r := range c.DNS.Rules {
+			if has(r, "youtube.com") && dnsSrv == "" {
+				dnsSrv, _ = r["server"].(string)
+			}
+		}
+		return
+	}
+	cfg, err := BuildConfig(s, ConfigEnv{APIPort: 1, Secret: "x", CachePath: "c", ZapretActive: true, ZapretRoute: true, ZapretDomains: []string{"youtube.com"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sel, route, dns, rule := find(cfg)
+	if sel == nil || sel["default"] != tagDirect || sel["interrupt_exist_connections"] != true {
+		t.Fatalf("нет переключателя zapret-out или он не напрямую: %v", sel)
+	}
+	if route != tagZapretOut || rule != tagZapretOut {
+		t.Fatalf("сайты zapret должны идти через zapret-out: %q %q", route, rule)
+	}
+	if dns != tagDNSDirect {
+		t.Fatalf("DNS сайтов zapret, пока он справляется, — напрямую, а не %q", dns)
+	}
+
+	cfg, _ = BuildConfig(s, ConfigEnv{APIPort: 1, Secret: "x", CachePath: "c", ZapretRoute: true, ZapretDomains: []string{"youtube.com"}})
+	sel, route, dns, _ = find(cfg)
+	if sel == nil || sel["default"] != tagProxy || route != tagZapretOut || dns != tagDNSRemote {
+		t.Fatalf("zapret не работает — по умолчанию через сервер: %v %q %q", sel, route, dns)
+	}
+
+	cfg, _ = BuildConfig(s, ConfigEnv{Mobile: true, ZapretRoute: true, ZapretDomains: []string{"youtube.com"}})
+	if sel, _, _, _ := find(cfg); sel != nil {
+		t.Fatal("в профиле телефона zapret нет")
+	}
+}
+
+func TestZapretExcludedServers(t *testing.T) {
+	s := &Settings{Servers: []Server{{Host: "a.example"}, {Host: "1.2.3.4"}, {Host: "A.example"}}}
+	got := zapretExcludedServers(s, []Server{{Host: "wl.example"}, {Host: "1.2.3.4"}, {Host: ""}})
+	if len(got) != 3 {
+		t.Fatalf("ожидалось 3 сервера без повторов, получено %v", got)
+	}
+	if zapretServersKey(s, nil) == zapretServersKey(&Settings{Servers: s.Servers[:1]}, nil) {
+		t.Fatal("ключ должен меняться при смене серверов")
+	}
+	if zapretRouteTarget(true) != tagDirect || zapretRouteTarget(false) != tagProxy {
+		t.Fatal("zapretRouteTarget")
+	}
+}

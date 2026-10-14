@@ -46,7 +46,8 @@ type App struct {
 	restarter  serialRunner  // перезапуски ядра — по одному
 	life       lifeState     // включение и выключение — по одному, и чего хочет пользователь
 	fo         failoverState // временный переход на другой сервер
-	proxyGuard proxyGuard    // чтобы чужая программа не перехватила системный прокси
+	proxyGuard proxyGuard
+	zr         zapretRouteState // куда сейчас идут сайты zapret    // чтобы чужая программа не перехватила системный прокси
 
 	probeMu sync.Mutex
 	probes  map[string]int // служебные входы теста скорости: тег → порт
