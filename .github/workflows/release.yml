@@ -1,10 +1,12 @@
-# Сборка и выкладка Naivka на страницу Releases. Запускается вручную:
-# Actions → «Release» → Run workflow, указать тег (например v2.1.0).
+# Сборка и выкладка Naivka на страницу Releases. Запускается тегом (git tag v2.1.0 && git push origin v2.1.0)
+# или вручную: Actions → «Release» → Run workflow, указать тег.
 # Это сборка без подписи обновлений: в ней автообновление выключено. Подписанный релиз
 # с автообновлением выпускает утилита cmd/release на компьютере, где лежит ключ.
 name: Release
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -21,6 +23,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,13 +39,13 @@ jobs:
         env:
           GOOS: windows
           GOARCH: amd64
-          LD: -s -w -X main.appVersion=${{ inputs.tag }}
+          LD: -s -w -X main.appVersion=${{ env.TAG }}
         run: |
           mkdir -p out/Naivka
           go build -mod=vendor -trimpath -ldflags "-H windowsgui $LD" -o out/Naivka/Naivka.exe .
           go build -mod=vendor -trimpath -ldflags "$LD" -o out/Naivka/Naivka-debug.exe .
           printf 'Если рядом с программой лежит этот файл, настройки и ядро хранятся в папке Naivka-data рядом с ней.\r\n' > out/Naivka/portable.txt
-          (cd out && zip -qr Naivka-${{ inputs.tag }}-windows.zip Naivka)
+          (cd out && zip -qr Naivka-${{ env.TAG }}-windows.zip Naivka)
 
       - uses: actions/setup-go@v5
         with:
@@ -51,28 +55,28 @@ jobs:
         env:
           GOOS: windows
           GOTOOLCHAIN: local
-          LD: -s -w -H windowsgui -X main.appVersion=${{ inputs.tag }}
+          LD: -s -w -H windowsgui -X main.appVersion=${{ env.TAG }}
         run: |
           mkdir -p out/Naivka-win7
           GOARCH=amd64 go build -modfile=go.legacy.mod -mod=mod -tags legacy -trimpath -ldflags "$LD" -o out/Naivka-win7/Naivka-win7-64.exe .
           GOARCH=386 go build -modfile=go.legacy.mod -mod=mod -tags legacy -trimpath -ldflags "$LD" -o out/Naivka-win7/Naivka-win7-32.exe .
-          (cd out && zip -qr Naivka-${{ inputs.tag }}-windows7.zip Naivka-win7)
+          (cd out && zip -qr Naivka-${{ env.TAG }}-windows7.zip Naivka-win7)
 
       - name: Контрольные суммы
         run: cd out && sha256sum *.zip > SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag }}
-          name: Naivka ${{ inputs.tag }}
+          tag_name: ${{ env.TAG }}
+          name: Naivka ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
-          prerelease: ${{ inputs.prerelease }}
+          prerelease: ${{ github.event_name == 'push' || inputs.prerelease }}
           body: |
-            Сборка из исходников ветки ${{ github.ref_name }} (${{ github.sha }}).
+            Сборка из исходников (${{ github.sha }}).
 
-            - `Naivka-${{ inputs.tag }}-windows.zip` — Windows 10 и 11, 64 бита. Распакуйте и запустите `Naivka.exe`;
+            - `Naivka-${{ env.TAG }}-windows.zip` — Windows 10 и 11, 64 бита. Распакуйте и запустите `Naivka.exe`;
               ядро sing-box программа предложит скачать при первом запуске.
-            - `Naivka-${{ inputs.tag }}-windows7.zip` — Windows 7 и 8, 64 и 32 бита.
+            - `Naivka-${{ env.TAG }}-windows7.zip` — Windows 7 и 8, 64 и 32 бита.
             - `SHA256SUMS.txt` — контрольные суммы архивов.
 
             Файлы не подписаны: Windows SmartScreen может предупредить при первом запуске. Автообновление в этой сборке выключено.
