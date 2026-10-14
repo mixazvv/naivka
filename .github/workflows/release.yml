@@ -1,5 +1,7 @@
-# Сборка и выкладка Naivka на страницу Releases. Запускается тегом (git tag v2.1.0 && git push origin v2.1.0)
-# или вручную: Actions → «Release» → Run workflow, указать тег.
+# Сборка и выкладка Naivka на страницу Releases. Запускается:
+#  - сменой номера в файле VERSION в ветке main (например 2.1.0 → тег v2.1.0, его создаст сам релиз);
+#  - тегом (git tag v2.1.0 && git push origin v2.1.0);
+#  - вручную: Actions → «Release» → Run workflow, указать тег.
 # Это сборка без подписи обновлений: в ней автообновление выключено. Подписанный релиз
 # с автообновлением выпускает утилита cmd/release на компьютере, где лежит ключ.
 name: Release
@@ -7,6 +9,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths: [VERSION]
   workflow_dispatch:
     inputs:
       tag:
@@ -23,10 +27,16 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Номер версии
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then TAG="${{ inputs.tag }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"
+          else TAG="v$(tr -d ' \r\n' < VERSION)"; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Релиз $TAG"
 
       - uses: actions/setup-go@v5
         with:
