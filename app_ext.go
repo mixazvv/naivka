@@ -194,7 +194,7 @@ func zapretRules(s *Settings) string {
 // addonsNeedRestart — изменились ли настройки zapret или tg-ws-proxy, от которых зависят маршруты ядра.
 func addonsNeedRestart(prev, ns *Settings) bool {
 	return prev.Zapret.Enabled != ns.Zapret.Enabled || prev.Zapret.RouteDirect != ns.Zapret.RouteDirect ||
-		prev.Telegram.Enabled != ns.Telegram.Enabled
+		prev.Telegram.Enabled != ns.Telegram.Enabled || prev.Telegram.ViaServer != ns.Telegram.ViaServer
 }
 
 // applyAddons — реакция на изменение настроек: включить, выключить или перезапустить.
@@ -215,7 +215,7 @@ func (a *App) applyAddons(prev, ns *Settings) {
 	case nz.Enabled && a.zapret.Running() && (nz.Strategy != pz.Strategy || nz.GameFilter != pz.GameFilter ||
 		nz.IPSet != pz.IPSet || zapretRules(prev) != zapretRules(ns) ||
 		// новый сервер: zapret должен знать его адрес, чтобы не трогать соединения с ним
-		zapretServersKey(prev, nil) != zapretServersKey(ns, nil)):
+		zapretServersKey(prev, nil) != zapretServersKey(ns, nil) || prev.DNSDirect != ns.DNSDirect):
 		if err := a.zapret.Start(ns); err != nil {
 			a.mon.Event("error", "zapret: "+firstLine(err.Error()), false)
 		}

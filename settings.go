@@ -127,6 +127,9 @@ type TelegramSettings struct {
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
 	Secret  string `json:"secret"`
+	// ViaServer — пока Naivka подключена, tg-ws-proxy ходит к Telegram через ваш сервер:
+	// у многих провайдеров его прямые соединения с серверами Telegram режутся.
+	ViaServer bool `json:"viaServer"`
 }
 
 // WLSettings — запасная подписка для белых списков (zieng2/wl).
@@ -240,7 +243,7 @@ func DefaultSettings() *Settings {
 		Nav:            "list",
 		UpdateCheck:    true,
 		Zapret:         ZapretSettings{Strategy: "general", GameFilter: "off", IPSet: "none", RouteDirect: true, Fallback: true},
-		Telegram:       TelegramSettings{Port: 1443},
+		Telegram:       TelegramSettings{Port: 1443, ViaServer: true},
 		WL:             WLSettings{Fallback: true, Max: 30},
 		Share:          ShareSettings{Port: 2090, Auth: true, Username: "naivka"},
 	}
@@ -353,7 +356,7 @@ func (s *Settings) fingerprint() string {
 	c.Panels = nil
 	// На ядро влияют только «включён» и «напрямую»; стратегия и фильтры — дело самого zapret.
 	c.Zapret = ZapretSettings{Enabled: s.Zapret.Enabled, RouteDirect: s.Zapret.RouteDirect}
-	c.Telegram = TelegramSettings{Enabled: s.Telegram.Enabled}
+	c.Telegram = TelegramSettings{Enabled: s.Telegram.Enabled, ViaServer: s.Telegram.ViaServer}
 	c.WL = WLSettings{Enabled: s.WL.Enabled, IncludeRU: s.WL.IncludeRU, Max: s.WL.Max}
 	b, _ := json.Marshal(c)
 	return string(b)

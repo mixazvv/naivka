@@ -354,8 +354,13 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 
 	// Пользовательские правила: сначала блокировки, потом «напрямую», потом «через сервер».
 	if env.TgWsProxy && !env.Mobile {
-		// tg-ws-proxy сам ходит к серверам Telegram — через наш сервер ему не нужно.
-		rules = append(rules, M{"process_name": []any{"TgWsProxy.exe", "TgWsProxy_windows.exe"}, "outbound": tagDirect})
+		// tg-ws-proxy сам ходит к серверам Telegram. Напрямую — если так выбрано: у многих провайдеров
+		// эти соединения режутся, поэтому по умолчанию, пока Naivka подключена, — через сервер.
+		out := tagDirect
+		if s.Telegram.ViaServer {
+			out = tagProxy
+		}
+		rules = append(rules, M{"process_name": []any{"TgWsProxy.exe", "TgWsProxy_windows.exe"}, "outbound": out})
 	}
 	for _, action := range []string{"block", "direct", "zapret", "proxy"} {
 		var domains, ips, procs []string

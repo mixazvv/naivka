@@ -322,3 +322,62 @@ func TestClassifyResolvers(t *testing.T) {
 		t.Fatal("тот же AS — утечка и без подключения")
 	}
 }
+
+func TestZapretFailLine(t *testing.T) {
+	ok := []string{
+		"ERROR [1] connection: open connection to 95.217.169.233:443 using outbound/selector[zapret-out]: dial tcp 95.217.169.233:443: i/o timeout",
+		"ERROR [2] connection: open connection to x:443 using outbound/selector[zapret-out]: read: An existing connection was forcibly closed by the remote host.",
+	}
+	bad := []string{
+		"ERROR [3] connection: open connection to 149.154.167.220:443 using outbound/direct[direct]: dial tcp: i/o timeout",
+		"INFO [4] outbound/selector[zapret-out]: connected",
+	}
+	for _, l := range ok {
+		if !zapretFailLine(l) {
+			t.Error("должна считаться:", l)
+		}
+	}
+	for _, l := range bad {
+		if zapretFailLine(l) {
+			t.Error("не должна считаться:", l)
+		}
+	}
+}
+
+// tg-ws-proxy, пока Naivka подключена, по умолчанию идёт через сервер.
+func TestTgWsViaServer(t *testing.T) {
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Type: "trojan", Name: "A", Host: "a.example", Port: 443, Password: "p"}}
+	s.normalize()
+	route := func() string {
+		cfg, err := BuildConfig(s, ConfigEnv{APIPort: 1, Secret: "x", CachePath: "c", TgWsProxy: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := json.Marshal(cfg)
+		var c struct {
+			Route struct {
+				Rules []map[string]any `json:"rules"`
+			} `json:"route"`
+		}
+		_ = json.Unmarshal(b, &c)
+		for _, r := range c.Route.Rules {
+			if p, ok := r["process_name"].([]any); ok && len(p) > 0 && p[0] == "TgWsProxy.exe" {
+				return r["outbound"].(string)
+			}
+		}
+		return ""
+	}
+	if !s.Telegram.ViaServer || route() != tagProxy {
+		t.Fatal("по умолчанию — через сервер")
+	}
+	s.Telegram.ViaServer = false
+	if route() != tagDirect {
+		t.Fatal("выключено — напрямую")
+	}
+	a, b := DefaultSettings(), DefaultSettings()
+	b.Telegram.ViaServer = false
+	if !addonsNeedRestart(a, b) {
+		t.Fatal("смена маршрута tg-ws-proxy применяется перезапуском ядра")
+	}
+}

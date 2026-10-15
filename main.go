@@ -128,6 +128,7 @@ func main() {
 	a.core.ExtraEnv = a.fillEnv
 	go a.mon.run()
 	go a.zapret.healthLoop()
+	go a.zapret.failWatch()
 	go a.updatesLoop()
 	go a.wl.loop()
 	if serr != nil {

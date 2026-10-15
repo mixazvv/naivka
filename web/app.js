@@ -3103,7 +3103,11 @@ function telegramCard(t) {
     installed ? more('Порт', String(ts.port),
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, h('span', null, 'Порт прокси'),
         h('input', { type: 'number', value: ts.port, min: 1, max: 65535, onchange: e => { S.telegram.port = parseInt(e.target.value, 10) || 1443; save(0); } }))),
-      h('p', { class: 'hint' }, 'После смены порта заново нажмите «Подключить Telegram».')) : null);
+      h('p', { class: 'hint' }, 'После смены порта заново нажмите «Подключить Telegram».')) : null,
+    installed ? h('label', { class: 'check mt' },
+      h('input', { type: 'checkbox', checked: ts.viaServer !== false, onchange: e => { S.telegram.viaServer = e.target.checked; save(0); } }),
+      h('span', null, h('b', null, 'Пока Naivka подключена — через сервер'),
+        h('small', null, 'Если провайдер режет прямые соединения с серверами Telegram, без этого Telegram не загрузится. Без подключения tg-ws-proxy работает напрямую, как раньше.'))) : null);
 }
 
 function versionsCard(u) {

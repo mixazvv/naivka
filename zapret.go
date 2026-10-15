@@ -119,7 +119,8 @@ type Zapret struct {
 	lastErr   string
 	degraded  bool
 	fails     int
-	oks       int // удачных проверок подряд, пока zapret считается не справляющимся
+	oks       int       // удачных проверок подряд, пока zapret считается не справляющимся
+	holdUntil time.Time // до этого времени не возвращаемся на zapret (его сайты массово обрывались)
 	pick      PickState
 	cancel    bool
 
@@ -365,6 +366,20 @@ func (z *Zapret) writeLists(s *Settings) error {
 		if ips, err := net.LookupIP(sv.Host); err == nil {
 			for _, ip := range ips {
 				exIP = append(exIP, ip.String())
+			}
+		}
+	}
+	// DNS-сервер для сайтов «напрямую» zapret тоже трогать не должен: иначе обрываются сами
+	// запросы адресов (картинки ВКонтакте и прочее не грузятся с «unexpected EOF»).
+	if d, err := parseDirectDNS(s.DNSDirect); err == nil && d.Host != "" {
+		if ip := net.ParseIP(d.Host); ip != nil {
+			exIP = append(exIP, ip.String())
+		} else {
+			exDom = append(exDom, d.Host)
+			if ips, err := net.LookupIP(d.Host); err == nil {
+				for _, ip := range ips {
+					exIP = append(exIP, ip.String())
+				}
 			}
 		}
 	}
@@ -866,12 +881,76 @@ func (z *Zapret) healthLoop() {
 				msg += ". Пока они идут через сервер"
 			}
 			z.a.mon.Event("warn", msg, true)
-		case oks >= 2 && degraded:
+		case oks >= 2 && degraded && time.Now().After(z.holdTill()):
 			// Возвращаемся только после двух удачных проверок подряд (6 минут), чтобы сайты
 			// не перескакивали между zapret и сервером при каждой случайной удаче или сбое.
 			z.setDegraded(false)
 			z.a.mon.Event("ok", "zapret снова справляется — сайты из его списков идут напрямую", true)
 		}
+	}
+}
+
+func (z *Zapret) holdTill() time.Time {
+	z.pmu.Lock()
+	defer z.pmu.Unlock()
+	return z.holdUntil
+}
+
+// zapretFailLine — строка журнала ядра о том, что соединение с сайтом zapret напрямую не удалось.
+func zapretFailLine(l string) bool {
+	if !strings.Contains(l, "outbound/selector["+tagZapretOut+"]") {
+		return false
+	}
+	for _, e := range []string{"i/o timeout", "forcibly closed", "connection reset", "connection refused"} {
+		if strings.Contains(l, e) {
+			return true
+		}
+	}
+	return false
+}
+
+// failWatch: проверка zapret раз в 3 минуты смотрит только YouTube и Discord, а остальные сайты
+// из его списков могут не открываться. Поэтому смотрим и в журнал ядра: если за 3 минуты
+// соединения с сайтами zapret напрямую оборвались много раз, пускаем их через сервер и не
+// возвращаемся как минимум полчаса.
+func (z *Zapret) failWatch() {
+	const window, limit = 3 * time.Minute, 8
+	var seq int64
+	var fails []time.Time
+	for {
+		time.Sleep(20 * time.Second)
+		lines := z.a.core.logs.After(seq)
+		if len(lines) > 0 {
+			seq = lines[len(lines)-1].Seq
+		}
+		now := time.Now()
+		for _, l := range lines {
+			if zapretFailLine(l.Text) {
+				fails = append(fails, now)
+			}
+		}
+		keep := fails[:0]
+		for _, t := range fails {
+			if now.Sub(t) < window {
+				keep = append(keep, t)
+			}
+		}
+		fails = keep
+		s := z.a.settingsCopy()
+		_, applied := z.a.zr.get()
+		z.pmu.Lock()
+		busy, degraded := z.pick.Active || z.trial.Active, z.degraded
+		z.pmu.Unlock()
+		if len(fails) < limit || busy || degraded || !s.Zapret.Fallback || applied != tagDirect || !z.Running() {
+			continue
+		}
+		n := len(fails)
+		fails = nil
+		z.pmu.Lock()
+		z.holdUntil = now.Add(30 * time.Minute)
+		z.pmu.Unlock()
+		z.setDegraded(true)
+		z.a.mon.Event("warn", fmt.Sprintf("zapret не справляется с частью своих сайтов (%d обрывов за 3 минуты) — пока они идут через сервер. Попробуйте подобрать стратегию заново", n), true)
 	}
 }
 
