@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -109,5 +108,3 @@ func pickFreePort(from int, avoid ...int) int {
 	p, _ := freePort()
 	return p
 }
-
-var errNoPortInfo = errors.New("нет данных о порте")

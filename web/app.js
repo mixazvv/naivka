@@ -28,7 +28,6 @@ let view = sessionStorage.getItem('naivka-view') || 'overview';
 let diagTab = sessionStorage.getItem('naivka-diag') || 'now';
 let busy = false;
 let elevating = false;
-let updating = false;
 let failures = 0;
 const delays = {};
 let connList = { list: [], count: 0 };
@@ -122,8 +121,8 @@ function toast(msg, bad) {
 
 const serverById = id => S.servers.find(x => x.id === id);
 let WL = null; // состояние подписки «белые списки»
-let SELF = null; // обновление самой Naivka
-async function refreshSelf() { try { SELF = await api('/api/self'); } catch (_) { /* не важно */ } }
+let SELF = null; // номер версии Naivka
+async function refreshSelf() { if (SELF) return; try { SELF = await api('/api/self'); } catch (_) { /* не важно */ } }
 const wlName = tag => WL && WL.names && WL.names[tag];
 const serverByTag = tag => {
   if (tag && tag.startsWith('s-')) return serverById(tag.slice(2));
@@ -323,8 +322,7 @@ function setOffline(on) {
   if (!on) { failures = 0; box.hidden = true; return; }
   failures++;
   if (elevating) {
-    $('#offlineText').textContent = updating ? 'Naivka обновляется и сейчас откроет новое окно. Это окно можно закрыть.'
-      : 'Naivka перезапускается с правами администратора и откроет новое окно. Это окно можно закрыть.';
+    $('#offlineText').textContent = 'Naivka перезапускается с правами администратора и откроет новое окно. Это окно можно закрыть.';
     box.hidden = false;
     setTimeout(() => window.close(), 1500);
   } else if (failures >= 3) {
@@ -452,7 +450,6 @@ async function tick() {
     if (view === 'diag' && diagTab === 'logs') await refreshLogs();
     if (view === 'bypass' || tickN % 4 === 0) await refreshAddons();
     if (S && S.wl && S.wl.enabled && (view === 'servers' ? tickN % 3 === 0 : tickN % 20 === 2)) { await refreshWL(); if (view === 'servers') renderServers(); }
-    if (tickN % 30 === 3 || (view === 'settings' && SELF && SELF.busy)) { await refreshSelf(); if (view === 'settings') patch('selfBox', JSON.stringify(SELF), selfBox); }
     if (view === 'diag' && diagTab === 'speed') await refreshSpeed();
   } finally {
     setTimeout(tick, 1000);
@@ -523,7 +520,7 @@ function updateStatus() {
     btn.title = powerLabel(p) + ' (Ctrl+Enter)';
     renderTiles();
     renderReady();
-    const n = [SELF && SELF.available, ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null)].join('|');
+    const n = [ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null)].join('|');
     patch('notices', n, buildNotices);
     renderLanes();
   }
@@ -572,7 +569,6 @@ function buildNotices() {
     out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать серверы остальных протоколов (Reality, Hysteria2 и другие).'));
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
-  if (SELF && SELF.available) out.push(notice('info', `Вышла Naivka ${SELF.latest} (у вас ${SELF.version}).`, h('button', { class: 'btn small', onclick: () => go('settings') }, 'Подробнее')));
   if (S.servers.length && S.routing !== 'global' && !dnsEncrypted(S.dnsDirect) && !sessionStorage.getItem('naivka-dns-ok')) {
     out.push(notice('info', 'DNS для сайтов «напрямую» не зашифрован: провайдер видит, какие сайты вы открываете.',
       h('div', { class: 'row', style: 'flex-wrap:nowrap' },
@@ -3557,35 +3553,10 @@ async function pickServer(id) {
   renderServers();
 }
 
-// ---------- обновление самой Naivka ----------
+// ---------- о программе ----------
 function selfBox() {
-  const u = SELF;
-  if (!u) return h('p', { class: 'hint' }, 'Загружаю…');
-  if (!u.enabled) return h('p', { class: 'hint' }, `Naivka ${u.version}. Это сборка для разработки: автообновление есть только в релизных сборках.`);
-  const out = [h('p', null, `Naivka ${u.version}. Обновления приходят из github.com/${u.repo}.`)];
-  if (u.available) {
-    out.push(h('div', { class: 'card' },
-      h('b', null, `Доступна версия ${u.latest}`),
-      u.notes ? h('pre', { class: 'changes' }, u.notes) : null,
-      u.error ? h('p', { class: 'err-text' }, u.error) : null,
-      h('div', { class: 'row mt' },
-        h('button', { class: 'btn primary', disabled: !!u.busy, onclick: async () => {
-          SELF.busy = 'download'; patch('selfBox', JSON.stringify(SELF), selfBox);
-          try { await api('/api/self/apply', {}); elevating = true; updating = true; toast('Обновляю и перезапускаю…'); }
-          catch (e) { toast(e.message, true); await refreshSelf(); patch('selfBox', JSON.stringify(SELF), selfBox); }
-        } }, u.busy === 'download' ? 'Скачиваю…' : 'Обновить и перезапустить'),
-        h('span', { class: 'hint' }, 'Настройки и серверы сохранятся. Подпись релиза проверяется перед установкой.'))));
-  } else {
-    out.push(h('div', { class: 'row' },
-      h('button', { class: 'btn', disabled: !!u.busy, onclick: async () => {
-        try { SELF = await api('/api/self/check', {}); toast(SELF.available ? `Вышла версия ${SELF.latest}` : 'У вас последняя версия'); }
-        catch (e) { toast(e.message, true); }
-        patch('selfBox', JSON.stringify(SELF), selfBox);
-      } }, u.busy === 'check' ? 'Проверяю…' : 'Проверить обновления'),
-      h('span', { class: 'hint' }, u.checked ? 'Проверено в ' + fmtTime(u.checked) : 'Naivka проверяет сама раз в 12 часов.')));
-    if (u.error) out.push(h('p', { class: 'err-text' }, u.error));
-  }
-  return out;
+  if (!SELF) return h('p', { class: 'hint' }, 'Загружаю…');
+  return h('p', null, SELF.version === 'dev' ? 'Naivka, сборка для разработки.' : `Naivka ${SELF.version}. Новые версии выходят на странице релизов на GitHub.`);
 }
 
 // ---------- флаги стран ----------

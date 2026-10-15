@@ -139,14 +139,7 @@ func (a *App) routes() http.Handler {
 		}
 		return a.wl.View(), nil
 	})
-	api("GET", "/api/self", func(*http.Request) (any, error) { return selfView(), nil })
-	api("POST", "/api/self/check", func(*http.Request) (any, error) {
-		if err := a.checkSelf(false); err != nil {
-			return nil, err
-		}
-		return selfView(), nil
-	})
-	api("POST", "/api/self/apply", func(*http.Request) (any, error) { return nil, a.applySelf() })
+	api("GET", "/api/self", func(*http.Request) (any, error) { return map[string]string{"version": appVersion}, nil })
 	api("POST", "/api/wl/test", func(*http.Request) (any, error) {
 		cl := a.core.Clash()
 		if cl == nil {

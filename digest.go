@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -63,4 +66,18 @@ func verifyAsset(repo, tag, name, path string) (verified bool, err error) {
 		return false, fmt.Errorf("%s: контрольная сумма не совпала с той, что хранит GitHub, — файл повреждён или подменён, установка отменена", name)
 	}
 	return true, nil
+}
+
+// fileSHA256 — хеш скачанного файла для сверки с тем, что сообщил GitHub.
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

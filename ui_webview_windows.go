@@ -345,7 +345,6 @@ func (u *nativeUI) createMain() {
 		return
 	}
 	w.hwnd = hwnd
-	dpi = dpiOf(hwnd)
 	u.setWindowIcons()
 	if !classic && u.build >= 22621 && dwmSet(hwnd, 38, 2) { // DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_MAINWINDOW (Mica)
 		m := [4]int32{-1, -1, -1, -1}
