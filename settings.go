@@ -152,7 +152,7 @@ type Settings struct {
 	Selected string   `json:"selected"` // "auto" или ID сервера
 
 	Mode    string `json:"mode"`    // proxy | tun
-	Routing string `json:"routing"` // ru-direct | blocked-only | global
+	Routing string `json:"routing"` // ru-direct | global
 
 	RuInsideDirect bool `json:"ruInsideDirect"` // сайты, работающие только из РФ, — напрямую
 	BlockQUIC      bool `json:"blockQuic"`      // отклонять UDP/443
@@ -361,8 +361,9 @@ func (s *Settings) normalize() {
 		s.Mode = d.Mode
 	}
 	switch s.Routing {
-	case "ru-direct", "blocked-only", "global":
+	case "ru-direct", "global":
 	default:
+		// Режима «Только заблокированное» больше нет: ближе всего к нему «Россия напрямую».
 		s.Routing = d.Routing
 	}
 	if s.MixedPort <= 0 || s.MixedPort > 65535 {
