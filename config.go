@@ -95,6 +95,8 @@ type ConfigEnv struct {
 	XrayPorts map[string]int
 	// InlineLists — скачанные текстовые списки по ссылке: id → домены и IP.
 	InlineLists map[string]*inlineList
+	// DNSFallback — прямой DoH/DoT перестал отвечать: вместо него обычный DNS (dnsguard.go).
+	DNSFallback bool
 }
 
 func serverTag(sv Server) string { return "s-" + sv.ID }
@@ -591,6 +593,9 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	dd, err := parseDirectDNS(s.DNSDirect)
 	if err != nil {
 		return nil, err
+	}
+	if env.DNSFallback && dd.Encrypted() {
+		dd = directDNS{Kind: "udp", Host: dnsFallbackAddr(dd)}
 	}
 	dnsServers := []any{}
 	dnsDirect := M{"type": dd.Kind, "tag": tagDNSDirect}

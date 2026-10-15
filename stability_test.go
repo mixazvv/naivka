@@ -381,3 +381,57 @@ func TestTgWsViaServer(t *testing.T) {
 		t.Fatal("смена маршрута tg-ws-proxy применяется перезапуском ядра")
 	}
 }
+
+func TestDNSFailLine(t *testing.T) {
+	yes := []string{
+		"+0300 2026-10-16 00:50:31 ERROR [3855400064 123ms] router: process DNS packet: unexpected EOF",
+		"+0300 2026-10-15 22:50:19 ERROR [1 44ms] connection: open connection to sun9-2.vkuserphoto.ru:443 using outbound/direct[direct]: lookup sun9-2.vkuserphoto.ru: unexpected EOF",
+		"ERROR connection: open connection to a.ru:443 using outbound/direct[direct]: lookup a.ru: read tcp 192.168.0.200:52934->77.88.8.1:443: wsarecv: An existing connection was forcibly closed by the remote host.",
+	}
+	no := []string{
+		"ERROR connection: open connection to mobile.yandex.net:443 using outbound/direct[direct]: dial tcp 77.88.21.110:443: i/o timeout",
+		"ERROR connection: open connection to 65.109.41.220:443 using outbound/selector[zapret-out]: dial tcp 65.109.41.220:443: i/o timeout",
+	}
+	for _, l := range yes {
+		if !dnsFailLine(l, "common.dot.dns.yandex.net") {
+			t.Errorf("должна считаться: %s", l)
+		}
+	}
+	for _, l := range no {
+		if dnsFailLine(l, "common.dot.dns.yandex.net") {
+			t.Errorf("не должна считаться: %s", l)
+		}
+	}
+	if !dnsFailLine("read tcp 1.2.3.4:5->9.9.9.9:443: connection reset by peer", "9.9.9.9") {
+		t.Error("обрыв до DoH-сервера по IP")
+	}
+}
+
+func TestDNSFallbackConfig(t *testing.T) {
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Name: "a", Type: "naive", Host: "example.com", Port: 443, Username: "u", Password: "p"}}
+	s.Selected = "a"
+	find := func(env ConfigEnv) M {
+		cfg, err := BuildConfig(s, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, x := range cfg["dns"].(M)["servers"].([]any) {
+			if m := x.(M); m["tag"] == tagDNSDirect {
+				return m
+			}
+		}
+		t.Fatal("нет dns-direct")
+		return nil
+	}
+	if d := find(ConfigEnv{}); d["type"] != "https" {
+		t.Fatalf("по умолчанию DoH: %v", d)
+	}
+	d := find(ConfigEnv{DNSFallback: true})
+	if d["type"] != "udp" || d["server"] != "77.88.8.8" || d["domain_resolver"] != nil {
+		t.Fatalf("запасной DNS: %v", d)
+	}
+	if dnsFallbackAddr(directDNS{Kind: "https", Host: "1.1.1.1"}) != "1.1.1.1" {
+		t.Fatal("DoH по IP — тот же адрес по UDP")
+	}
+}

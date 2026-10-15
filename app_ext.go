@@ -102,6 +102,7 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 		a.zr.set(env.ZapretRoute, zapretRouteTarget(env.ZapretActive))
 	}
 	env.TgWsProxy = s.Telegram.Enabled
+	env.DNSFallback = a.dnsg.fallback.Load()
 	a.fillLists(s, env, env.APIPort > 0)
 	env.WLServers = a.wl.Servers(s)
 	if env.APIPort > 0 { // превью конфига не должно считаться «применённым» списком

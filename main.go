@@ -46,6 +46,7 @@ type App struct {
 	restarter  serialRunner  // перезапуски ядра — по одному
 	life       lifeState     // включение и выключение — по одному, и чего хочет пользователь
 	fo         failoverState // временный переход на другой сервер
+	dnsg       dnsGuard      // запасной DNS, если прямой перестал отвечать
 	proxyGuard proxyGuard
 	zr         zapretRouteState // куда сейчас идут сайты zapret    // чтобы чужая программа не перехватила системный прокси
 
@@ -129,6 +130,7 @@ func main() {
 	go a.mon.run()
 	go a.zapret.healthLoop()
 	go a.zapret.failWatch()
+	go a.dnsWatch()
 	go a.updatesLoop()
 	go a.wl.loop()
 	if serr != nil {

@@ -21,6 +21,7 @@ type lifeState struct {
 // connect — подключиться по просьбе пользователя (или автоподключение при запуске).
 func (a *App) connect() error {
 	a.life.want.Store(true)
+	a.dnsg.fallback.Store(false) // пользователь подключается сам — снова пробуем DNS из настроек
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
 	return a.connectLocked()
@@ -29,6 +30,7 @@ func (a *App) connect() error {
 // reconnect — переподключиться заново с текущими настройками.
 func (a *App) reconnect() error {
 	a.life.want.Store(true)
+	a.dnsg.fallback.Store(false) // пользователь подключается сам — снова пробуем DNS из настроек
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
 	a.core.Stop()
@@ -38,6 +40,7 @@ func (a *App) reconnect() error {
 // disconnect — пользователь отключился: сторож и пробуждение больше не подключают.
 func (a *App) disconnect() {
 	a.life.want.Store(false)
+	a.dnsg.fallback.Store(false)
 	a.life.gen.Add(1)
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
