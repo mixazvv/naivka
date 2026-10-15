@@ -322,3 +322,116 @@ func TestClassifyResolvers(t *testing.T) {
 		t.Fatal("тот же AS — утечка и без подключения")
 	}
 }
+
+func TestZapretFailLine(t *testing.T) {
+	ok := []string{
+		"ERROR [1] connection: open connection to 95.217.169.233:443 using outbound/selector[zapret-out]: dial tcp 95.217.169.233:443: i/o timeout",
+		"ERROR [2] connection: open connection to x:443 using outbound/selector[zapret-out]: read: An existing connection was forcibly closed by the remote host.",
+	}
+	bad := []string{
+		"ERROR [3] connection: open connection to 149.154.167.220:443 using outbound/direct[direct]: dial tcp: i/o timeout",
+		"INFO [4] outbound/selector[zapret-out]: connected",
+	}
+	for _, l := range ok {
+		if !zapretFailLine(l) {
+			t.Error("должна считаться:", l)
+		}
+	}
+	for _, l := range bad {
+		if zapretFailLine(l) {
+			t.Error("не должна считаться:", l)
+		}
+	}
+}
+
+// tg-ws-proxy, пока Naivka подключена, по умолчанию идёт через сервер.
+func TestTgWsViaServer(t *testing.T) {
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Type: "trojan", Name: "A", Host: "a.example", Port: 443, Password: "p"}}
+	s.normalize()
+	route := func() string {
+		cfg, err := BuildConfig(s, ConfigEnv{APIPort: 1, Secret: "x", CachePath: "c", TgWsProxy: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := json.Marshal(cfg)
+		var c struct {
+			Route struct {
+				Rules []map[string]any `json:"rules"`
+			} `json:"route"`
+		}
+		_ = json.Unmarshal(b, &c)
+		for _, r := range c.Route.Rules {
+			if p, ok := r["process_name"].([]any); ok && len(p) > 0 && p[0] == "TgWsProxy.exe" {
+				return r["outbound"].(string)
+			}
+		}
+		return ""
+	}
+	if !s.Telegram.ViaServer || route() != tagProxy {
+		t.Fatal("по умолчанию — через сервер")
+	}
+	s.Telegram.ViaServer = false
+	if route() != tagDirect {
+		t.Fatal("выключено — напрямую")
+	}
+	a, b := DefaultSettings(), DefaultSettings()
+	b.Telegram.ViaServer = false
+	if !addonsNeedRestart(a, b) {
+		t.Fatal("смена маршрута tg-ws-proxy применяется перезапуском ядра")
+	}
+}
+
+func TestDNSFailLine(t *testing.T) {
+	yes := []string{
+		"+0300 2026-10-16 00:50:31 ERROR [3855400064 123ms] router: process DNS packet: unexpected EOF",
+		"+0300 2026-10-15 22:50:19 ERROR [1 44ms] connection: open connection to sun9-2.vkuserphoto.ru:443 using outbound/direct[direct]: lookup sun9-2.vkuserphoto.ru: unexpected EOF",
+		"ERROR connection: open connection to a.ru:443 using outbound/direct[direct]: lookup a.ru: read tcp 192.168.0.200:52934->77.88.8.1:443: wsarecv: An existing connection was forcibly closed by the remote host.",
+	}
+	no := []string{
+		"ERROR connection: open connection to mobile.yandex.net:443 using outbound/direct[direct]: dial tcp 77.88.21.110:443: i/o timeout",
+		"ERROR connection: open connection to 65.109.41.220:443 using outbound/selector[zapret-out]: dial tcp 65.109.41.220:443: i/o timeout",
+	}
+	for _, l := range yes {
+		if !dnsFailLine(l, "common.dot.dns.yandex.net") {
+			t.Errorf("должна считаться: %s", l)
+		}
+	}
+	for _, l := range no {
+		if dnsFailLine(l, "common.dot.dns.yandex.net") {
+			t.Errorf("не должна считаться: %s", l)
+		}
+	}
+	if !dnsFailLine("read tcp 1.2.3.4:5->9.9.9.9:443: connection reset by peer", "9.9.9.9") {
+		t.Error("обрыв до DoH-сервера по IP")
+	}
+}
+
+func TestDNSFallbackConfig(t *testing.T) {
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Name: "a", Type: "naive", Host: "example.com", Port: 443, Username: "u", Password: "p"}}
+	s.Selected = "a"
+	find := func(env ConfigEnv) M {
+		cfg, err := BuildConfig(s, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, x := range cfg["dns"].(M)["servers"].([]any) {
+			if m := x.(M); m["tag"] == tagDNSDirect {
+				return m
+			}
+		}
+		t.Fatal("нет dns-direct")
+		return nil
+	}
+	if d := find(ConfigEnv{}); d["type"] != "https" {
+		t.Fatalf("по умолчанию DoH: %v", d)
+	}
+	d := find(ConfigEnv{DNSFallback: true})
+	if d["type"] != "udp" || d["server"] != "77.88.8.8" || d["domain_resolver"] != nil {
+		t.Fatalf("запасной DNS: %v", d)
+	}
+	if dnsFallbackAddr(directDNS{Kind: "https", Host: "1.1.1.1"}) != "1.1.1.1" {
+		t.Fatal("DoH по IP — тот же адрес по UDP")
+	}
+}

@@ -95,6 +95,8 @@ type ConfigEnv struct {
 	XrayPorts map[string]int
 	// InlineLists — скачанные текстовые списки по ссылке: id → домены и IP.
 	InlineLists map[string]*inlineList
+	// DNSFallback — прямой DoH/DoT перестал отвечать: вместо него обычный DNS (dnsguard.go).
+	DNSFallback bool
 }
 
 func serverTag(sv Server) string { return "s-" + sv.ID }
@@ -354,8 +356,13 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 
 	// Пользовательские правила: сначала блокировки, потом «напрямую», потом «через сервер».
 	if env.TgWsProxy && !env.Mobile {
-		// tg-ws-proxy сам ходит к серверам Telegram — через наш сервер ему не нужно.
-		rules = append(rules, M{"process_name": []any{"TgWsProxy.exe", "TgWsProxy_windows.exe"}, "outbound": tagDirect})
+		// tg-ws-proxy сам ходит к серверам Telegram. Напрямую — если так выбрано: у многих провайдеров
+		// эти соединения режутся, поэтому по умолчанию, пока Naivka подключена, — через сервер.
+		out := tagDirect
+		if s.Telegram.ViaServer {
+			out = tagProxy
+		}
+		rules = append(rules, M{"process_name": []any{"TgWsProxy.exe", "TgWsProxy_windows.exe"}, "outbound": out})
 	}
 	for _, action := range []string{"block", "direct", "zapret", "proxy"} {
 		var domains, ips, procs []string
@@ -586,6 +593,9 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	dd, err := parseDirectDNS(s.DNSDirect)
 	if err != nil {
 		return nil, err
+	}
+	if env.DNSFallback && dd.Encrypted() {
+		dd = directDNS{Kind: "udp", Host: dnsFallbackAddr(dd)}
 	}
 	dnsServers := []any{}
 	dnsDirect := M{"type": dd.Kind, "tag": tagDNSDirect}

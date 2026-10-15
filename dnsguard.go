@@ -1,0 +1,80 @@
+package main
+
+import (
+	"strings"
+	"sync/atomic"
+	"time"
+)
+
+// Запасной DNS. «DNS напрямую» по умолчанию — DoH Яндекса (77.88.8.1:443). Если провайдер
+// или чужая программа начинает рвать эти соединения, перестают узнаваться адреса вообще всех
+// сайтов (через этот DNS узнаётся и адрес самого сервера) — со стороны это выглядит как пропавший
+// интернет. Тогда Naivka переходит на обычный DNS (UDP) и перезапускает ядро, а к выбранному
+// в настройках возвращается при следующем подключении.
+
+type dnsGuard struct {
+	fallback atomic.Bool
+}
+
+// dnsFallbackAddr — обычный DNS вместо DoH/DoT: тот же адрес, если он задан IP, иначе Яндекс.
+func dnsFallbackAddr(d directDNS) string {
+	if isIP(d.Host) {
+		return d.Host
+	}
+	return "77.88.8.8"
+}
+
+// dnsFailLine — строка журнала про сорвавшийся запрос к прямому DNS.
+// host — адрес DoH/DoT-сервера из настроек (если задан IP).
+func dnsFailLine(l, host string) bool {
+	if strings.Contains(l, "process DNS packet: unexpected EOF") {
+		return true
+	}
+	if strings.Contains(l, "outbound/direct[") && strings.Contains(l, ": lookup ") &&
+		(strings.Contains(l, "unexpected EOF") || strings.Contains(l, "forcibly closed") || strings.Contains(l, "connection reset")) {
+		return true
+	}
+	return host != "" && isIP(host) && strings.Contains(l, "->"+host+":") &&
+		(strings.Contains(l, "forcibly closed") || strings.Contains(l, "connection reset"))
+}
+
+// dnsWatch раз в 5 секунд смотрит журнал ядра: 12 и больше сорвавшихся DNS-запросов за минуту —
+// прямой DNS не работает, переходим на запасной.
+func (a *App) dnsWatch() {
+	const window, limit = time.Minute, 12
+	var seq int64
+	var fails []time.Time
+	for {
+		time.Sleep(5 * time.Second)
+		lines := a.core.logs.After(seq)
+		if len(lines) > 0 {
+			seq = lines[len(lines)-1].Seq
+		}
+		s := a.settingsCopy()
+		dd, err := parseDirectDNS(s.DNSDirect)
+		if err != nil || !dd.Encrypted() || a.dnsg.fallback.Load() || !a.core.Running() {
+			fails = nil
+			continue
+		}
+		now := time.Now()
+		for _, l := range lines {
+			if dnsFailLine(l.Text, dd.Host) {
+				fails = append(fails, now)
+			}
+		}
+		keep := fails[:0]
+		for _, t := range fails {
+			if now.Sub(t) < window {
+				keep = append(keep, t)
+			}
+		}
+		fails = keep
+		if len(fails) < limit {
+			continue
+		}
+		fails = nil
+		a.dnsg.fallback.Store(true)
+		a.mon.Event("warn", "DNS напрямую ("+dd.Host+") перестал отвечать — временно перешёл на обычный DNS "+dnsFallbackAddr(dd)+". Вернусь к нему при следующем подключении", true)
+		a.restartCore()
+	}
+}
