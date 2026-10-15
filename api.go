@@ -220,6 +220,7 @@ func (a *App) routes() http.Handler {
 		return map[string]string{"config": string(b)}, nil
 	})
 	api("GET", "/api/ip", a.apiIP)
+	api("POST", "/api/leaktest", a.apiLeakTest)
 	api("GET", "/api/geo/servers", a.apiServerGeo)
 	api("POST", "/api/rules/parse", func(r *http.Request) (any, error) {
 		var req struct {

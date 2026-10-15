@@ -1422,7 +1422,81 @@ function viewCheck() {
   if (lastCheck) renderCheck(out, lastCheck);
   return h('div', null,
     h('p', { class: 'sub' }, 'Не открывается сайт? Naivka проверит, заблокирован ли он и как его открыть.'),
-    h('div', { class: 'row' }, input, btn), out);
+    h('div', { class: 'row' }, input, btn), out,
+    leakBlock());
+}
+
+// ---------- проверка утечек ----------
+// WebRTC (звонки в браузере) может выдать настоящий адрес мимо прокси: проверяем прямо в окне —
+// оно на том же Chromium, что Chrome и Edge. DNS проверяет Naivka через сервис bash.ws.
+async function webrtcIPs() {
+  if (typeof RTCPeerConnection === 'undefined') return null;
+  const ips = new Set();
+  let pc;
+  try {
+    pc = new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }] });
+    pc.createDataChannel('leak');
+    pc.onicecandidate = e => {
+      const m = e.candidate && / ([0-9.]+|[0-9a-f:]+) \d+ typ srflx/i.exec(e.candidate.candidate);
+      if (m) ips.add(m[1]);
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise(r => setTimeout(r, 4000));
+  } catch (_) { /* WebRTC выключен — утечки через него нет */ }
+  finally { try { pc && pc.close(); } catch (_) { /* не важно */ } }
+  return [...ips];
+}
+
+let lastLeak = null;
+function leakBlock() {
+  const out = h('div');
+  const btn = h('button', { class: 'btn', onclick: async () => {
+    btn.disabled = true; btn.textContent = 'Проверяю…';
+    out.replaceChildren(h('p', { class: 'hint mt' }, 'Проверяю DNS и WebRTC… это займёт до 20 секунд.'));
+    try {
+      const [r, rtc] = await Promise.all([api('/api/leaktest', {}), webrtcIPs()]);
+      lastLeak = { ...r, rtc };
+      renderLeak(out, lastLeak);
+    } catch (e) { out.replaceChildren(h('p', { class: 'err-text mt' }, e.message)); }
+    finally { btn.disabled = false; btn.textContent = 'Проверить утечки'; }
+  } }, 'Проверить утечки');
+  if (lastLeak) renderLeak(out, lastLeak);
+  return h('div', { class: 'mt' },
+    h('h2', null, 'Утечки'),
+    h('p', { class: 'sub' }, 'Не выдаёт ли что-то ваш настоящий адрес или список сайтов мимо сервера: DNS-запросы и WebRTC в браузере.'),
+    h('div', { class: 'row' }, btn), out);
+}
+
+function renderLeak(out, r) {
+  const real = r.direct && r.direct.ip;
+  const exit = r.exit && r.exit.ip;
+  const items = [];
+  if (!r.running) items.push(notice('info', 'Naivka не подключена — проверка покажет, что видно без неё. Подключитесь и проверьте снова.'));
+  // DNS
+  if (r.error) items.push(notice('warn', 'DNS: ' + r.error));
+  else if (!r.resolvers.length) items.push(notice('warn', 'DNS: сервис проверки не увидел ни одного запроса. Попробуйте ещё раз.'));
+  else {
+    const list = h('ul', { class: 'leak-list' }, r.resolvers.map(x => h('li', { class: x.leak ? 'bad' : '' },
+      h('code', null, x.ip), ` — ${x.country}${x.asn ? ', ' + x.asn : ''}`, x.leak ? h('b', null, ' — DNS вашего провайдера') : null)));
+    if (!r.dnsLeak) items.push(notice('ok', h('span', null, h('b', null, 'DNS: утечки нет. '), 'Адреса сайтов узнаёт не ваш провайдер.'), null), list);
+    else items.push(notice('error', h('span', null, h('b', null, 'DNS: утечка. '),
+      r.running ? (r.mode === 'tun'
+        ? 'Часть запросов уходит к DNS провайдера. Проверьте «DNS через сервер» в настройках и правила «Напрямую».'
+        : 'Часть запросов уходит к DNS провайдера. Включите режим «Весь трафик (TUN)»: тогда Naivka перехватит DNS всех программ.')
+        : 'Без подключения адреса сайтов узнаёт провайдер — так и должно быть.')), list);
+  }
+  // WebRTC
+  if (r.rtc === null) items.push(notice('ok', h('span', null, h('b', null, 'WebRTC: '), 'выключен — через него ничего не утекает.')));
+  else if (!r.rtc.length) items.push(notice('ok', h('span', null, h('b', null, 'WebRTC: '), 'внешний адрес не виден.')));
+  else {
+    const leaked = r.running && real && r.rtc.includes(real);
+    items.push(notice(leaked ? 'error' : 'ok', h('span', null, h('b', null, leaked ? 'WebRTC: утечка. ' : 'WebRTC: утечки нет. '),
+      leaked ? `Браузер через WebRTC показывает сайтам ваш настоящий адрес ${real}` + (exit ? ` вместо ${exit}` : '') + '. ' +
+        (r.mode === 'tun' ? 'Включите «UDP через сервер» в «Особых случаях» (нужен сервер VLESS, Hysteria2, TUIC, Trojan или Shadowsocks) или поставьте в браузер расширение WebRTC Leak Prevent.'
+          : 'В режиме «Системный прокси» звонки в браузере идут мимо него. Включите режим «Весь трафик (TUN)» или поставьте в браузер расширение WebRTC Leak Prevent.')
+        : `Виден адрес ${r.rtc.join(', ')}` + (r.running ? ' — это не ваш настоящий.' : ' — без подключения это ваш обычный адрес.'))));
+  }
+  out.replaceChildren(h('div', { class: 'mt' }, ...items));
 }
 
 function probeCard(title, p) {
@@ -1704,11 +1778,16 @@ function editServer(srv) {
     h('select', { onchange: e => { d[key] = e.target.value; } }, options.map(([v, t]) => h('option', { value: v, selected: d[key] === v }, t))));
   const num = (key, label, hint) => h('label', { class: 'field' }, h('span', null, label),
     h('input', { type: 'number', min: 0, value: d[key] || '', placeholder: hint, oninput: e => { d[key] = parseInt(e.target.value, 10) || 0; } }));
+  // Маскировка начала соединения: для серверов на TLS поверх TCP (Reality, TLS, Trojan, AnyTLS).
+  const fragSel = () => h('div', null,
+    sel('fragment', 'Маскировка начала соединения', [['', 'нет'], ['record', 'лёгкая'], ['full', 'сильная']]),
+    h('p', { class: 'hint' }, 'Если провайдер обрывает соединение с этим сервером. Лёгкая почти не замедляет; сильная — на крайний случай.'));
   const insecureBox = () => box('insecure', 'Не проверять сертификат', 'Только для своего сервера с самоподписанным сертификатом: иначе соединение можно перехватить.');
   const renderFields = () => {
     if (d.type === 'trojan' && d.transport && d.transport !== 'tcp') {
       fields.replaceChildren(
         h('div', { class: 'grid2' }, inp('name', 'Название')),
+        fragSel(),
         h('p', { class: 'hint mt' }, `${protoName(d)}, ${d.host}:${d.port}. Такие серверы добавляются ссылкой trojan://. Чтобы поменять транспорт, удалите сервер и вставьте новую ссылку.`));
       return;
     }
@@ -1753,8 +1832,9 @@ function editServer(srv) {
           inp('host', 'Домен сервера', { placeholder: 'tr.example.com' }),
           inp('port', 'Порт', { type: 'number' }),
           inp('password', 'Пароль', { type: 'password' })),
-        more('Дополнительно', 'SNI, отпечаток',
+        more('Дополнительно', 'SNI, отпечаток, маскировка',
           h('div', { class: 'grid2' }, inp('sni', 'SNI', { placeholder: 'как домен' }), inp('fingerprint', 'Отпечаток браузера', { placeholder: 'chrome' }), inp('alpn', 'ALPN', { placeholder: 'h2,http/1.1' })),
+          fragSel(),
           insecureBox()),
         h('p', { class: 'hint mt' }, 'Trojan через WebSocket или gRPC добавляйте ссылкой trojan://.'));
     } else if (d.type === 'shadowsocks') {
@@ -1774,13 +1854,15 @@ function editServer(srv) {
           inp('host', 'Домен сервера', { placeholder: 'any.example.com' }),
           inp('port', 'Порт', { type: 'number' }),
           inp('password', 'Пароль', { type: 'password' })),
-        more('Дополнительно', 'SNI, отпечаток',
+        more('Дополнительно', 'SNI, отпечаток, маскировка',
           h('div', { class: 'grid2' }, inp('sni', 'SNI', { placeholder: 'как домен' }), inp('fingerprint', 'Отпечаток браузера', { placeholder: 'chrome' })),
+          fragSel(),
           insecureBox()),
         h('p', { class: 'hint mt' }, 'Нужен сервер на sing-box 1.12 или новее.'));
     } else if (d.type === 'vless' && ((d.security && d.security !== 'reality') || (d.transport && d.transport !== 'tcp'))) {
       fields.replaceChildren(
         h('div', { class: 'grid2' }, inp('name', 'Название')),
+        d.security !== 'none' && d.transport !== 'xhttp' ? fragSel() : null,
         h('p', { class: 'hint mt' }, `${protoName(d)}, ${d.host}:${d.port}. Такие серверы добавляются ссылкой vless://. Чтобы поменять параметры, удалите сервер и вставьте новую ссылку.`));
       return;
     }
@@ -1793,8 +1875,9 @@ function editServer(srv) {
           inp('uuid', 'UUID'),
           inp('publicKey', 'Публичный ключ (pbk)'),
           inp('shortId', 'Short ID (sid)')),
-        more('Дополнительно', 'SNI, отпечаток',
-          h('div', { class: 'grid2' }, inp('sni', 'SNI', { placeholder: 'как домен' }), inp('fingerprint', 'Отпечаток браузера', { placeholder: 'chrome' }))));
+        more('Дополнительно', 'SNI, отпечаток, маскировка',
+          h('div', { class: 'grid2' }, inp('sni', 'SNI', { placeholder: 'как домен' }), inp('fingerprint', 'Отпечаток браузера', { placeholder: 'chrome' })),
+          fragSel()));
     } else if (d.type === 'naive') {
       fields.replaceChildren(
         h('div', { class: 'grid2' },

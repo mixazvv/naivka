@@ -74,6 +74,13 @@ func main() {
 	if err != nil {
 		fatal("Не удалось открыть папку данных: " + err.Error())
 	}
+	// Запуск из RunOnce после сбоя или выключения: только вернуть системный прокси и выйти.
+	if args["--restore-proxy"] {
+		if inst, ok := readInstance(dir); !ok || !pingInstance(inst) {
+			restoreSystemProxy(dir)
+		}
+		return
+	}
 
 	encryptSecrets = runtime.GOOS == "windows" && !portable
 	s, serr := LoadSettings(dir)

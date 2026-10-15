@@ -285,6 +285,33 @@ func protoTLS(sv Server, utls bool, defaultALPN []string) M {
 	return t
 }
 
+// withFragment включает маскировку начала соединения (только для TLS поверх TCP:
+// у Naive её нет, а Hysteria2 и TUIC идут по UDP, где такой проверки нет).
+func withFragment(t M, sv Server) M {
+	if !fragmentSupported(sv) {
+		return t
+	}
+	switch sv.Fragment {
+	case "record":
+		t["record_fragment"] = true
+	case "full":
+		t["record_fragment"] = true
+		t["fragment"] = true
+	}
+	return t
+}
+
+// fragmentSupported — можно ли этому серверу включить маскировку начала соединения.
+func fragmentSupported(sv Server) bool {
+	switch sv.Type {
+	case "trojan", "anytls":
+		return true
+	case "vless":
+		return sv.Security != "none" && sv.Transport != "xhttp"
+	}
+	return false
+}
+
 // protoOutbound — outbound sing-box для новых протоколов; nil — протокол не из их числа.
 func protoOutbound(sv Server, tag string) M {
 	ob := M{"type": sv.Type, "tag": tag, "server": sv.Host, "server_port": sv.Port}
@@ -309,7 +336,7 @@ func protoOutbound(sv Server, tag string) M {
 		ob["tls"] = protoTLS(sv, false, []string{"h3"})
 	case "trojan":
 		ob["password"] = sv.Password
-		ob["tls"] = protoTLS(sv, true, nil)
+		ob["tls"] = withFragment(protoTLS(sv, true, nil), sv)
 		if tr := transportFor(sv); tr != nil {
 			ob["transport"] = tr
 		}
@@ -318,7 +345,7 @@ func protoOutbound(sv Server, tag string) M {
 		ob["password"] = sv.Password
 	case "anytls":
 		ob["password"] = sv.Password
-		ob["tls"] = protoTLS(sv, true, nil)
+		ob["tls"] = withFragment(protoTLS(sv, true, nil), sv)
 	default:
 		return nil
 	}

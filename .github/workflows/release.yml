@@ -46,11 +46,39 @@ jobs:
       - name: Тесты
         run: go test -mod=vendor ./...
 
+      # Сведения о программе в exe (название, версия, описание): без них антивирусы чаще
+      # принимают неподписанную программу на Go за подозрительную.
+      - name: Сведения о версии в exe
+        run: |
+          V="${TAG#v}"; IFS=. read -r MA MI PA <<< "$V"
+          GVI="go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1"
+          ARGS="-ver-major=$MA -ver-minor=$MI -ver-patch=$PA -product-ver-major=$MA -product-ver-minor=$MI -product-ver-patch=$PA -file-version=$V -product-version=$V"
+          $GVI -64 -o rsrc_windows_amd64.syso $ARGS versioninfo.json
+          $GVI -o rsrc_windows_386.syso $ARGS versioninfo.json
+          $GVI -arm -64 -o rsrc_windows_arm64.syso $ARGS versioninfo.json
+
+      # Автообновление: если в секретах репозитория есть NAIVKA_RELEASE_KEY, в Naivka вшивается
+      # открытый ключ, а список файлов релиза подписывается — установленная Naivka сама предложит
+      # обновиться и проверит подпись. Без секрета сборка как раньше, без автообновления.
+      - name: Ключ обновлений
+        env:
+          NAIVKA_RELEASE_KEY: ${{ secrets.NAIVKA_RELEASE_KEY }}
+        run: |
+          if [ -n "$NAIVKA_RELEASE_KEY" ]; then
+            go build -mod=vendor -o /tmp/signsums ./cmd/signsums
+            PUB=$(/tmp/signsums -pub)
+            echo "UPD=-X main.selfRepo=${{ github.repository }} -X main.updateKey=$PUB" >> "$GITHUB_ENV"
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+            echo "UPDNOTE=Автообновление включено: установленная Naivka сама предложит эту версию и перед установкой проверит подпись." >> "$GITHUB_ENV"
+          else
+            echo "UPDNOTE=Автообновление в этой сборке выключено (нет ключа подписи)." >> "$GITHUB_ENV"
+          fi
+
       - name: Windows 10/11 (64 бита)
         env:
           GOOS: windows
           GOARCH: amd64
-          LD: -s -w -X main.appVersion=${{ env.TAG }}
+          LD: -s -w -X main.appVersion=${{ env.TAG }} ${{ env.UPD }}
         run: |
           mkdir -p out/Naivka
           go build -mod=vendor -trimpath -ldflags "-H windowsgui $LD" -o out/Naivka/Naivka.exe .
@@ -66,7 +94,7 @@ jobs:
         env:
           GOOS: windows
           GOTOOLCHAIN: local
-          LD: -s -w -H windowsgui -X main.appVersion=${{ env.TAG }}
+          LD: -s -w -H windowsgui -X main.appVersion=${{ env.TAG }} ${{ env.UPD }}
         run: |
           mkdir -p out/Naivka-win7
           GOARCH=amd64 go build -modfile=go.legacy.mod -mod=mod -tags legacy -trimpath -ldflags "$LD" -o out/Naivka-win7/Naivka-win7-64.exe .
@@ -75,6 +103,16 @@ jobs:
 
       - name: Контрольные суммы
         run: cd out && sha256sum *.zip > SHA256SUMS.txt
+
+      - name: Файлы для автообновления
+        if: env.SIGNED == '1'
+        env:
+          NAIVKA_RELEASE_KEY: ${{ secrets.NAIVKA_RELEASE_KEY }}
+        run: |
+          mkdir -p out/upd
+          cp out/Naivka/Naivka.exe out/Naivka-win7/Naivka-win7-64.exe out/Naivka-win7/Naivka-win7-32.exe out/upd/
+          /tmp/signsums -dir out/upd -version "$TAG"
+          mv out/upd/* out/
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -91,7 +129,10 @@ jobs:
             - `Naivka-${{ env.TAG }}-windows7.zip` — Windows 7 и 8, 64 и 32 бита.
             - `SHA256SUMS.txt` — контрольные суммы архивов.
 
-            Файлы не подписаны: Windows SmartScreen может предупредить при первом запуске. Автообновление в этой сборке выключено.
+            Файлы не подписаны сертификатом: Windows SmartScreen может предупредить при первом запуске. ${{ env.UPDNOTE }}
           files: |
             out/*.zip
             out/SHA256SUMS.txt
+            out/*.exe
+            out/SHA256SUMS
+            out/SHA256SUMS.sig

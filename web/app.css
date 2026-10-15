@@ -351,6 +351,10 @@ label.field > span { font-size: 13px; color: var(--muted); }
 .notice.error { background: var(--danger-soft); }
 .notice.warn { background: var(--warn-soft); }
 .notice.info { background: var(--tunnel-soft); }
+.notice.ok { background: var(--direct-soft); }
+.leak-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; color: var(--muted); }
+.leak-list li { margin: 2px 0; }
+.leak-list li.bad { color: var(--danger); }
 .notice pre { margin: 6px 0 0; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto; }
 .notice .grow { flex: 1; min-width: 0; }
 
