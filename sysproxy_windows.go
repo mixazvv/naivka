@@ -134,7 +134,6 @@ func setSystemProxy(dir string, port int) error {
 			return err
 		}
 	}
-	bk := loadBackup(dir)
 
 	if err := setString(k, "ProxyServer", fmt.Sprintf("127.0.0.1:%d", port)); err != nil {
 		return err
@@ -145,10 +144,14 @@ func setSystemProxy(dir string, port int) error {
 	}
 	notifyProxyChanged()
 
-	// Страховка: если компьютер выключат или Naivka упадёт, при следующем входе
-	// Windows сама вернёт прокси как было (RunOnce выполняется один раз и удаляется).
+	// Страховка: если компьютер выключат или Naivka упадёт, при следующем входе Windows
+	// один раз запустит Naivka с ключом --restore-proxy, и та вернёт прокси как было
+	// (RunOnce выполняется один раз и удаляется). Раньше здесь была команда cmd.exe с reg add —
+	// антивирусы принимали её за закрепление вредоносной программы.
 	if rk, err := createKey(runOnceKey); err == nil {
-		_ = setString(rk, runOnceName, restoreCommand(bk))
+		if cmd := restoreCommand(); cmd != "" {
+			_ = setString(rk, runOnceName, cmd)
+		}
 		syscall.RegCloseKey(rk)
 	}
 	return nil
@@ -181,13 +184,12 @@ func loadBackup(dir string) proxyBackup {
 	return b
 }
 
-func restoreCommand(b proxyBackup) string {
-	key := `"HKCU\` + inetKey + `"`
-	cmd := fmt.Sprintf(`cmd.exe /c reg add %s /v ProxyEnable /t REG_DWORD /d %d /f`, key, b.Enable)
-	if b.HasServer && b.Server != "" && !strings.ContainsAny(b.Server, "\"&%^|<>") {
-		cmd += fmt.Sprintf(` & reg add %s /v ProxyServer /t REG_SZ /d "%s" /f`, key, b.Server)
+func restoreCommand() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
 	}
-	return cmd
+	return `"` + exe + `" --restore-proxy`
 }
 
 func restoreSystemProxy(dir string) {

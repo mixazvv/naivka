@@ -46,6 +46,17 @@ jobs:
       - name: Тесты
         run: go test -mod=vendor ./...
 
+      # Сведения о программе в exe (название, версия, описание): без них антивирусы чаще
+      # принимают неподписанную программу на Go за подозрительную.
+      - name: Сведения о версии в exe
+        run: |
+          V="${TAG#v}"; IFS=. read -r MA MI PA <<< "$V"
+          GVI="go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1"
+          ARGS="-ver-major=$MA -ver-minor=$MI -ver-patch=$PA -product-ver-major=$MA -product-ver-minor=$MI -product-ver-patch=$PA -file-version=$V -product-version=$V"
+          $GVI -64 -o rsrc_windows_amd64.syso $ARGS versioninfo.json
+          $GVI -o rsrc_windows_386.syso $ARGS versioninfo.json
+          $GVI -arm -64 -o rsrc_windows_arm64.syso $ARGS versioninfo.json
+
       # Автообновление: если в секретах репозитория есть NAIVKA_RELEASE_KEY, в Naivka вшивается
       # открытый ключ, а список файлов релиза подписывается — установленная Naivka сама предложит
       # обновиться и проверит подпись. Без секрета сборка как раньше, без автообновления.

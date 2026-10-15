@@ -1,0 +1,27 @@
+{
+  "FixedFileInfo": {
+    "FileVersion": { "Major": 2, "Minor": 2, "Patch": 0, "Build": 0 },
+    "ProductVersion": { "Major": 2, "Minor": 2, "Patch": 0, "Build": 0 },
+    "FileFlagsMask": "3f",
+    "FileFlags ": "00",
+    "FileOS": "040004",
+    "FileType": "01",
+    "FileSubType": "00"
+  },
+  "StringFileInfo": {
+    "Comments": "Клиент sing-box для Windows",
+    "CompanyName": "Naivka",
+    "FileDescription": "Naivka — клиент sing-box",
+    "FileVersion": "2.2.0",
+    "InternalName": "Naivka",
+    "LegalCopyright": "Naivka, открытый исходный код: github.com/mixazvv/naivka",
+    "OriginalFilename": "Naivka.exe",
+    "ProductName": "Naivka",
+    "ProductVersion": "2.2.0"
+  },
+  "VarFileInfo": {
+    "Translation": { "LangID": "0419", "CharsetID": "04B0" }
+  },
+  "IconPath": "assets/naivka.ico",
+  "ManifestPath": "assets/naivka.manifest"
+}
