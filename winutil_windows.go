@@ -147,6 +147,14 @@ func findBrowser() string {
 	return ""
 }
 
+// browserProfile — отдельный профиль Edge для окна Naivka (у запущенной с правами — свой).
+func browserProfile(dir string) string {
+	if isAdmin() {
+		return filepath.Join(dir, "window-admin")
+	}
+	return filepath.Join(dir, "window")
+}
+
 // openWindow открывает интерфейс отдельным окном Edge (режим приложения, без вкладок
 // и адресной строки). Возвращает процесс окна, если его можно отслеживать.
 func openWindow(url, profile string) *exec.Cmd {

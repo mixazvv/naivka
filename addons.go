@@ -243,9 +243,6 @@ func (a *App) updatesLoop() {
 	for {
 		if a.settingsCopy().UpdateCheck {
 			a.checkUpdates(true)
-			if selfEnabled() {
-				_ = a.checkSelf(true)
-			}
 		}
 		time.Sleep(12 * time.Hour)
 	}

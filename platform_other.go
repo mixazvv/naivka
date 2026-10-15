@@ -23,11 +23,6 @@ func restoreSystemProxy(string)        {}
 
 func systemProxyOurs(int) (bool, string) { return true, "" }
 
-func openWindow(url, profile string) *exec.Cmd {
-	fmt.Println("Откройте в браузере:", url)
-	return nil
-}
-
 func protectedBase() string { return "" }
 func legacyWindows() bool   { return false }
 

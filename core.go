@@ -294,12 +294,6 @@ func freePort() (int, error) {
 	return ln.Addr().(*net.TCPAddr).Port, nil
 }
 
-func (c *Core) setErr(msg string) {
-	c.mu.Lock()
-	c.lastErr = msg
-	c.mu.Unlock()
-}
-
 func (c *Core) Start(s *Settings) (err error) {
 	c.mu.Lock()
 	if c.running || c.starting {

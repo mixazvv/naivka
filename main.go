@@ -93,7 +93,7 @@ func main() {
 		// Пользователь отказался в UAC — продолжаем без прав, интерфейс подскажет.
 	}
 
-	// Новая версия после обновления (или перезапуск с правами) ждёт, пока старая закроется.
+	// Перезапуск с правами ждёт, пока прежний экземпляр закроется.
 	if args["--replace"] {
 		waitOldInstance(dir)
 	}
@@ -130,10 +130,6 @@ func main() {
 	go a.zapret.healthLoop()
 	go a.updatesLoop()
 	go a.wl.loop()
-	go cleanupOld()
-	if args["--updated"] {
-		a.mon.Event("ok", "Naivka обновлена до "+appVersion, false)
-	}
 	if serr != nil {
 		a.core.logs.Add("[naivka] " + serr.Error())
 	}
@@ -173,6 +169,17 @@ func main() {
 
 	// При автозапуске окно не открываем — Naivka тихо ждёт в трее.
 	a.ui.Run(!autostart)
+}
+
+// waitOldInstance: перезапущенная с правами Naivka ждёт, пока прежняя закроется и отпустит порты.
+func waitOldInstance(dir string) {
+	inst, ok := readInstance(dir)
+	if !ok {
+		return
+	}
+	for i := 0; i < 50 && pingInstance(inst); i++ {
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 func (a *App) url() string {
@@ -268,13 +275,6 @@ func appDataDir() (string, error) {
 	}
 	dir := filepath.Join(base, appName)
 	return dir, os.MkdirAll(dir, 0o700)
-}
-
-func browserProfile(dir string) string {
-	if isAdmin() {
-		return filepath.Join(dir, "window-admin")
-	}
-	return filepath.Join(dir, "window")
 }
 
 func initLog(dir string) {
