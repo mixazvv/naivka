@@ -29,6 +29,7 @@ func TestConfigsWithSingbox(t *testing.T) {
 	if len(errs) > 0 || back[0].PublicKey != servers[1].PublicKey || back[1].Password != "s3cret" || back[0].Name != "Reality" {
 		t.Fatalf("обратное преобразование: %+v %v", back, errs)
 	}
+	servers[1].Fragment = "full" // маскировка начала соединения тоже проходит проверку sing-box
 	for _, c := range []struct {
 		name string
 		mode string

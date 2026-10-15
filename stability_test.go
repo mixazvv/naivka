@@ -271,3 +271,54 @@ func TestRoutingTwoModes(t *testing.T) {
 		}
 	}
 }
+
+// Маскировка начала соединения: только для TLS поверх TCP, у Naive и QUIC-протоколов её нет.
+func TestFragment(t *testing.T) {
+	cases := []struct {
+		sv           Server
+		record, full bool
+	}{
+		{Server{Type: "vless", Security: "reality", Fragment: "record"}, true, false},
+		{Server{Type: "vless", Security: "tls", Fragment: "full"}, true, true},
+		{Server{Type: "trojan", Fragment: "full"}, true, true},
+		{Server{Type: "anytls", Fragment: "record"}, true, false},
+		{Server{Type: "vless", Security: "none", Fragment: "full"}, false, false},
+		{Server{Type: "hysteria2", Fragment: "full"}, false, false},
+		{Server{Type: "naive", Fragment: "full"}, false, false},
+		{Server{Type: "trojan"}, false, false},
+	}
+	for _, c := range cases {
+		tl := withFragment(M{}, c.sv)
+		if (tl["record_fragment"] == true) != c.record || (tl["fragment"] == true) != c.full {
+			t.Errorf("%s/%s %q: %v", c.sv.Type, c.sv.Security, c.sv.Fragment, tl)
+		}
+	}
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Type: "trojan", Host: "h", Port: 443, Password: "p", Fragment: "weird"}}
+	s.normalize()
+	if s.Servers[0].Fragment != "" {
+		t.Fatal("неизвестное значение маскировки сбрасывается")
+	}
+}
+
+func TestClassifyResolvers(t *testing.T) {
+	entries := []bashwsEntry{
+		{IP: "5.6.7.8", CountryName: "Russia", ASN: "AS12389 Rostelecom", Type: "ip"},
+		{IP: "1.1.1.1", CountryName: "Netherlands", ASN: "AS13335 Cloudflare", Type: "dns"},
+		{IP: "95.167.0.1", CountryName: "Russia", ASN: "AS12389 Rostelecom", Type: "dns"},
+		{Type: "conclusion"},
+	}
+	me := &GeoInfo{Country: "Russia", ASN: "AS12389"}
+	rs, leak := classifyResolvers(entries, me, true)
+	if len(rs) != 2 || rs[0].Leak || !rs[1].Leak || !leak {
+		t.Fatalf("%+v %v", rs, leak)
+	}
+	rs, leak = classifyResolvers(entries[:2], me, true)
+	if leak || len(rs) != 1 {
+		t.Fatal("DNS через сервер за границей — не утечка")
+	}
+	// Без подключения DNS провайдера — это ожидаемо, но всё равно помечается (тот же AS).
+	if _, leak := classifyResolvers(entries, me, false); !leak {
+		t.Fatal("тот же AS — утечка и без подключения")
+	}
+}

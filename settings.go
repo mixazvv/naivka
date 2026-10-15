@@ -41,6 +41,10 @@ type Server struct {
 	ShortID     string `json:"shortId"`     // Reality
 	Flow        string `json:"flow"`        // xtls-rprx-vision или пусто
 	Fingerprint string `json:"fingerprint"` // chrome
+	// Fragment — маскировка начала соединения с сервером (TLS): "" — нет, record — разбить
+	// приветствие на несколько записей TLS, full — ещё и на отдельные пакеты. Помогает, когда
+	// провайдер режет соединение с сервером по имени сайта в первом пакете.
+	Fragment    string `json:"fragment,omitempty"`
 	Transport   string `json:"transport"`   // tcp | ws | grpc | httpupgrade
 	Path        string `json:"path"`        // ws/httpupgrade
 	HostHeader  string `json:"hostHeader"`  // ws/httpupgrade
@@ -457,6 +461,9 @@ func (s *Settings) normalize() {
 		sv := &s.Servers[i]
 		if sv.ID == "" {
 			sv.ID = newID()
+		}
+		if sv.Fragment != "record" && sv.Fragment != "full" {
+			sv.Fragment = ""
 		}
 		if _, ok := serverTypes[sv.Type]; !ok {
 			sv.Type = "naive"

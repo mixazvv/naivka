@@ -694,9 +694,9 @@ func vlessOutbound(sv Server, tag string) M {
 	}
 	switch sv.Security {
 	case "reality", "":
-		ob["tls"] = M{"enabled": true, "server_name": sni,
+		ob["tls"] = withFragment(M{"enabled": true, "server_name": sni,
 			"utls":    M{"enabled": true, "fingerprint": orDefault(sv.Fingerprint, "chrome")},
-			"reality": M{"enabled": true, "public_key": sv.PublicKey, "short_id": sv.ShortID}}
+			"reality": M{"enabled": true, "public_key": sv.PublicKey, "short_id": sv.ShortID}}, sv)
 	case "tls":
 		t := M{"enabled": true, "server_name": sni, "utls": M{"enabled": true, "fingerprint": orDefault(sv.Fingerprint, "chrome")}}
 		if sv.ALPN != "" {
@@ -705,7 +705,7 @@ func vlessOutbound(sv Server, tag string) M {
 		if sv.Insecure {
 			t["insecure"] = true
 		}
-		ob["tls"] = t
+		ob["tls"] = withFragment(t, sv)
 	}
 	if tr := transportFor(sv); tr != nil {
 		ob["transport"] = tr
