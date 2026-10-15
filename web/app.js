@@ -471,7 +471,7 @@ function phase() {
 }
 
 const TITLES = { on: 'Подключено', off: 'Отключено', wait: 'Подключение…', err: 'Не удалось подключиться', blocked: 'Трафик заблокирован', revive: 'Восстанавливаю соединение…' };
-const ROUTING = { 'ru-direct': 'Россия напрямую', 'blocked-only': 'Только заблокированное', 'global': 'Всё через сервер' };
+const ROUTING = { 'ru-direct': 'Россия напрямую', 'global': 'Всё через сервер' };
 
 function currentServer() {
   if (PX && ST && ST.running && (PX.selected === 'wl' || (PX.selected || '').startsWith('w-'))) {
@@ -2238,7 +2238,7 @@ function viewRules() {
 // ---------- списки по ссылке ----------
 const LIST_PRESETS = [
   ['Заблокированное в России (itdoginfo)', 'https://github.com/itdoginfo/allow-domains/releases/latest/download/russia_inside.srs', 'proxy',
-    'Сайты, недоступные из России. Хорош в режиме «Только заблокированное».'],
+    'Сайты, недоступные из России: их — через сервер.'],
   ['Не пускают пользователей из России (itdoginfo)', 'https://github.com/itdoginfo/allow-domains/releases/latest/download/geoblock.srs', 'proxy',
     'Сервисы, которые сами закрылись для российских IP: ИИ-сервисы, магазины, облака.'],
   ['Работает только из России (itdoginfo)', 'https://github.com/itdoginfo/allow-domains/releases/latest/download/russia_outside.srs', 'direct',
@@ -2324,7 +2324,6 @@ function addListDialog() {
 
 const MODE_DESC = {
   'ru-direct': 'Российские сайты напрямую, остальное через сервер. Заблокированное в России всегда идёт через сервер, даже если это сайт в зоне .ru.',
-  'blocked-only': 'Через сервер только сайты из списка блокировок, остальное напрямую. Быстрее, но свежие блокировки попадают в список с задержкой.',
   'global': 'Весь трафик через сервер, кроме локальной сети и ваших правил «Напрямую».',
 };
 

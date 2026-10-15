@@ -78,7 +78,7 @@ func TestConfigAllFeatures(t *testing.T) {
 	wl, _ := ParseShareLinks(string(raw))
 	own, _ := ParseShareLinks("naive+https://a:b@nl.example.com:443#N\n" +
 		"vless://d39351d5-2ec2-4ac7-aab4-8ca53a5816fc@nl.example.com:8443?security=reality&sni=nl.example.com&fp=chrome&pbk=7LjM4Jm1_GdlJqZqBs5AtMnkaJV4qcSxMCB6YlI8hmQ&sid=d99fd31c5db21a7c&type=tcp&flow=xtls-rprx-vision#R")
-	for _, mode := range []string{"ru-direct", "blocked-only", "global"} {
+	for _, mode := range []string{"ru-direct", "global"} {
 		for _, tun := range []bool{false, true} {
 			s := DefaultSettings()
 			s.Servers = own

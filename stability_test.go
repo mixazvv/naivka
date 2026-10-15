@@ -175,7 +175,7 @@ func TestZapretRouteConfig(t *testing.T) {
 	s := DefaultSettings()
 	s.Servers = []Server{{ID: "a", Type: "naive", Name: "A", Host: "a.example", Port: 443, Username: "u", Password: "p"}}
 	s.Selected = "a"
-	s.Routing = "blocked-only"
+	s.Routing = "ru-direct"
 	s.Rules = []Rule{{Kind: "domain", Value: "rutracker.org", Action: "zapret"}}
 	s.normalize()
 	find := func(cfg map[string]any) (sel map[string]any, routeOut, dnsSrv, ruleOut string) {
@@ -257,5 +257,17 @@ func TestZapretExcludedServers(t *testing.T) {
 	}
 	if zapretRouteTarget(true) != tagDirect || zapretRouteTarget(false) != tagProxy {
 		t.Fatal("zapretRouteTarget")
+	}
+}
+
+// Режимов маршрута два; прежний «Только заблокированное» становится «Россия напрямую».
+func TestRoutingTwoModes(t *testing.T) {
+	for in, want := range map[string]string{"blocked-only": "ru-direct", "global": "global", "ru-direct": "ru-direct", "": "ru-direct"} {
+		s := DefaultSettings()
+		s.Routing = in
+		s.normalize()
+		if s.Routing != want {
+			t.Fatalf("%q → %q, ожидалось %q", in, s.Routing, want)
+		}
 	}
 }

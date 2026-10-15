@@ -521,13 +521,6 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			M{"domain_suffix": ruZones, "server": tagDNSDirect},
 			M{"rule_set": rs("geosite-category-ru"), "server": tagDNSDirect},
 		)
-	case "blocked-only":
-		rules = append(rules,
-			M{"rule_set": rs("ru-blocked"), "outbound": tagProxy},
-			M{"rule_set": rs("ru-blocked-ip"), "outbound": tagProxy},
-		)
-		dnsRules = append(dnsRules, M{"rule_set": rs("ru-blocked"), "server": tagDNSRemote})
-		final, dnsFinal = tagDirect, tagDNSDirect
 	case "global":
 		// всё через сервер
 	}
