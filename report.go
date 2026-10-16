@@ -76,6 +76,9 @@ func (a *App) buildReport() string {
 	line("Telegram (tg-ws-proxy): включён %v, работает %v", s.Telegram.Enabled, a.tgws.Running())
 	line("Xray (xHTTP): работает %v", a.xray.Running())
 	line("Запасной DNS вместо прямого: %v", a.dnsg.fallback.Load())
+	if sv := a.smart.View(); smartOn(s) {
+		line("Автоопределение: напрямую %d сайтов, через сервер %d", sv.Direct, sv.Proxy)
+	}
 	if from, to := a.fo.get(); from != "" {
 		line("Временная замена сервера: %s → %s", a.serverName(from), a.serverName(to))
 	}

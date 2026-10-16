@@ -269,6 +269,9 @@ func (m *Monitor) sample(cl *Clash, s *Settings) {
 		m.last[c.ID] = connSnap{down: c.Download, up: c.Upload, direct: direct}
 		if !existed {
 			m.countHit(c, s)
+			if m.a.smart != nil {
+				m.a.smart.observe(c, s)
+			}
 		}
 		proc := filepath.Base(strings.ReplaceAll(c.Metadata.ProcessPath, `\`, "/"))
 		if proc == "." || proc == "/" {

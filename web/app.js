@@ -741,7 +741,7 @@ function goNow(v) {
 function refreshView(v = view) {
   if (v === 'servers') { renderServers(); refreshProxies(); }
   if (v === 'own') renderOwn();
-  if (v === 'rules') { renderRules(); renderLists(); }
+  if (v === 'rules') { renderRules(); renderLists(); renderSmart(); }
   if (v === 'bypass') refreshAddons();
   if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify(SELF), selfBox)); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
@@ -2277,8 +2277,9 @@ function viewRules() {
     h('h1', null, 'Правила'),
     h('p', { class: 'sub' }, 'Что идёт через сервер, а что напрямую. Изменения применяются после переподключения.'),
     h('h2', null, 'Режим'),
-    segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); $('#modeDesc').textContent = MODE_DESC[v]; }, 'Режим'),
+    segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); $('#modeDesc').textContent = MODE_DESC[v]; renderSmart(); }, 'Режим'),
     h('p', { class: 'hint mode-desc', id: 'modeDesc' }, MODE_DESC[S.routing]),
+    h('div', { id: 'smartBox' }),
     h('div', { id: 'catBox' }),
 
     h('div', { class: 'title-row mt-lg' },
@@ -2420,16 +2421,47 @@ const CATS = [
   ['blocked', 'Списки блокировок — через сервер', 'var(--tunnel)'],
   ['ru', 'Российские сайты — напрямую', 'var(--direct)'],
   ['inside', 'Только из России — напрямую', 'color-mix(in srgb, var(--direct) 60%, var(--ink))'],
+  ['smart', 'Автоопределение — напрямую', 'color-mix(in srgb, var(--direct) 70%, var(--accent))'],
+  ['smartp', 'Автоопределение — через сервер', 'color-mix(in srgb, var(--tunnel) 70%, var(--accent))'],
   ['final', 'Остальное — по режиму', 'var(--faint)'],
 ];
 
 function ruleCategory(rule) {
   if (rule === 'final') return 'final';
   if (/inbound=\[?probe/.test(rule) || rule.includes('twitch-adfree') || rule.includes('ttvnw') || rule.includes('ip_is_private') || rule.includes('network=udp') || rule.includes('protocol=dns')) return null;
-  if (rule.includes('ru-blocked')) return 'blocked';
+  if (rule.includes('smart-direct')) return 'smart';
+  if (rule.includes('smart-proxy')) return 'smartp';
+  if (rule.includes('ru-blocked') || rule.includes('geoblock')) return 'blocked';
   if (rule.includes('ru-inside')) return 'inside';
   if (rule.includes('category-ru') || rule.includes('geoip-ru') || /domain_suffix=\[?ru\b/.test(rule)) return 'ru';
   return 'mine';
+}
+
+// ---------- автоопределение ----------
+let SMART = null;
+async function renderSmart() {
+  const box = $('#smartBox');
+  if (!box) return;
+  if (S.routing !== 'ru-direct') { box.replaceChildren(); return; }
+  const parts = [check('smartDirect', 'Автоопределение: что открывается из России — напрямую',
+    'Незнакомый сайт сначала идёт через сервер, а Naivka в фоне проверяет, открывается ли он напрямую так же хорошо. Если да — дальше он идёт напрямую, без потери скорости на сервере; если начнёт обрываться — вернётся на сервер. Уже открытые соединения при этом не рвутся.',
+    renderSmart)];
+  if (S.smartDirect) {
+    try { SMART = await api('/api/smart'); } catch (_) { /* окно переподключится */ }
+    const v = SMART || { direct: 0, proxy: 0, recent: [] };
+    const forget = async host => { try { SMART = await api('/api/smart/forget', { host }); } catch (e) { toast(e.message, 'error'); } renderSmart(); };
+    const rows = v.recent.map(x => h('tr', null,
+      h('td', null, displayDomain(x.host)),
+      h('td', null, h('span', { class: 'tag' }, x.direct ? 'напрямую' : 'через сервер')),
+      h('td', { class: 'r' }, h('button', { class: 'btn small', title: 'Проверить заново, когда сайт откроют', onclick: () => forget(x.host) }, 'Забыть'))));
+    parts.push(more('Что определилось', `напрямую ${v.direct}, через сервер ${v.proxy}`,
+      rows.length
+        ? h('div', { class: 'panel' }, h('table', { class: 'table' }, h('tbody', null, ...rows)))
+        : h('p', { class: 'hint' }, 'Пока пусто: сайты появятся здесь, когда вы начнёте их открывать.'),
+      h('p', { class: 'hint' }, 'Ваши правила, zapret, заблокированное в России и сервисы, закрытые для России, автоопределение не трогает. Нужно, чтобы сайт всегда шёл определённым путём, — добавьте правило.'),
+      h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: () => { if (confirm('Забыть всё, что определилось? Сайты будут проверены заново.')) forget(''); } }, 'Сбросить всё'))));
+  }
+  box.replaceChildren(...parts);
 }
 
 function renderCats() {
@@ -3075,8 +3107,8 @@ function zapretCard(z) {
         segmented([['off', 'Выключен'], ['all', 'TCP и UDP'], ['tcp', 'TCP'], ['udp', 'UDP']], () => S.zapret.gameFilter, v => { S.zapret.gameFilter = v; save(0); }, 'Режим для игр')),
       h('p', { class: 'hint' }, 'Античиты иногда ругаются — включайте, только если нужно.'),
       h('div', { class: 'row mt' }, h('span', { class: 'hint', style: 'min-width:120px' }, 'Список IP'),
-        segmented([['none', 'Не использовать'], ['loaded', 'Список Flowseal'], ['any', 'Любые IP']], () => S.zapret.ipset, v => { S.zapret.ipset = v; save(0); }, 'Список IP')),
-      h('p', { class: 'hint' }, '«Любые IP» ломает многие сайты — только для проверки.'),
+        segmented([['none', 'Не использовать'], ['loaded', 'Список Flowseal']], () => S.zapret.ipset, v => { S.zapret.ipset = v; save(0); }, 'Список IP')),
+      h('p', { class: 'hint' }, 'zapret обрабатывает только сайты из своих списков (и адреса из списка IP, если он включён) — всё остальное идёт как обычно.'),
       h('p', { class: 'hint mt' }, 'Папка: ' + z.path)) : null);
 }
 

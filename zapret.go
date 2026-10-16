@@ -355,7 +355,7 @@ func (z *Zapret) writeLists(s *Settings) error {
 			gen = append(gen, r.Value)
 		}
 	}
-	// Соединения с нашими серверами zapret трогать не должен (особенно в режиме ipset any).
+	// Соединения с нашими серверами zapret трогать не должен.
 	var exDom, exIP []string
 	for _, sv := range zapretExcludedServers(s, z.a.wl.Servers(s)) {
 		if ip := net.ParseIP(sv.Host); ip != nil {
@@ -394,19 +394,15 @@ func (z *Zapret) writeLists(s *Settings) error {
 		}
 	}
 	ipset := filepath.Join(lists, "ipset-all.txt")
-	switch s.Zapret.IPSet {
-	case "none":
-		return os.WriteFile(ipset, []byte("203.0.113.113/32\n"), 0o644)
-	case "any":
-		return os.WriteFile(ipset, nil, 0o644)
-	case "loaded":
+	if s.Zapret.IPSet == "loaded" {
 		b, err := os.ReadFile(ipset + ".backup")
 		if err != nil {
 			return errors.New("в этой версии zapret нет полного списка IP (ipset-all.txt.backup)")
 		}
 		return os.WriteFile(ipset, b, 0o644)
 	}
-	return nil
+	// Без списка IP: один заведомо пустой адрес (пустой файл winws понял бы как «любые IP»).
+	return os.WriteFile(ipset, []byte("203.0.113.113/32\n"), 0o644)
 }
 
 // zapretExcludedServers — серверы, соединения с которыми zapret трогать не должен:
