@@ -167,6 +167,8 @@ type Settings struct {
 
 	// SmartDirect — автоопределение (режим «Россия напрямую»): что открывается из России напрямую, идёт напрямую (smart.go).
 	SmartDirect bool `json:"smartDirect"`
+	// DownloadsDirect — загрузки Steam, Epic и обновлений Windows сразу напрямую (режим «Россия напрямую»).
+	DownloadsDirect bool `json:"downloadsDirect"`
 
 	MixedPort       int    `json:"mixedPort"`
 	DNSRemote       string `json:"dnsRemote"` // DoH через сервер: IP, домен или https://host/path
@@ -217,39 +219,40 @@ type Settings struct {
 
 func DefaultSettings() *Settings {
 	return &Settings{
-		Servers:        []Server{},
-		Selected:       "auto",
-		Mode:           "proxy",
-		Routing:        "ru-direct",
-		RuInsideDirect: true,
-		SmartDirect:    true,
-		BlockQUIC:      true,
-		UDPDirect:      true,
-		MixedPort:      2080,
-		DNSRemote:      "1.1.1.1",
-		DNSDirect:      dnsYandexDoH,
-		IPv4Only:       true,
-		TestURL:        "https://www.gstatic.com/generate_204",
-		TestInterval:   "3m",
-		Rules:          []Rule{},
-		LogLevel:       "warn",
-		ShowIP:         true,
-		KillSwitch:     true,
-		Watchdog:       true,
-		Failover:       true,
-		SleepReconnect: true,
-		Notify:         true,
-		Theme:          "dark",
-		Accent:         accentDefault,
-		TrayMini:       true,
-		OwnServer:      true,
-		Lang:           "ru",
-		Nav:            "list",
-		UpdateCheck:    true,
-		Zapret:         ZapretSettings{Strategy: "general", GameFilter: "off", IPSet: "none", RouteDirect: true, Fallback: true},
-		Telegram:       TelegramSettings{Port: 1443, ViaServer: true},
-		WL:             WLSettings{Fallback: true, Max: 30},
-		Share:          ShareSettings{Port: 2090, Auth: true, Username: "naivka"},
+		Servers:         []Server{},
+		Selected:        "auto",
+		Mode:            "proxy",
+		Routing:         "ru-direct",
+		RuInsideDirect:  true,
+		SmartDirect:     true,
+		DownloadsDirect: true,
+		BlockQUIC:       true,
+		UDPDirect:       true,
+		MixedPort:       2080,
+		DNSRemote:       "1.1.1.1",
+		DNSDirect:       dnsYandexDoH,
+		IPv4Only:        true,
+		TestURL:         "https://www.gstatic.com/generate_204",
+		TestInterval:    "3m",
+		Rules:           []Rule{},
+		LogLevel:        "warn",
+		ShowIP:          true,
+		KillSwitch:      true,
+		Watchdog:        true,
+		Failover:        true,
+		SleepReconnect:  true,
+		Notify:          true,
+		Theme:           "dark",
+		Accent:          accentDefault,
+		TrayMini:        true,
+		OwnServer:       true,
+		Lang:            "ru",
+		Nav:             "list",
+		UpdateCheck:     true,
+		Zapret:          ZapretSettings{Strategy: "general", GameFilter: "off", IPSet: "none", RouteDirect: true, Fallback: true},
+		Telegram:        TelegramSettings{Port: 1443, ViaServer: true},
+		WL:              WLSettings{Fallback: true, Max: 30},
+		Share:           ShareSettings{Port: 2090, Auth: true, Username: "naivka"},
 	}
 }
 

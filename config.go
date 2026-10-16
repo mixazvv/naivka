@@ -66,6 +66,19 @@ var twitchPlaylistRule = M{
 // Российские доменные зоны: .ru, .рф, .su, .рус
 var ruZones = []any{"ru", "xn--p1ai", "su", "xn--p1acf"}
 
+// downloadDomains — серверы загрузки игр и обновлений, открытые для России. Через сервер
+// большая закачка занимает весь канал до него: пинг растёт, остальной интернет тормозит.
+// Поэтому в режиме «Россия напрямую» они сразу идут напрямую — без первой проверки через сервер.
+var downloadDomains = []any{
+	// Steam: контент, CDN, картинки магазина
+	"steamcontent.com", "steamserver.net", "steampipe.akamaized.net", "steamcdn-a.akamaihd.net", "steamstatic.com",
+	// Epic Games
+	"download.epicgames.com", "download2.epicgames.com", "download3.epicgames.com", "download4.epicgames.com",
+	"fastly-download.epicgames.com", "epicgames-download1.akamaized.net",
+	// обновления Windows и загрузки Microsoft Store
+	"windowsupdate.com", "delivery.mp.microsoft.com",
+}
+
 type ConfigEnv struct {
 	APIPort   int
 	Secret    string
@@ -525,16 +538,21 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			M{"rule_set": rs("ru-blocked-ip"), "outbound": tagProxy},
 		)
 		if env.SmartDir != "" {
+			rules = append(rules, M{"rule_set": rs("geoblock"), "outbound": tagProxy})
+			dnsRules = append(dnsRules, M{"rule_set": rs("geoblock"), "server": tagDNSRemote})
+		}
+		if s.DownloadsDirect {
+			rules = append(rules, M{"domain_suffix": downloadDomains, "outbound": tagDirect})
+			// Адрес — у прямого DNS: он отдаёт ближайший к вам узел CDN, а не к серверу.
+			dnsRules = append(dnsRules, M{"domain_suffix": downloadDomains, "server": tagDNSDirect})
+		}
+		if env.SmartDir != "" {
 			// Автоопределение: после заблокированного и закрытого для России, до российских сайтов.
 			rules = append(rules,
-				M{"rule_set": rs("geoblock"), "outbound": tagProxy},
 				M{"rule_set": []any{tagSmartProxy}, "outbound": tagProxy},
 				M{"rule_set": []any{tagSmartDirect}, "outbound": tagDirect},
 			)
-			dnsRules = append(dnsRules,
-				M{"rule_set": rs("geoblock"), "server": tagDNSRemote},
-				M{"rule_set": []any{tagSmartDirect}, "server": tagDNSDirect},
-			)
+			dnsRules = append(dnsRules, M{"rule_set": []any{tagSmartDirect}, "server": tagDNSDirect})
 		}
 		rules = append(rules,
 			M{"domain_suffix": ruZones, "outbound": tagDirect},
