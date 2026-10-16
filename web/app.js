@@ -2421,6 +2421,7 @@ const CATS = [
   ['blocked', 'Списки блокировок — через сервер', 'var(--tunnel)'],
   ['ru', 'Российские сайты — напрямую', 'var(--direct)'],
   ['inside', 'Только из России — напрямую', 'color-mix(in srgb, var(--direct) 60%, var(--ink))'],
+  ['downloads', 'Загрузки игр и обновлений — напрямую', 'color-mix(in srgb, var(--direct) 80%, var(--warn))'],
   ['smart', 'Автоопределение — напрямую', 'color-mix(in srgb, var(--direct) 70%, var(--accent))'],
   ['smartp', 'Автоопределение — через сервер', 'color-mix(in srgb, var(--tunnel) 70%, var(--accent))'],
   ['final', 'Остальное — по режиму', 'var(--faint)'],
@@ -2429,6 +2430,7 @@ const CATS = [
 function ruleCategory(rule) {
   if (rule === 'final') return 'final';
   if (/inbound=\[?probe/.test(rule) || rule.includes('twitch-adfree') || rule.includes('ttvnw') || rule.includes('ip_is_private') || rule.includes('network=udp') || rule.includes('protocol=dns')) return null;
+  if (rule.includes('steamcontent.com')) return 'downloads';
   if (rule.includes('smart-direct')) return 'smart';
   if (rule.includes('smart-proxy')) return 'smartp';
   if (rule.includes('ru-blocked') || rule.includes('geoblock')) return 'blocked';
@@ -2443,7 +2445,9 @@ async function renderSmart() {
   const box = $('#smartBox');
   if (!box) return;
   if (S.routing !== 'ru-direct') { box.replaceChildren(); return; }
-  const parts = [check('smartDirect', 'Автоопределение: что открывается из России — напрямую',
+  const parts = [check('downloadsDirect', 'Загрузки игр и обновлений — сразу напрямую',
+    'Steam, Epic Games, обновления Windows. Они доступны из России, а через сервер большая закачка занимает весь канал до него — растёт пинг и тормозит остальной интернет.'),
+  check('smartDirect', 'Автоопределение: что открывается из России — напрямую',
     'Незнакомый сайт сначала идёт через сервер, а Naivka в фоне проверяет, открывается ли он напрямую так же хорошо. Если да — дальше он идёт напрямую, без потери скорости на сервере; если начнёт обрываться — вернётся на сервер. Уже открытые соединения при этом не рвутся.',
     renderSmart)];
   if (S.smartDirect) {

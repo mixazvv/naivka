@@ -471,7 +471,11 @@ func TestSmartConfig(t *testing.T) {
 	iSmartP := strings.Index(js, `"outbound":"proxy","rule_set":["smart-proxy"]`)
 	iSmartD := strings.Index(js, `"outbound":"direct","rule_set":["smart-direct"]`)
 	iRu := strings.Index(js, `"outbound":"direct","rule_set":["geosite-category-ru"]`)
-	if !(iBlocked >= 0 && iBlocked < iGeo && iGeo < iSmartP && iSmartP < iSmartD && iSmartD < iRu) {
+	iDl := strings.Index(js, `"outbound":"direct"},{"outbound":"proxy","rule_set":["smart-proxy"]`) // загрузки — прямо перед автоопределением
+	if !strings.Contains(js[iGeo:iSmartP], `"steamcontent.com"`) {
+		iDl = -1
+	}
+	if !(iBlocked >= 0 && iBlocked < iGeo && iGeo < iDl && iDl < iSmartP && iSmartP < iSmartD && iSmartD < iRu) {
 		t.Fatalf("порядок правил: blocked %d geoblock %d smart-proxy %d smart-direct %d ru %d", iBlocked, iGeo, iSmartP, iSmartD, iRu)
 	}
 	if !strings.Contains(js, `"type":"local"`) {
@@ -490,6 +494,15 @@ func TestSmartConfig(t *testing.T) {
 	b, _ = json.Marshal(cfg)
 	if strings.Contains(string(b), "smart-direct") {
 		t.Fatal("автоопределение в режиме «всё через сервер»")
+	}
+	if strings.Contains(string(b), "steamcontent.com") {
+		t.Fatal("загрузки напрямую в режиме «всё через сервер»")
+	}
+	s.Routing, s.DownloadsDirect = "ru-direct", false
+	cfg, _ = BuildConfig(s, ConfigEnv{SmartDir: dir})
+	b, _ = json.Marshal(cfg)
+	if strings.Contains(string(b), "steamcontent.com") {
+		t.Fatal("загрузки напрямую выключены, а правило есть")
 	}
 }
 
