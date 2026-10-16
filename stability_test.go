@@ -133,10 +133,30 @@ func TestRedactSettings(t *testing.T) {
 	}
 }
 
-func TestMaskHosts(t *testing.T) {
-	got := maskHosts("dial tcp 1.2.3.4:443 via vpn.example.com", []string{"vpn.example.com", "1.2.3.4", ""})
-	if strings.Contains(got, "vpn.example.com") || strings.Contains(got, "1.2.3.4") {
-		t.Fatal(got)
+func TestRedactReport(t *testing.T) {
+	labels := map[string]string{"vpn.example.com": "сервер-1", "203.0.113.7": "сервер-1"}
+	in := strings.Join([]string{
+		"dial tcp 203.0.113.7:443 via vpn.example.com",
+		"open connection to rr5---sn-5hneknek.googlevideo.com:443: lookup NXDOMAIN",
+		"open connection to secret-forum.org:443 using outbound/direct: dial tcp 198.51.100.20:443: i/o timeout",
+		"[naivka] автоопределение: private-site.ru — напрямую",
+		"[naivka] автоопределение: не удалось записать список: disk full",
+		"+0300 2026-10-16 18:53:59 ERROR from 192.168.1.5 and [2001:db8::1]:443 to 8.8.8.8",
+		"config.json sing-box.exe naivka.log v2.3.5 1.14.3",
+	}, "\n") + "\n"
+	got := redactReport(reportLogLines(in), labels)
+	for _, bad := range []string{"vpn.example.com", "203.0.113.7", "secret-forum", "198.51.100.20", "private-site", "192.168.1.5", "2001:db8::1", "5hneknek"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("в отчёте осталось %q:\n%s", bad, got)
+		}
+	}
+	for _, keep := range []string{"сервер-1", "*.googlevideo.com", "•••.org", "18:53:59", "8.8.8.8", "config.json", "sing-box.exe", "naivka.log", "v2.3.5", "1.14.3", "не удалось записать список", "локальный-IP"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("должно остаться %q:\n%s", keep, got)
+		}
+	}
+	if dnsLabel("https://dns.nextdns.io/abc123") == "https://dns.nextdns.io/abc123" || dnsLabel("https://common.dot.dns.yandex.net/dns-query") == "свой (•••)" {
+		t.Error("dnsLabel")
 	}
 }
 

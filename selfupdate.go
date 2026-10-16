@@ -1,13 +1,19 @@
 package main
 
 import (
+	"archive/zip"
 	"bufio"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,9 +21,10 @@ import (
 )
 
 // Обновление самой Naivka: проверка релизов на GitHub и установка по кнопке.
-// Скачивается архив из релиза этого же репозитория, сверяется с SHA256SUMS.txt того же
-// релиза, затем заменяется только запущенный exe (настройки и данные не трогаются)
-// и Naivka перезапускается.
+// Архив из релиза этого же репозитория скачивается в память, сверяется с SHA256SUMS.txt того же
+// релиза и с хешем, который хранит GitHub, затем заменяется только запущенный exe (настройки
+// и данные не трогаются) и Naivka перезапускается. На диск до проверки ничего не пишется,
+// так что подменить проверенный файл до установки нельзя.
 
 const appRepo = "mixazvv/naivka"
 
@@ -119,54 +126,6 @@ func sumFor(sums io.Reader, name string) string {
 	return ""
 }
 
-// findExe — новый exe в распакованном архиве: с тем же именем, что запущенный, иначе основной этой сборки.
-func findExe(root, current string) string {
-	names := []string{current}
-	if legacyBuild {
-		if strings.Contains(current, "32") {
-			names = append(names, "Naivka-win7-32.exe")
-		}
-		names = append(names, "Naivka-win7-64.exe")
-	} else {
-		names = append(names, "Naivka.exe")
-	}
-	for _, n := range names {
-		p := filepath.Join(root, n)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && isWindowsExe(p) {
-			return p
-		}
-	}
-	return ""
-}
-
-func isWindowsExe(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	b := make([]byte, 2)
-	_, err = io.ReadFull(f, b)
-	return err == nil && string(b) == "MZ"
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
-}
-
 var errManualUpdate = errors.New("скачайте новую версию со страницы релизов и распакуйте поверх старой папки")
 
 // install скачивает, проверяет и ставит последнюю версию, затем перезапускает Naivka.
@@ -192,54 +151,126 @@ func (u *selfUpdater) install(a *App) error {
 // releaseBase — откуда скачивать релизы; в тестах подменяется на локальный сервер.
 var releaseBase = "https://github.com/"
 
-// fetch скачивает архив релиза в work, сверяет контрольные суммы, распаковывает
-// и возвращает путь к новому exe.
-func (u *selfUpdater) fetch(work, tag, exeName string) (string, error) {
-	os.RemoveAll(work)
-	if err := os.MkdirAll(work, 0o700); err != nil {
-		return "", err
+// downloadBytes скачивает файл в память (не больше limit байт).
+func downloadBytes(url string, limit int64, fn progressFunc) ([]byte, error) {
+	hc := &http.Client{Timeout: 15 * time.Minute}
+	resp, err := hc.Get(url)
+	if err != nil {
+		return nil, err
 	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("GitHub ответил %s", resp.Status)
+	}
+	var buf bytes.Buffer
+	n, err := io.Copy(io.MultiWriter(&buf, &countingWriter{total: resp.ContentLength, fn: fn}), io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if n > limit {
+		return nil, errors.New("файл слишком большой")
+	}
+	return buf.Bytes(), nil
+}
+
+// fetch скачивает архив релиза, сверяет его с контрольными суммами и возвращает новый exe.
+// Всё в памяти: между проверкой и записью файл на диске никто не подменит.
+func (u *selfUpdater) fetch(tag, exeName string) (exe []byte, debug []byte, err error) {
 	base := releaseBase + appRepo + "/releases/download/" + tag + "/"
 	asset := releaseAsset(tag)
-	sumsPath := filepath.Join(work, "SHA256SUMS.txt")
-	if err := downloadTo(base+"SHA256SUMS.txt", sumsPath, nil); err != nil {
-		return "", fmt.Errorf("не скачались контрольные суммы: %v", err)
-	}
-	zipPath := filepath.Join(work, asset)
-	if err := downloadTo(base+asset, zipPath, u.progress); err != nil {
-		return "", fmt.Errorf("не скачался архив: %v", err)
-	}
-	sf, err := os.Open(sumsPath)
+	sums, err := downloadBytes(base+"SHA256SUMS.txt", 1<<20, nil)
 	if err != nil {
-		return "", err
+		return nil, nil, fmt.Errorf("не скачались контрольные суммы: %v", err)
 	}
-	want := sumFor(sf, asset)
-	sf.Close()
-	got, err := fileSHA256(zipPath)
+	archive, err := downloadBytes(base+asset, 300<<20, u.progress)
 	if err != nil {
-		return "", err
+		return nil, nil, fmt.Errorf("не скачался архив: %v", err)
 	}
-	if want == "" || got != want {
-		return "", errors.New("архив не совпал с контрольной суммой из релиза — ничего не заменено")
+	sum := sha256.Sum256(archive)
+	got := hex.EncodeToString(sum[:])
+	if want := sumFor(bytes.NewReader(sums), asset); want == "" || got != want {
+		return nil, nil, errors.New("архив не совпал с контрольной суммой из релиза — ничего не заменено")
 	}
 	// И с хешем, который GitHub посчитал сам при загрузке файла (если API его отдало).
-	if _, err := verifyAsset(appRepo, tag, asset, zipPath); err != nil {
-		return "", err
+	if want, derr := assetDigest(appRepo, tag, asset); derr == nil && want != "" && want != got {
+		return nil, nil, errors.New("архив не совпал с контрольной суммой, которую хранит GitHub, — ничего не заменено")
 	}
 
 	u.mu.Lock()
 	u.state.Busy = "install"
 	u.mu.Unlock()
-	unpacked := filepath.Join(work, "x")
-	if err := extractZip(zipPath, unpacked); err != nil {
-		return "", err
+	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		return nil, nil, err
 	}
-	fresh := findExe(unpacked, exeName)
-	if fresh == "" {
-		return "", errors.New("в архиве нет программы для этой системы")
+	files := map[string]*zip.File{}
+	for _, f := range zr.File {
+		if !f.FileInfo().IsDir() {
+			files[path.Base(strings.ReplaceAll(f.Name, `\`, "/"))] = f
+		}
 	}
-	return fresh, nil
+	read := func(name string) []byte {
+		f := files[name]
+		if f == nil || f.UncompressedSize64 > 300<<20 {
+			return nil
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil
+		}
+		defer rc.Close()
+		b, err := io.ReadAll(io.LimitReader(rc, 300<<20))
+		if err != nil || len(b) < 2 || string(b[:2]) != "MZ" {
+			return nil
+		}
+		return b
+	}
+	for _, n := range exeCandidates(exeName) {
+		if exe = read(n); exe != nil {
+			break
+		}
+	}
+	if exe == nil {
+		return nil, nil, errors.New("в архиве нет программы для этой системы")
+	}
+	if !legacyBuild {
+		debug = read("Naivka-debug.exe")
+	}
+	return exe, debug, nil
+}
 
+// exeCandidates — какой exe из архива ставить: с тем же именем, что запущенный, иначе основной этой сборки.
+func exeCandidates(current string) []string {
+	names := []string{current}
+	if legacyBuild {
+		if strings.Contains(current, "32") {
+			names = append(names, "Naivka-win7-32.exe")
+		}
+		return append(names, "Naivka-win7-64.exe")
+	}
+	return append(names, "Naivka.exe")
+}
+
+// writeExe пишет новый exe рядом со старым (в ту же папку, тот же диск) и подменяет его.
+func writeExe(exe string, body []byte) error {
+	tmp := exe + ".new"
+	os.Remove(tmp)
+	if err := os.WriteFile(tmp, body, 0o755); err != nil {
+		return fmt.Errorf("не удалось записать новую версию (%v) — %w", err, errManualUpdate)
+	}
+	// Запущенный exe Windows не даёт перезаписать, но даёт переименовать.
+	old := exe + ".old"
+	os.Remove(old)
+	if err := os.Rename(exe, old); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("нет доступа к папке программы (%v) — %w", err, errManualUpdate)
+	}
+	if err := os.Rename(tmp, exe); err != nil {
+		os.Rename(old, exe)
+		os.Remove(tmp)
+		return fmt.Errorf("не удалось записать новую версию (%v) — %w", err, errManualUpdate)
+	}
+	return nil
 }
 
 func (u *selfUpdater) run(a *App, tag string) error {
@@ -250,30 +281,16 @@ func (u *selfUpdater) run(a *App, tag string) error {
 	if p, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = p
 	}
-	work := filepath.Join(a.dir, "update")
-	fresh, err := u.fetch(work, tag, filepath.Base(exe))
+	body, debug, err := u.fetch(tag, filepath.Base(exe))
 	if err != nil {
 		return err
 	}
-	unpacked := filepath.Dir(fresh)
-
-	// Запущенный exe Windows не даёт перезаписать, но даёт переименовать.
-	old := exe + ".old"
-	os.Remove(old)
-	if err := os.Rename(exe, old); err != nil {
-		return fmt.Errorf("нет доступа к папке программы (%v) — %w", err, errManualUpdate)
-	}
-	if err := copyFile(fresh, exe); err != nil {
-		os.Remove(exe)
-		os.Rename(old, exe)
-		return fmt.Errorf("не удалось записать новую версию (%v) — %w", err, errManualUpdate)
+	if err := writeExe(exe, body); err != nil {
+		return err
 	}
 	// Отладочная копия рядом (если есть) обновляется тоже: её никто не держит.
-	if !legacyBuild && filepath.Base(exe) != "Naivka-debug.exe" {
-		dbg := filepath.Join(filepath.Dir(exe), "Naivka-debug.exe")
-		if fileExists(dbg) && fileExists(filepath.Join(unpacked, "Naivka-debug.exe")) {
-			_ = copyFile(filepath.Join(unpacked, "Naivka-debug.exe"), dbg)
-		}
+	if dbg := filepath.Join(filepath.Dir(exe), "Naivka-debug.exe"); debug != nil && filepath.Base(exe) != "Naivka-debug.exe" && fileExists(dbg) {
+		_ = os.WriteFile(dbg, debug, 0o755)
 	}
 
 	wasRunning := a.core.Running()
@@ -286,7 +303,7 @@ func (u *selfUpdater) run(a *App, tag string) error {
 	cmd.Dir = filepath.Dir(exe)
 	if err := cmd.Start(); err != nil {
 		os.Remove(exe)
-		os.Rename(old, exe)
+		os.Rename(exe+".old", exe)
 		if wasRunning {
 			go a.connect()
 		}

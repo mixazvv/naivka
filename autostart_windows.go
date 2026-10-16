@@ -16,6 +16,7 @@ import (
 // Автозапуск:
 //   * системный прокси — запись в HKCU\...\Run, права администратора не нужны;
 //   * TUN — задача Планировщика «при входе» с наивысшими правами: стартует без запроса UAC.
+//     Только если Naivka установлена в Program Files (см. setAutostart).
 
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
 const taskName = "Naivka"
@@ -24,6 +25,13 @@ func setAutostart(enable, elevated bool) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
+	}
+	// Запуск с правами без запроса UAC — только для программы в Program Files. Если Naivka лежит
+	// на рабочем столе или в «Загрузках», любой процесс пользователя мог бы подменить exe и при
+	// следующем входе получить права администратора. Тогда автозапуск обычный, а права Naivka
+	// попросит сама, через окно Windows.
+	if elevated && !exeProtected(exe) {
+		elevated = false
 	}
 	if k, err := createKey(runKey); err == nil {
 		if enable && !elevated {
@@ -133,8 +141,27 @@ func runAdmin(file, args string) error {
 	return nil
 }
 
-// allowLANPort — разрешить входящие подключения к порту раздачи в частных сетях (один запрос UAC).
-func allowLANPort(port int) error {
+// allowLANPort — разрешить входящие подключения к порту раздачи (один запрос UAC). Правило узкое:
+// только частные сети, только устройства из той же подсети и только для самого ядра sing-box —
+// другая программа на этом порту через него снаружи доступна не станет.
+func allowLANPort(port int, program string) error {
 	rule := "Naivka LAN"
-	return runAdmin("cmd", fmt.Sprintf(`/c netsh advfirewall firewall delete rule name="%s" >nul 2>&1 & netsh advfirewall firewall add rule name="%s" dir=in action=allow protocol=TCP localport=%d profile=private`, rule, rule, port))
+	if strings.ContainsAny(program, `"&|<>^%`) {
+		return fmt.Errorf("недопустимый путь к ядру: %s", program)
+	}
+	return runAdmin("cmd", fmt.Sprintf(`/c netsh advfirewall firewall delete rule name="%s" >nul 2>&1 & netsh advfirewall firewall add rule name="%s" dir=in action=allow protocol=TCP localport=%d profile=private remoteip=localsubnet program="%s"`, rule, rule, port, program))
+}
+
+// fixUnsafeAutostart убирает задачу с наивысшими правами, созданную прежними версиями для exe
+// вне Program Files, и заменяет её обычным автозапуском. Вызывается при запуске с правами.
+func fixUnsafeAutostart(s *Settings) {
+	exe, err := os.Executable()
+	if err != nil || !s.AutoStart || !s.needsAdmin() || exeProtected(exe) || !isAdmin() {
+		return
+	}
+	q := exec.Command("schtasks", "/Query", "/TN", taskName)
+	hideWindow(q)
+	if q.Run() == nil {
+		_ = setAutostart(true, true)
+	}
 }

@@ -189,7 +189,9 @@ func (a *App) routes() http.Handler {
 		return map[string]any{"ips": ips, "port": s.Share.Port, "auth": s.Share.Auth, "username": s.Share.Username,
 			"password": s.Share.Password, "running": a.core.Running()}, nil
 	})
-	api("POST", "/api/share/firewall", func(*http.Request) (any, error) { return nil, allowLANPort(a.settingsCopy().Share.Port) })
+	api("POST", "/api/share/firewall", func(*http.Request) (any, error) {
+		return nil, allowLANPort(a.settingsCopy().Share.Port, a.core.exePath())
+	})
 	api("POST", "/api/reconnect", func(*http.Request) (any, error) { return nil, a.reconnect() })
 	api("GET", "/api/proxies", func(*http.Request) (any, error) {
 		cl := a.core.Clash()
@@ -781,6 +783,7 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 	var req struct {
 		Text     string `json:"text"`
 		Password string `json:"password"`
+		Advanced string `json:"advanced"` // "" — спросить, "keep" — взять из копии, "drop" — оставить свои
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
@@ -808,6 +811,20 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 	}
 	if problems := openSettings(ns); len(problems) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(problems, "; "))
+	}
+	// Ручные правки конфига и свои outbounds из чужой копии могут увести весь трафик на чужой
+	// сервер — их берём, только если пользователь подтвердил, что копия его.
+	cur := a.settingsCopy()
+	if strings.TrimSpace(ns.Override) != strings.TrimSpace(cur.Override) || strings.TrimSpace(ns.ExtraOutbounds) != strings.TrimSpace(cur.ExtraOutbounds) {
+		switch req.Advanced {
+		case "keep":
+		case "drop":
+			ns.Override, ns.ExtraOutbounds = cur.Override, cur.ExtraOutbounds
+		default:
+			if strings.TrimSpace(ns.Override) != "" || strings.TrimSpace(ns.ExtraOutbounds) != "" {
+				return nil, errors.New("needAdvanced")
+			}
+		}
 	}
 	ns.normalize()
 	if err := ns.Validate(); err != nil {

@@ -115,6 +115,7 @@ func main() {
 	}
 
 	go cleanupUpdate(dir)
+	go fixUnsafeAutostart(s.clone())
 
 	// Если в прошлый раз программа упала с включённым системным прокси — вернём как было.
 	restoreSystemProxy(dir)

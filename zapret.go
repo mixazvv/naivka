@@ -521,6 +521,11 @@ func (z *Zapret) startStrategy(s *Settings, strategy string) error {
 	if root == "" {
 		return errors.New("zapret ещё не установлен")
 	}
+	// Стратегия — только одна из файлов самого zapret: имя из настроек (или из присланной копии)
+	// не должно указывать на чужой .bat, который winws выполнил бы с правами администратора.
+	if !knownStrategy(z.Strategies(), strategy) {
+		return fmt.Errorf("неизвестная стратегия zapret %q — выберите из списка", strategy)
+	}
 	z.startMu.Lock()
 	defer z.startMu.Unlock()
 	z.stop()
@@ -1195,4 +1200,16 @@ func (t *tailBuf) String() string {
 		}
 	}
 	return strings.Join(keep, "\n")
+}
+
+func knownStrategy(list []string, name string) bool {
+	if name == "" || strings.ContainsAny(name, `/\:`) || strings.Contains(name, "..") {
+		return false
+	}
+	for _, s := range list {
+		if s == name {
+			return true
+		}
+	}
+	return false
 }

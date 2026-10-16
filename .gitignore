@@ -3,3 +3,11 @@ Naivka-debug.exe
 Naivka-win7*.exe
 dist/
 naivka
+# Данные запуска и секреты: портативный режим кладёт настройки с паролями рядом с exe.
+Naivka-data/
+portable.txt
+settings.json*
+*.log
+keys/
+*.key
+*.pem

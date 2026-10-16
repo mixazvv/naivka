@@ -50,25 +50,9 @@ func TestSumFor(t *testing.T) {
 	}
 }
 
-func TestFindExe(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("Naivka.exe", "MZ main")
-	write("Naivka-debug.exe", "MZ debug")
-	write("portable.txt", "text")
-	if got := filepath.Base(findExe(dir, "Naivka-debug.exe")); got != "Naivka-debug.exe" {
-		t.Errorf("same name: %s", got)
-	}
-	if got := filepath.Base(findExe(dir, "naivka-renamed.exe")); got != "Naivka.exe" {
-		t.Errorf("fallback: %s", got)
-	}
-	write("Naivka.exe", "not a program")
-	if got := findExe(dir, "naivka-renamed.exe"); got != "" {
-		t.Errorf("non-exe accepted: %s", got)
+func TestExeCandidates(t *testing.T) {
+	if got := exeCandidates("Naivka-debug.exe"); got[0] != "Naivka-debug.exe" || got[len(got)-1] != "Naivka.exe" {
+		t.Error(got)
 	}
 	if releaseAsset("v2.3.4") != "Naivka-v2.3.4-windows.zip" {
 		t.Error(releaseAsset("v2.3.4"))
@@ -79,7 +63,7 @@ func TestFindExe(t *testing.T) {
 func TestSelfUpdateFetch(t *testing.T) {
 	var zbuf bytes.Buffer
 	zw := zip.NewWriter(&zbuf)
-	for name, body := range map[string]string{"Naivka/Naivka.exe": "MZ new", "Naivka/portable.txt": "x"} {
+	for name, body := range map[string]string{"Naivka/Naivka.exe": "MZ new", "Naivka/Naivka-debug.exe": "MZ dbg", "Naivka/portable.txt": "x"} {
 		w, _ := zw.Create(name)
 		w.Write([]byte(body))
 	}
@@ -108,15 +92,28 @@ func TestSelfUpdateFetch(t *testing.T) {
 	defer func() { releaseBase, githubAPI = oldBase, oldAPI }()
 
 	u := &selfUpdater{}
-	fresh, err := u.fetch(filepath.Join(t.TempDir(), "update"), "v9.9.9", "Naivka.exe")
+	exe, dbg, err := u.fetch("v9.9.9", "Naivka.exe")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(fresh); string(b) != "MZ new" {
-		t.Fatalf("fresh exe: %q", b)
+	if string(exe) != "MZ new" || string(dbg) != "MZ dbg" {
+		t.Fatalf("exe %q, debug %q", exe, dbg)
+	}
+	// Подменённый exe ставится на место старого, старый остаётся как .old.
+	dir := t.TempDir()
+	target := filepath.Join(dir, "Naivka.exe")
+	os.WriteFile(target, []byte("MZ old"), 0o755)
+	if err := writeExe(target, exe); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(target); string(b) != "MZ new" {
+		t.Fatalf("target: %q", b)
+	}
+	if b, _ := os.ReadFile(target + ".old"); string(b) != "MZ old" {
+		t.Fatalf("old: %q", b)
 	}
 	tamper = true
-	if _, err := u.fetch(filepath.Join(t.TempDir(), "update"), "v9.9.9", "Naivka.exe"); err == nil || !strings.Contains(err.Error(), "контрольной суммой") {
+	if _, _, err := u.fetch("v9.9.9", "Naivka.exe"); err == nil || !strings.Contains(err.Error(), "контрольной суммой") {
 		t.Fatalf("tampered archive accepted: %v", err)
 	}
 }

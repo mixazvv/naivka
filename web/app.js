@@ -2601,7 +2601,7 @@ async function renderSmart() {
   const parts = [check('downloadsDirect', 'Загрузки игр и обновлений — сразу напрямую',
     'Steam, Epic Games, обновления Windows. Они доступны из России, а через сервер большая закачка занимает весь канал до него — растёт пинг и тормозит остальной интернет.'),
   check('smartDirect', 'Автоопределение: что открывается из России — напрямую',
-    'Незнакомый сайт сначала идёт через сервер, а Naivka в фоне проверяет, открывается ли он напрямую так же хорошо. Если да — дальше он идёт напрямую, без потери скорости на сервере; если начнёт обрываться — вернётся на сервер. Уже открытые соединения при этом не рвутся.',
+    'Незнакомый сайт сначала идёт через сервер, а Naivka в фоне проверяет, открывается ли он напрямую так же хорошо. Если да — дальше он идёт напрямую, без потери скорости на сервере; если начнёт обрываться — вернётся на сервер. Уже открытые соединения при этом не рвутся. Для проверки адрес сайта открывается напрямую — провайдер видит его имя, даже если сайт потом пойдёт через сервер.',
     renderSmart)];
   if (S.smartDirect) {
     try { SMART = await api('/api/smart'); } catch (_) { /* окно переподключится */ }
@@ -2845,6 +2845,7 @@ function buildCoreBox() {
   }, c.present ? 'Обновить до последней версии' : 'Скачать ядро');
   out.push(h('div', { class: 'row' }, btn, ST.running && h('span', { class: 'hint' }, 'Отключитесь, чтобы обновить ядро.')));
   out.push(h('p', { class: 'hint mt' }, (ST.portable ? 'Портативный режим. Данные: ' : 'Данные: ') + ST.dataDir));
+  if (ST.portable) out.push(notice('warn', 'В портативном режиме пароли серверов хранятся в папке Naivka-data без шифрования (иначе их нельзя было бы открыть на другом компьютере). Не держите её на общем компьютере или флешке, которую дают другим.'));
   return out;
 }
 
@@ -2939,7 +2940,7 @@ function viewSettings() {
     check('notify', 'Уведомления Windows', 'О сбоях, восстановлении связи и смене сервера автовыбором.'),
 
     h('h2', null, 'Запуск'),
-    check('autoStart', 'Запускать вместе с Windows', 'Naivka запустится в трее без окна.'),
+    check('autoStart', 'Запускать вместе с Windows', 'Naivka запустится в трее без окна. Для режима TUN и zapret без запроса Windows — только если папка Naivka лежит в Program Files; иначе Windows спросит разрешение при входе (так подменить программу нельзя).'),
     check('autoConnect', 'Подключаться при запуске Naivka'),
     check('exitWithWindow', 'Закрывать Naivka вместе с окном', 'Иначе при закрытии окна Naivka уходит в трей и соединение остаётся.'),
     check('showIp', 'Показывать мой IP и страну', 'Как вас видят сайты. Узнаётся через ipwho.is и ipinfo.io.', () => { ip.key = ''; srvGeoKey = ''; }),
@@ -3057,15 +3058,19 @@ function restoreBackup() {
     if (!f) return;
     const text = await f.text();
     if (!confirm('Заменить текущие серверы, правила и настройки содержимым копии?')) return;
-    let password = '';
+    let password = '', advanced = '';
     for (let attempt = 0; ; attempt++) {
       try {
-        S = await api('/api/restore', { text, password });
+        S = await api('/api/restore', { text, password, advanced });
         applyTheme();
         toast('Настройки восстановлены');
         go('settings');
         return;
       } catch (e) {
+        if (e.message === 'needAdvanced') {
+          advanced = confirm('В копии есть ручные правки конфига или свои outbounds. Через них весь трафик можно отправить на чужой сервер.\n\nПрименить их? Нажимайте «ОК», только если копию сделали вы сами. «Отмена» — восстановить всё остальное, а правки оставить свои.') ? 'keep' : 'drop';
+          continue;
+        }
         if (e.message !== 'needPassword') { toast(e.message, true); return; }
         password = await askBackupPassword(attempt > 0);
         if (password === null) return;
