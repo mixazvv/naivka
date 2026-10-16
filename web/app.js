@@ -1213,7 +1213,7 @@ function renderFacts() {
   const health = STATS && STATS.health;
   box.replaceChildren(
     h('div', { class: 'fact' }, h('b', null, running ? fmtDur(Date.now() / 1000 - ST.startedAt) : '—'), h('span', null, 'на связи')),
-    h('div', { class: 'fact' }, h('b', { class: health === 'fail' ? 'delay bad' : '' }, !running ? '—' : d && d.ms ? `${d.ms} мс` : health === 'fail' ? 'нет связи' : '…'),
+    h('div', { class: 'fact' }, h('b', { class: health === 'fail' || health === 'offline' ? 'delay bad' : '' }, !running ? '—' : d && d.ms ? `${d.ms} мс` : health === 'offline' ? 'нет интернета' : health === 'fail' ? 'нет связи' : '…'),
       h('span', null, 'задержка до сервера')),
     h('div', { class: 'fact' }, h('b', null, tnum('f-proxy', t[0] + t[1], fmtBytes)), h('span', null, 'через сервер')),
     h('div', { class: 'fact' }, h('b', null, tnum('f-direct', t[2] + t[3], fmtBytes)), h('span', null, 'напрямую')),

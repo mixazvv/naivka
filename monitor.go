@@ -492,7 +492,20 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 		return
 	}
 	ok := probeVia(proxyPort, s.TestURL) || probeVia(proxyPort, spareTestURL(s.TestURL))
+	// Не открылось ничего, даже напрямую, — пропал сам интернет. Сервер тут ни при чём:
+	// не переходим на другой сервер и не перезапускаем ядро, а ждём сеть.
+	offline := !ok && !m.a.internetUp()
 	m.mu.Lock()
+	if offline {
+		if m.health != "offline" {
+			m.health = "offline"
+			m.mu.Unlock()
+			m.Event("warn", "Нет интернета — жду, когда он вернётся", false)
+			return
+		}
+		m.mu.Unlock()
+		return
+	}
 	// Первую минуту-полторы после сна сеть ещё поднимается — сбои не считаем, чтобы не дёргать ядро зря.
 	if !ok && time.Since(m.wakeAt) < wakeGrace {
 		m.mu.Unlock()
@@ -509,7 +522,7 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 	m.mu.Unlock()
 
 	switch {
-	case ok && prev == "fail":
+	case ok && (prev == "fail" || prev == "offline"):
 		m.Event("ok", "Связь через сервер восстановлена", true)
 	case !ok && fails == 2:
 		// Сначала — другой свой сервер, если выбран конкретный; нет живых — подписка «белые списки».
@@ -524,7 +537,8 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 			_ = cl.CloseAll()
 		}
 		go m.a.wl.engage()
-	case !ok && fails == 4 && m.allowRestart():
+	case !ok && fails == 4 && !m.a.zapret.busy() && m.allowRestart():
+		// (посреди подбора стратегии zapret ядро не трогаем: подбор проверяет сайты через него)
 		m.Event("warn", "Связь не вернулась — перезапускаю ядро", false)
 		go m.a.restartCore()
 	}

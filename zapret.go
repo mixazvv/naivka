@@ -923,6 +923,17 @@ func (z *Zapret) failWatch() {
 		if len(lines) > 0 {
 			seq = lines[len(lines)-1].Seq
 		}
+		s := z.a.settingsCopy()
+		_, applied := z.a.zr.get()
+		z.pmu.Lock()
+		busy, degraded := z.pick.Active || z.trial.Active, z.degraded
+		z.pmu.Unlock()
+		// Считаем только обрывы, пока сайты zapret правда идут напрямую через него: обрывы времён,
+		// когда они шли через сервер или шёл подбор стратегии, к нему не относятся.
+		if busy || degraded || !s.Zapret.Fallback || applied != tagDirect || !z.Running() || z.a.mon.SinceWake() < wakeGrace {
+			fails = nil
+			continue
+		}
 		now := time.Now()
 		for _, l := range lines {
 			if zapretFailLine(l.Text) {
@@ -936,16 +947,14 @@ func (z *Zapret) failWatch() {
 			}
 		}
 		fails = keep
-		s := z.a.settingsCopy()
-		_, applied := z.a.zr.get()
-		z.pmu.Lock()
-		busy, degraded := z.pick.Active || z.trial.Active, z.degraded
-		z.pmu.Unlock()
-		if len(fails) < limit || busy || degraded || !s.Zapret.Fallback || applied != tagDirect || !z.Running() {
+		if len(fails) < limit {
 			continue
 		}
 		n := len(fails)
 		fails = nil
+		if !z.a.internetUp() {
+			continue // пропал сам интернет — zapret тут ни при чём
+		}
 		z.pmu.Lock()
 		z.holdUntil = now.Add(30 * time.Minute)
 		z.pmu.Unlock()

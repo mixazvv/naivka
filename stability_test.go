@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -433,5 +435,16 @@ func TestDNSFallbackConfig(t *testing.T) {
 	}
 	if dnsFallbackAddr(directDNS{Kind: "https", Host: "1.1.1.1"}) != "1.1.1.1" {
 		t.Fatal("DoH по IP — тот же адрес по UDP")
+	}
+}
+
+func TestDNSQueryWire(t *testing.T) {
+	b, err := base64.RawURLEncoding.DecodeString(dnsQuery("ya.ru"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte{0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 'y', 'a', 2, 'r', 'u', 0, 0, 1, 0, 1}
+	if !bytes.Equal(b, want) {
+		t.Fatalf("запрос %v, нужно %v", b, want)
 	}
 }
