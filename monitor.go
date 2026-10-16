@@ -358,8 +358,9 @@ func (m *Monitor) sample(cl *Clash, s *Settings) {
 		}
 		return top[i].Total > top[j].Total
 	})
-	if len(top) > 8 {
-		top = top[:8]
+	// 24 — хватает и на список «куда идёт трафик», и на листья-сервисы главной схемы.
+	if len(top) > 24 {
+		top = top[:24]
 	}
 	m.top = top
 }

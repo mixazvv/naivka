@@ -18,15 +18,16 @@ const Branches = (() => {
 
   // ---------- геометрия ----------
   const narrow = () => W < 620;
-  const cx0 = () => Math.max(W * 0.1, 48), cx1 = () => Math.min(W * 0.9, W - 34);
+  // Справа оставляем место под подпись «Интернет» сбоку: так её не пересекают сходящиеся ветки.
+  const cx0 = () => Math.max(W * 0.1, 48), cx1 = () => narrow() ? Math.min(W * 0.9, W - 34) : W - 150;
   function geom(key) {
     const c = [cx0(), H * 0.5], n = [cx1(), H * 0.5], top = 64, bot = H - 64;
     switch (key) {
       case 'proxy': return [c, [W * 0.3, top - 44], [W * 0.7, top - 44], n];
       case 'direct': return [c, [W * 0.38, H * 0.6], [W * 0.62, H * 0.4], n];
       case 'zapret': return [c, [W * 0.3, bot + 30], [W * 0.7, bot + 30], n];
-      // Telegram — короткая веточка вниз: обходит подпись «Компьютер» слева и уходит вправо.
-      case 'tg': { const x = Math.max(10, c[0] - 70); return [c, [x, H * 0.62], [x, H * 0.93], [c[0] + 70, H * 0.93]]; }
+      // Telegram — короткая веточка вверх-влево, над веткой сервера: не задевает подписи «Компьютер».
+      case 'tg': return [c, [c[0] - 14, H * 0.22], [c[0] + 4, H * 0.1], [c[0] + 64, H * 0.09]];
     }
   }
   const bez = (p, t) => { const u = 1 - t; return [0, 1].map(i => u*u*u*p[0][i] + 3*u*u*t*p[1][i] + 3*u*t*t*p[2][i] + t*t*t*p[3][i]); };
@@ -92,11 +93,11 @@ const Branches = (() => {
     for (const l of d.lanes) {
       if (!l.node) continue;
       const flag = l.node.cc && d.flag ? d.flag(l.node.cc) : null;
-      const el = mk(l.key, l.key === 'tg' && !narrow() ? 'side' : '', ICONS[l.node.icon], l.node.title, l.node.sub, flag, () => d.onNode(l.key));
+      const el = mk(l.key, l.key === 'tg' ? 'side' : '', ICONS[l.node.icon], l.node.title, l.node.sub, flag, () => d.onNode(l.key));
       if (d.phase !== 'on' || !l.active) el.dataset.off = '';
       out.push(el);
     }
-    out.push(mk('net', 'end', ICONS.globe, 'Интернет', d.endSub));
+    out.push(mk('net', narrow() ? 'end' : 'side', ICONS.globe, 'Интернет', d.endSub));
     const comp = document.createElement('div'); comp.className = 'br-node comp'; comp.dataset.key = 'comp';
     comp.innerHTML = '<span class="br-txt"><b>Компьютер</b><small></small></span>';
     comp.querySelector('small').textContent = d.compSub;
@@ -124,9 +125,9 @@ const Branches = (() => {
     const now = Date.now(), d = data;
     if (d.phase !== 'on') { for (const lf of leaves.values()) lf.el.remove(); leaves.clear(); return; }
     for (const t of d.top) {
-      const host = (t.host || '').toLowerCase();
+      const host = t.key;
       const b = routeBranch(t.route);
-      if (!b || !host || /^[\d.:[\]]+$/.test(host) || !br[b] || !br[b].active) continue;
+      if (!b || !host || !br[b] || !br[b].active) continue;
       let lf = leaves.get(host);
       if (!lf) {
         if (leaves.size >= MAX_LEAVES) {
@@ -134,7 +135,7 @@ const Branches = (() => {
           let old = null; for (const x of leaves.values()) if (!old || x.seen < old.seen) old = x;
           if (old && now - old.seen > 4000) { old.el.remove(); leaves.delete(old.host); } else continue;
         }
-        lf = { host, b, pref: .2 + Math.random() * .6, side: Math.random() < .5 ? -1 : 1, seen: now };
+        lf = { host, label: t.label || host, b, pref: .2 + Math.random() * .6, side: Math.random() < .5 ? -1 : 1, seen: now, fresh: true };
         makeLeaf(lf); leaves.set(host, lf);
       }
       lf.seen = now;
@@ -150,7 +151,7 @@ const Branches = (() => {
     const el = document.createElement('button');
     el.type = 'button'; el.className = 'br-leaf';
     el.innerHTML = LEAF + '<span class="h"></span><span class="why"></span>';
-    el.querySelector('.h').textContent = data.displayDomain ? data.displayDomain(lf.host) : lf.host;
+    el.querySelector('.h').textContent = lf.label;
     lf.el = el; leavesEl.append(el); bindDrag(lf);
   }
   const BRANCH_NAME = { proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' };
@@ -158,13 +159,13 @@ const Branches = (() => {
     lf.el.style.setProperty('--c', br[lf.b] ? br[lf.b].color : 'var(--faint)');
     const why = lf.pending ? `Ваше новое правило: ${BRANCH_NAME[lf.pending.b]}. Заработает после переподключения.` : data.why(lf.host, lf.b);
     const w = lf.el.querySelector('.why');
-    if (w.dataset.t !== why) {
-      // Две части отдельными узлами — так их переводит английский интерфейс.
-      const a = document.createElement('span'), b = document.createElement('span');
-      a.textContent = why; b.textContent = ' Перетащите на другую ветку, чтобы изменить.';
-      w.replaceChildren(a, b); w.dataset.t = why;
+    const parts = [...[why].flat(), 'Перетащите на другую ветку, чтобы изменить.'], sig = parts.join('|');
+    if (w.dataset.t !== sig) {
+      // Каждая часть — отдельным узлом: так их переводит английский интерфейс.
+      w.replaceChildren(...parts.map(t => { const e = document.createElement('span'); e.textContent = t; return e; }));
+      w.dataset.t = sig;
     }
-    lf.el.setAttribute('aria-label', `${lf.host}: ${BRANCH_NAME[lf.b]}. Enter — перенести на другую ветку`);
+    lf.el.setAttribute('aria-label', `${lf.label}: ${BRANCH_NAME[lf.b]}. Enter — перенести на другую ветку`);
   }
 
   // Раскладка: каждый лист — в ближайшее свободное место у своей ветки, без наложений
@@ -205,7 +206,15 @@ const Branches = (() => {
       if (lf.over) over[lf.b] = (over[lf.b] || 0) + 1;
     }
     for (const lf of leaves.values()) {
-      if (lf.pos && !lf.el.classList.contains('drag')) lf.el.style.transform = `translate(${lf.pos[0] - lf.el.offsetWidth / 2}px, ${lf.pos[1] - lf.el.offsetHeight / 2}px)`;
+      if (lf.pos && !lf.el.classList.contains('drag')) {
+        const tr = `translate(${lf.pos[0] - lf.el.offsetWidth / 2}px, ${lf.pos[1] - lf.el.offsetHeight / 2}px)`;
+        if (lf.fresh) {
+          // Новый лист появляется сразу на своём месте (а не вылетает из угла) и проявляется.
+          lf.el.classList.add('born'); lf.el.style.transform = tr; void lf.el.offsetWidth;
+          requestAnimationFrame(() => lf.el.classList.remove('born'));
+          lf.fresh = false;
+        } else lf.el.style.transform = tr;
+      }
       lf.el.classList.toggle('up', !!lf.pos && lf.pos[1] > H * 0.6);
       lf.el.dataset.hidden = String(!!lf.over || !br[lf.b] || br[lf.b].grow < .6);
       lf.el.dataset.dead = String(!!data.offline);
