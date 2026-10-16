@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Настоящая подписка zieng2/wl (снимок в testdata): разбирается всё, кроме xHTTP,
+// Подписка в формате zieng2/wl (снимок в testdata, адреса и ключи заменены вымышленными): разбирается всё, кроме xHTTP,
 // и получившийся конфиг принимает sing-box.
 func TestWLSample(t *testing.T) {
 	raw, err := os.ReadFile("testdata/wl/sample.txt")
@@ -109,7 +109,7 @@ func TestConfigAllFeatures(t *testing.T) {
 			if out, err := exec.Command(sb, "check", "-c", p).CombinedOutput(); err != nil {
 				t.Fatalf("%s tun=%v: %s", mode, tun, out)
 			}
-			for _, want := range []string{`"tag":"wl"`, `"udp-auto"`, `geosite-category-ads-all`, `"lan-in"`, `"probe-wl"`, `"source_ip_is_private":false`} {
+			for _, want := range []string{`"tag":"wl"`, `"udp-auto"`, `geosite-category-ads-all`, `"lan-in"`, `"probe-wl"`, `"source_ip_is_private":true`, `"invert":true`, `"127.0.0.0/8"`} {
 				if !strings.Contains(js, want) {
 					t.Errorf("%s: нет %s", mode, want)
 				}

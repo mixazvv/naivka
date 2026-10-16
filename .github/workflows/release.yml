@@ -2,8 +2,8 @@
 #  - сменой номера в файле VERSION в ветке main (например 2.1.0 → тег v2.1.0, его создаст сам релиз);
 #  - тегом (git tag v2.1.0 && git push origin v2.1.0);
 #  - вручную: Actions → «Release» → Run workflow, указать тег.
-# Это сборка без подписи обновлений: в ней автообновление выключено. Подписанный релиз
-# с автообновлением выпускает утилита cmd/release на компьютере, где лежит ключ.
+# Сторонние действия закреплены по хешу коммита (а не по метке, которую можно перевесить):
+# этот сценарий выкладывает файлы, которые программа ставит пользователям по кнопке «Обновить».
 name: Release
 
 on:
@@ -29,7 +29,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Номер версии
         run: |
@@ -39,7 +41,7 @@ jobs:
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "Релиз $TAG"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
 
@@ -72,7 +74,7 @@ jobs:
           { printf '\xEF\xBB\xBF'; sed 's/$/\r/' assets/install-ru.txt; } > out/Naivka/README.txt
           (cd out && zip -qr Naivka-${{ env.TAG }}-windows.zip Naivka)
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.20.14"
 
@@ -91,7 +93,7 @@ jobs:
       - name: Контрольные суммы
         run: cd out && sha256sum *.zip > SHA256SUMS.txt
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
           name: Naivka ${{ env.TAG }}

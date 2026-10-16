@@ -47,6 +47,11 @@ func (a *App) apiMobileShare(*http.Request) (any, error) {
 	sh := &lanShare{token: randHex(16), until: time.Now().Add(shareTTL)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/"+sh.token+"/naivka.json", func(w http.ResponseWriter, r *http.Request) {
+		// Профиль с паролями отдаём только устройствам из домашней сети.
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err != nil || !net.ParseIP(host).IsPrivate() {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		sh.mu.Lock()
 		ok := time.Now().Before(sh.until) && sh.downloads < 3
 		if ok {

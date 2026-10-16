@@ -22,9 +22,12 @@ func sealSettings(s *Settings) *Settings {
 		}
 	}
 	for i := range c.Panels {
-		if p := &c.Panels[i].Pass; *p != "" && !strings.HasPrefix(*p, secretPrefix) {
-			if enc, err := protectSecret(*p); err == nil {
-				*p = enc
+		// Секретный путь и логин панели — такая же тайна, как пароль: по ним панель находят и подбирают.
+		for _, p := range []*string{&c.Panels[i].Pass, &c.Panels[i].Path, &c.Panels[i].User} {
+			if *p != "" && !strings.HasPrefix(*p, secretPrefix) {
+				if enc, err := protectSecret(*p); err == nil {
+					*p = enc
+				}
 			}
 		}
 	}
@@ -50,12 +53,14 @@ func openSettings(s *Settings) []string {
 		}
 	}
 	for i := range s.Panels {
-		if p := &s.Panels[i].Pass; strings.HasPrefix(*p, secretPrefix) {
-			if plain, err := unprotectSecret(*p); err == nil {
-				*p = plain
-			} else {
-				*p = ""
-				problems = append(problems, fmt.Sprintf("панель %s: пароль не расшифровался — сбросьте его на сервере", s.Panels[i].Host))
+		for _, p := range []*string{&s.Panels[i].Pass, &s.Panels[i].Path, &s.Panels[i].User} {
+			if strings.HasPrefix(*p, secretPrefix) {
+				if plain, err := unprotectSecret(*p); err == nil {
+					*p = plain
+				} else {
+					*p = ""
+					problems = append(problems, fmt.Sprintf("панель %s: данные входа не расшифровались — сбросьте их на сервере", s.Panels[i].Host))
+				}
 			}
 		}
 	}

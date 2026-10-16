@@ -35,4 +35,8 @@ func setAutostart(enable, elevated bool) error {
 
 func openURL(u string) { fmt.Println("Откройте:", u) }
 
-func allowLANPort(int) error { return fmt.Errorf("только в Windows") }
+func allowLANPort(int, string) error { return fmt.Errorf("только в Windows") }
+
+func restrictDir(string)           {}
+func exeProtected(string) bool     { return false }
+func fixUnsafeAutostart(*Settings) {}

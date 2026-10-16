@@ -203,7 +203,7 @@ func protectedBase() string {
 	if !isAdmin() {
 		return ""
 	}
-	pf := os.Getenv("ProgramFiles")
+	pf := programFilesDir()
 	if pf == "" {
 		return ""
 	}

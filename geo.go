@@ -35,10 +35,9 @@ type geoProvider struct {
 	parse func([]byte) (*GeoInfo, error)
 }
 
-const ipAPIFields = "status,message,country,countryCode,city,lat,lon,isp,org,as,query,hosting"
-
-// Сначала сервисы с HTTPS: запрос с вашим IP и адресами серверов не идёт открытым текстом.
-// ip-api.com бесплатно отвечает только по HTTP, поэтому он последний запасной.
+// Только сервисы с HTTPS: запрос с вашим IP и адресами серверов не идёт открытым текстом —
+// провайдер (и его оборудование блокировок) не видит, к каким серверам вы подключаетесь.
+// ip-api.com бесплатно отвечает только по HTTP, поэтому его здесь нет.
 var geoProviders = []geoProvider{
 	{
 		name: "ipwho.is",
@@ -110,47 +109,6 @@ var geoProviders = []geoProvider{
 			return g, nil
 		},
 	},
-	{
-		name: "ip-api.com",
-		url: func(ip string) string {
-			return "http://ip-api.com/json/" + url.PathEscape(ip) + "?lang=ru&fields=" + ipAPIFields
-		},
-		parse: parseIPAPI,
-	},
-}
-
-func parseIPAPI(b []byte) (*GeoInfo, error) {
-	var v struct {
-		Status      string  `json:"status"`
-		Message     string  `json:"message"`
-		Query       string  `json:"query"`
-		Country     string  `json:"country"`
-		CountryCode string  `json:"countryCode"`
-		City        string  `json:"city"`
-		Lat         float64 `json:"lat"`
-		Lon         float64 `json:"lon"`
-		ISP         string  `json:"isp"`
-		Org         string  `json:"org"`
-		AS          string  `json:"as"` // «AS13335 Cloudflare, Inc.»
-		Hosting     *bool   `json:"hosting"`
-	}
-	if err := json.Unmarshal(b, &v); err != nil {
-		return nil, err
-	}
-	if v.Status != "success" {
-		if v.Message == "" {
-			v.Message = "сервис не нашёл адрес"
-		}
-		return nil, errors.New(v.Message)
-	}
-	g := &GeoInfo{IP: v.Query, Country: v.Country, CountryCode: v.CountryCode, City: v.City, ISP: v.ISP, Hosting: v.Hosting, Lat: v.Lat, Lon: v.Lon}
-	if g.ISP == "" {
-		g.ISP = v.Org
-	}
-	if i := strings.IndexByte(v.AS, ' '); i > 0 {
-		g.ASN = v.AS[:i]
-	}
-	return g, nil
 }
 
 // geoClient — HTTP-клиент: напрямую (proxyPort == 0) или через служебный вход sing-box.

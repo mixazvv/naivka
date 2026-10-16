@@ -363,9 +363,13 @@ func (c *Core) Start(s *Settings) (err error) {
 	}
 	b, _ := json.MarshalIndent(cfg, "", "  ")
 	cfgPath := filepath.Join(c.runDir(), "config.json")
+	restrictDir(c.runDir())
 	if err := os.WriteFile(cfgPath, b, 0o600); err != nil {
 		return err
 	}
+	// В конфиге все пароли открытым текстом. sing-box читает его один раз при запуске —
+	// после этого (или при ошибке) файл не нужен и не должен лежать на диске.
+	defer os.Remove(cfgPath)
 
 	// Проверяем конфиг заранее — так ошибка будет понятной.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -702,7 +706,14 @@ func sanitizePaths(v any, allowed string) []string {
 			for k, val := range n {
 				// В транспортах (WebSocket, HTTPUpgrade, HTTP) path — часть адреса на сервере, а не файл.
 				isTransport := strings.HasSuffix(path, ".transport")
-				if s, ok := val.(string); ok && !isTransport && (k == "path" || k == "output" || strings.HasSuffix(k, "_path")) {
+				// Скачивание и раздача папок (панель Clash) с правами администратора — запрещены вовсе.
+				if k == "external_ui" || k == "external_ui_download_url" || k == "external_ui_download_detour" {
+					delete(n, k)
+					removed = append(removed, path+"."+k)
+					continue
+				}
+				if s, ok := val.(string); ok && !isTransport && (k == "path" || k == "output" || strings.HasSuffix(k, "_path") ||
+					k == "directory" || strings.HasSuffix(k, "_directory") || strings.HasSuffix(k, "_dir")) {
 					if !strings.HasPrefix(filepath.Clean(s), filepath.Clean(allowed)+string(filepath.Separator)) {
 						delete(n, k)
 						removed = append(removed, path+"."+k)

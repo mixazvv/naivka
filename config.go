@@ -321,7 +321,16 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	rules := []any{M{"action": "sniff"}}
 	if s.Share.Enabled && !env.Mobile {
 		// раздача — только для устройств домашней сети
-		rules = append(rules, M{"inbound": []any{"lan-in"}, "source_ip_is_private": false, "action": "reject"})
+		// (в sing-box «source_ip_is_private: false» значит «условие не задано» — правило отклоняло бы
+		// вообще всё; нужное «адрес не из частной сети» записывается через invert)
+		rules = append(rules, M{"inbound": []any{"lan-in"}, "source_ip_is_private": true, "invert": true, "action": "reject"})
+		// …и только в интернет и локальную сеть, но не к службам самого компьютера (127.0.0.1):
+		// они рассчитаны на то, что к ним ходят только с этого компьютера. Имя сначала узнаём,
+		// чтобы не пройти через имя, которое указывает на 127.0.0.1.
+		rules = append(rules,
+			M{"inbound": []any{"lan-in"}, "domain_suffix": []any{"localhost"}, "action": "reject"},
+			M{"inbound": []any{"lan-in"}, "action": "resolve"},
+			M{"inbound": []any{"lan-in"}, "ip_cidr": []any{"127.0.0.0/8", "0.0.0.0/8", "::1/128", "::/128"}, "action": "reject"})
 	}
 	probeTags := make([]string, 0, len(env.ServerProbes))
 	for tag := range env.ServerProbes {
