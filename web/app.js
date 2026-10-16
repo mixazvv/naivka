@@ -123,6 +123,12 @@ const serverById = id => S.servers.find(x => x.id === id);
 let WL = null; // состояние подписки «белые списки»
 let SELF = null; // номер версии Naivka
 async function refreshSelf() { if (SELF) return; try { SELF = await api('/api/self'); } catch (_) { /* не важно */ } }
+let APPUP = null; // обновление самой Naivka: {installed, latest, newer, busy, done, total, error}
+async function refreshAppUpdate() {
+  try { APPUP = await api('/api/app/update'); } catch (_) { return; }
+  updateStatus();
+  if (view === 'settings') patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox);
+}
 const wlName = tag => WL && WL.names && WL.names[tag];
 const serverByTag = tag => {
   if (tag && tag.startsWith('s-')) return serverById(tag.slice(2));
@@ -451,6 +457,7 @@ async function tick() {
     if (view === 'bypass' || tickN % 4 === 0) await refreshAddons();
     if (S && S.wl && S.wl.enabled && (view === 'servers' ? tickN % 3 === 0 : tickN % 20 === 2)) { await refreshWL(); if (view === 'servers') renderServers(); }
     if (view === 'diag' && diagTab === 'speed') await refreshSpeed();
+    if ((APPUP && APPUP.busy) || tickN % 600 === 5) await refreshAppUpdate();
   } finally {
     setTimeout(tick, 1000);
   }
@@ -520,7 +527,7 @@ function updateStatus() {
     btn.title = powerLabel(p) + ' (Ctrl+Enter)';
     renderTiles();
     renderReady();
-    const n = [ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null)].join('|');
+    const n = [ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null), JSON.stringify(APPUP)].join('|');
     patch('notices', n, buildNotices);
     renderLanes();
   }
@@ -563,6 +570,8 @@ function notice(kind, text, action) {
 
 function buildNotices() {
   const out = [];
+  const up = appUpdateNotice();
+  if (up) out.push(up);
   if (!S.servers.length) out.push(notice('info', 'Сначала добавьте сервер.', h('button', { class: 'btn small', onclick: () => go('servers') }, 'Добавить сервер')));
   if (!ST.core.present) out.push(notice('warn', 'Ядро sing-box ещё не скачано.', h('button', { class: 'btn small', onclick: () => go('settings') }, 'Перейти к загрузке')));
   if (ST.core.present && !ST.core.naive && S.servers.some(x => x.type === 'naive')) {
@@ -743,7 +752,7 @@ function refreshView(v = view) {
   if (v === 'own') renderOwn();
   if (v === 'rules') { renderRules(); renderLists(); renderSmart(); }
   if (v === 'bypass') refreshAddons();
-  if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify(SELF), selfBox)); }
+  if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
 }
 
@@ -2887,7 +2896,8 @@ function viewSettings() {
 
     h('h2', null, 'О программе'),
     h('div', { id: 'selfBox' }),
-    h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: openFeedback }, 'Написать автору в Telegram'),
+    h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: openGuide }, 'Как пользоваться'),
+      h('button', { class: 'btn', onclick: openFeedback }, 'Написать автору в Telegram'),
       h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
 
     h('h2', null, 'Язык · Language'),
@@ -3082,6 +3092,7 @@ async function boot() {
   $('#drawerClose').addEventListener('click', () => go('overview'));
   $('#scrim').addEventListener('click', () => go('overview'));
   $('#feedbackBtn').addEventListener('click', openFeedback);
+  $('#helpBtn').addEventListener('click', openGuide);
   try { S = await api('/api/settings'); }
   catch (e) { setOffline(true); setOffline(true); setOffline(true); return; }
   // Язык хранится в настройках; страница узнаёт его до загрузки из localStorage, чтобы не мигать русским.
@@ -3133,6 +3144,10 @@ async function boot() {
   view = 'overview';
   go(first);
   tick();
+  refreshAppUpdate();
+  let seen = true;
+  try { seen = !!localStorage.getItem('naivka-guide'); } catch (_) { /* не показываем */ }
+  if (!seen && !S.servers.length) setTimeout(openGuide, 600);
 }
 
 
@@ -3736,10 +3751,79 @@ async function pickServer(id) {
   renderServers();
 }
 
-// ---------- о программе ----------
+// ---------- о программе и обновление ----------
 function selfBox() {
   if (!SELF) return h('p', { class: 'hint' }, 'Загружаю…');
-  return h('p', null, SELF.version === 'dev' ? 'Naivka, сборка для разработки.' : `Naivka ${SELF.version}. Новые версии выходят на странице релизов на GitHub.`);
+  if (SELF.version === 'dev') return h('p', null, 'Naivka, сборка для разработки.');
+  const u = APPUP;
+  let state = 'Новые версии проверяются сами раз в 12 часов, если включено «Проверять обновления».';
+  if (u && u.busy) state = u.busy === 'install' ? 'Устанавливаю обновление…' : `Скачиваю Naivka ${u.latest}…`;
+  else if (u && u.newer) state = `Вышла Naivka ${u.latest}. Настройки и серверы сохранятся.`;
+  else if (u && u.latest) state = 'Установлена последняя версия.';
+  return h('div', null,
+    h('p', null, h('b', null, `Naivka ${SELF.version}`), '. ', state),
+    u && u.error ? h('p', { class: 'err-text' }, u.error) : null,
+    h('div', { class: 'row' },
+      u && u.newer
+        ? h('button', { class: 'btn primary', disabled: !!u.busy, onclick: installAppUpdate }, `Обновить до ${u.latest}`)
+        : h('button', { class: 'btn', onclick: async e => {
+          e.target.disabled = true;
+          try { APPUP = await api('/api/app/update/check', {}); toast(APPUP.newer ? `Вышла Naivka ${APPUP.latest}` : 'Установлена последняя версия'); }
+          catch (err) { toast(err.message, true); }
+          finally { e.target.disabled = false; refreshAppUpdate(); }
+        } }, 'Проверить обновления'),
+      h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')));
+}
+
+function appUpdateNotice() {
+  const u = APPUP;
+  if (!u || !(u.newer || u.busy)) return null;
+  if (u.busy) {
+    const pct = u.total > 0 ? ` ${Math.round(u.done / u.total * 100)}%` : '';
+    return notice('info', u.busy === 'install' ? 'Устанавливаю обновление и перезапускаю Naivka…' : `Скачиваю Naivka ${u.latest}…${pct}`);
+  }
+  if (u.error) {
+    return notice('error', h('span', null, h('b', null, 'Не удалось обновить. '), u.error.charAt(0).toUpperCase() + u.error.slice(1)),
+      h('div', { class: 'row', style: 'flex-wrap:nowrap' },
+        h('button', { class: 'btn small', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Скачать вручную'),
+        h('button', { class: 'btn small primary', onclick: installAppUpdate }, 'Повторить')));
+  }
+  return notice('info', h('span', null, h('b', null, `Вышла Naivka ${u.latest}. `), `У вас ${u.installed}. Настройки и серверы сохранятся.`),
+    h('div', { class: 'row', style: 'flex-wrap:nowrap' },
+      h('button', { class: 'btn small', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового'),
+      h('button', { class: 'btn small primary', onclick: installAppUpdate }, 'Обновить')));
+}
+
+async function installAppUpdate() {
+  try {
+    await saveNow();
+    APPUP = await api('/api/app/update/install', {});
+    toast('Скачиваю обновление — Naivka перезапустится сама');
+  } catch (e) { toast(e.message, true); }
+  refreshAppUpdate();
+}
+
+// ---------- как пользоваться ----------
+function openGuide() {
+  try { localStorage.setItem('naivka-guide', '1'); } catch (_) { /* не важно */ }
+  let dlg;
+  const goto = v => () => { dlg.close(); go(v); };
+  const step = (title, text, action) => h('li', null, h('b', null, title), h('p', null, text), action || null);
+  const needCore = ST && !ST.core.present;
+  dlg = openDialog(
+    h('h2', null, 'Как пользоваться Naivka'),
+    h('ol', { class: 'guide' },
+      needCore ? step('Скачайте ядро.', 'Один раз после установки: «Настройки» → «Ядро sing-box» → «Скачать ядро». Это движок, через который идёт трафик.',
+        h('button', { class: 'btn small', onclick: goto('settings') }, 'Открыть «Настройки»')) : null,
+      step('Добавьте сервер.', 'Скопируйте ссылку, которую вам дали (начинается с naive+https://, vless://, hysteria2:// и т. п.). Откройте «Серверы» → «Вставить ссылки» и вставьте её.',
+        h('button', { class: 'btn small', onclick: goto('servers') }, 'Открыть «Серверы»')),
+      step('Нажмите большую кнопку на главном экране.', 'Когда она светится и написано «Подключено» — всё работает. Российские сайты идут напрямую, заблокированные — через сервер, Naivka решает это сама.'),
+      step('YouTube и Discord без сервера — по желанию.', '«Обход» → включите zapret. Windows спросит разрешение — нажмите «Да». Если какой-то сайт не открывается, нажмите там «Подобрать автоматически».',
+        h('button', { class: 'btn small', onclick: goto('bypass') }, 'Открыть «Обход»')),
+      step('Закройте другие VPN.', 'Karing, Hiddify, v2rayN, Happ, AmneziaVPN и подобные нельзя запускать вместе с Naivka — две такие программы ломают интернет друг другу. Naivka предупредит, если найдёт такую.'),
+      step('Если что-то не работает.', '«Сводка» → «Журнал» → «Собрать отчёт» и отправьте файл автору через «Обратную связь».'),
+      step('Обновления.', 'Когда выйдет новая версия, на главном экране появится кнопка «Обновить». Нажмите — Naivka скачает её и перезапустится сама, настройки и серверы сохранятся.')),
+    h('div', { class: 'row end mt' }, h('button', { class: 'btn primary', onclick: () => dlg.close() }, 'Понятно')));
 }
 
 // ---------- флаги стран ----------

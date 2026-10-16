@@ -243,6 +243,7 @@ func (a *App) updatesLoop() {
 	for {
 		if a.settingsCopy().UpdateCheck {
 			a.checkUpdates(true)
+			_ = a.self.check(a, true)
 		}
 		time.Sleep(12 * time.Hour)
 	}

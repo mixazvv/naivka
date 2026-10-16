@@ -67,6 +67,9 @@ jobs:
           go build -mod=vendor -trimpath -ldflags "-H windowsgui $LD" -o out/Naivka/Naivka.exe .
           go build -mod=vendor -trimpath -ldflags "$LD" -o out/Naivka/Naivka-debug.exe .
           printf 'Если рядом с программой лежит этот файл, настройки и ядро хранятся в папке Naivka-data рядом с ней.\r\n' > out/Naivka/portable.txt
+          # Инструкция для тех, кто открыл архив: UTF-8 с BOM и CRLF, чтобы читалась и в Блокноте Windows 7.
+          # Имя латиницей: zip не помечает кириллицу как UTF-8, и Проводник показал бы кракозябры.
+          { printf '\xEF\xBB\xBF'; sed 's/$/\r/' assets/install-ru.txt; } > out/Naivka/README.txt
           (cd out && zip -qr Naivka-${{ env.TAG }}-windows.zip Naivka)
 
       - uses: actions/setup-go@v5
@@ -80,6 +83,7 @@ jobs:
           LD: -s -w -H windowsgui -X main.appVersion=${{ env.TAG }}
         run: |
           mkdir -p out/Naivka-win7
+          { printf '\xEF\xBB\xBF'; sed 's/$/\r/' assets/install-ru.txt; } > out/Naivka-win7/README.txt
           GOARCH=amd64 go build -modfile=go.legacy.mod -mod=mod -tags legacy -trimpath -ldflags "$LD" -o out/Naivka-win7/Naivka-win7-64.exe .
           GOARCH=386 go build -modfile=go.legacy.mod -mod=mod -tags legacy -trimpath -ldflags "$LD" -o out/Naivka-win7/Naivka-win7-32.exe .
           (cd out && zip -qr Naivka-${{ env.TAG }}-windows7.zip Naivka-win7)
@@ -95,14 +99,21 @@ jobs:
           prerelease: ${{ inputs.prerelease == true }}
           make_latest: true
           body: |
-            Сборка из исходников (${{ github.sha }}).
+            **Уже стоит Naivka?** Ничего скачивать не нужно: на главном экране программы появится
+            «Вышла Naivka ${{ env.TAG }}» — нажмите «Обновить», она обновится и перезапустится сама.
+            Настройки и серверы сохранятся. (Версии до 2.3.4 так не умеют — один раз скачайте архив
+            ниже и распакуйте поверх старой папки.)
 
-            - `Naivka-${{ env.TAG }}-windows.zip` — Windows 10 и 11, 64 бита. Распакуйте и запустите `Naivka.exe`;
-              ядро sing-box программа предложит скачать при первом запуске.
-            - `Naivka-${{ env.TAG }}-windows7.zip` — Windows 7 и 8, 64 и 32 бита.
-            - `SHA256SUMS.txt` — контрольные суммы архивов.
+            **Первая установка**
+            1. Скачайте архив ниже: `Naivka-${{ env.TAG }}-windows.zip` — Windows 10 и 11;
+               `Naivka-${{ env.TAG }}-windows7.zip` — Windows 7 и 8.
+            2. Распакуйте его целиком в удобную папку, например на рабочий стол (правой кнопкой → «Извлечь всё»).
+               Из архива не запускайте — настройки не сохранятся.
+            3. Запустите `Naivka.exe`. Если Windows покажет «Система Windows защитила ваш компьютер» —
+               «Подробнее» → «Выполнить в любом случае» (программа не подписана сертификатом).
+            4. Откроется подсказка «Как пользоваться»: добавьте сервер по ссылке и нажмите большую кнопку.
 
-            Файлы не подписаны сертификатом: Windows SmartScreen может предупредить при первом запуске.
+            `SHA256SUMS.txt` — контрольные суммы архивов. Сборка из исходников (${{ github.sha }}).
           files: |
             out/*.zip
             out/SHA256SUMS.txt
