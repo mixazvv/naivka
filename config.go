@@ -24,6 +24,14 @@ const (
 )
 
 // zapretDNS — через какой DNS узнавать адреса сайтов zapret: напрямую, пока zapret справляется.
+const (
+	tagDNSYouTube = "dns-youtube"
+	googleDNSIP   = "8.8.8.8"
+)
+
+// youtubeDomains — сайты YouTube, чьи адреса узнаём у DNS Google (ConfigEnv.YouTubeDNS).
+var youtubeDomains = []any{"googlevideo.com", "youtube.com", "ytimg.com", "youtu.be", "ggpht.com", "youtube-nocookie.com", "youtubei.googleapis.com"}
+
 func zapretDNS(env ConfigEnv) string {
 	if env.ZapretActive {
 		return tagDNSDirect
@@ -92,6 +100,9 @@ type ConfigEnv struct {
 	InlineLists map[string]*inlineList
 	// DNSFallback — прямой DoH/DoT перестал отвечать: вместо него обычный DNS (dnsguard.go).
 	DNSFallback bool
+	// YouTubeDNS — адреса YouTube узнавать у DNS Google напрямую (dnsguard.go): DNS Яндекса
+	// отвечает «нет такого адреса» на часть видеосерверов, и видео подвисает.
+	YouTubeDNS bool
 	// SmartDir — папка со списками автоопределения (smart.go); "" — автоопределение выключено.
 	SmartDir string
 }
@@ -465,6 +476,9 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		rules = append(rules, M{"domain_suffix": strs(env.ZapretDomains), "outbound": out})
 		// Адреса этих сайтов узнаём там же, откуда к ним пойдём: иначе DNS через сервер
 		// отдаёт зарубежный узел (YouTube, Discord), и напрямую до него далеко и медленно.
+		if env.YouTubeDNS && zapretDNS(env) == tagDNSDirect {
+			dnsRules = append(dnsRules, M{"domain_suffix": youtubeDomains, "server": tagDNSYouTube})
+		}
 		dnsRules = append(dnsRules, M{"domain_suffix": strs(env.ZapretDomains), "server": zapretDNS(env)})
 	}
 
@@ -634,6 +648,10 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 	if !isIP(host) {
 		dnsRemote["domain_resolver"] = tagDNSDirect
+	}
+	if env.YouTubeDNS {
+		// DoH Google по IP: сертификат выписан и на 8.8.8.8, отдельный DNS для его имени не нужен.
+		dnsServers = append(dnsServers, M{"type": "https", "tag": tagDNSYouTube, "server": googleDNSIP})
 	}
 	dns := M{
 		"servers": append([]any{dnsDirect, dnsRemote}, dnsServers...),

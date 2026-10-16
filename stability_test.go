@@ -587,3 +587,41 @@ func TestSmartObserveAndLists(t *testing.T) {
 		t.Fatal("Forget")
 	}
 }
+
+func TestYouTubeDNS(t *testing.T) {
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Type: "naive", Name: "A", Host: "a.example", Port: 443, Username: "u", Password: "p"}}
+	s.Selected = "a"
+	s.Zapret.Enabled = true
+	env := ConfigEnv{ZapretActive: true, ZapretRoute: true, ZapretDomains: []string{"youtube.com", "googlevideo.com", "discord.com"}, YouTubeDNS: true}
+	cfg, err := BuildConfig(s, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(cfg["dns"])
+	js := string(b)
+	iYT := strings.Index(js, `"server":"`+tagDNSYouTube+`"`)
+	iZap := strings.Index(js, `"domain_suffix":["youtube.com","googlevideo.com","discord.com"]`)
+	if iYT < 0 || iZap < 0 || iYT > iZap || !strings.Contains(js, `"tag":"dns-youtube"`) {
+		t.Fatalf("DNS YouTube: правило %d, zapret %d: %s", iYT, iZap, js)
+	}
+	if bin := os.Getenv("SINGBOX"); bin != "" {
+		full, _ := json.Marshal(cfg)
+		p := filepath.Join(t.TempDir(), "c.json")
+		os.WriteFile(p, full, 0o600)
+		if out, err := exec.Command(bin, "check", "-c", p).CombinedOutput(); err != nil {
+			t.Fatalf("sing-box check: %v %s", err, out)
+		}
+	}
+	// zapret не справляется (сайты через сервер) — адреса YouTube как раньше, через сервер.
+	env.ZapretActive = false
+	cfg, _ = BuildConfig(s, env)
+	b, _ = json.Marshal(cfg["dns"].(M)["rules"])
+	if strings.Contains(string(b), tagDNSYouTube) {
+		t.Fatal("YouTube через сервер, а DNS — Google напрямую")
+	}
+	if !ytLookupFail.MatchString("connection: open connection to rr1---sn-ab5sznzd.googlevideo.com:443 using outbound/selector[zapret-out]: lookup rr1---sn-ab5sznzd.googlevideo.com: unexpected EOF") ||
+		ytLookupFail.MatchString("lookup rr1---sn-ab5sznzd.googlevideo.com: NXDOMAIN") {
+		t.Fatal("ytLookupFail")
+	}
+}

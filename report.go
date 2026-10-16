@@ -76,6 +76,7 @@ func (a *App) buildReport() string {
 	line("Telegram (tg-ws-proxy): включён %v, работает %v", s.Telegram.Enabled, a.tgws.Running())
 	line("Xray (xHTTP): работает %v", a.xray.Running())
 	line("Запасной DNS вместо прямого: %v", a.dnsg.fallback.Load())
+	line("DNS Google для YouTube: %v", a.ytdns.active.Load() && !a.ytdns.off.Load())
 	if sv := a.smart.View(); smartOn(s) {
 		line("Автоопределение: напрямую %d сайтов, через сервер %d", sv.Direct, sv.Proxy)
 	}
