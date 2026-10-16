@@ -45,7 +45,10 @@ const Branches = (() => {
     nodesEl = document.createElement('div'); nodesEl.className = 'br-nodes';
     leavesEl = document.createElement('div'); leavesEl.className = 'br-leaves';
     box.prepend(cv); box.append(nodesEl, leavesEl);
-    leaves.clear();
+    // Экран собран заново (ушли в другой раздел и вернулись) — всё рисуем с нуля:
+    // иначе узлы считались бы уже нарисованными и пропадали.
+    leaves.clear(); nodesSig = ''; growKey = ''; data = null;
+    for (const k in br) delete br[k];
     ro = new ResizeObserver(resize); ro.observe(box);
     resize();
     raf = requestAnimationFrame(frame);
@@ -61,6 +64,7 @@ const Branches = (() => {
   function resize() {
     if (!box) return;
     const r = box.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return; // окно скрыто (в трее) — размер узнаем, когда покажется
     W = r.width; H = r.height; dpr = Math.min(2, devicePixelRatio || 1);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     box.classList.toggle('small', narrow());
@@ -73,8 +77,8 @@ const Branches = (() => {
   let nodesSig = '';
   function renderNodes() {
     const d = data, sig = JSON.stringify([d.phase, d.lanes.map(l => [l.key, l.node && [l.node.title, l.node.sub, l.node.cc], l.active]), d.endSub, d.compSub, narrow()]);
-    if (sig === nodesSig) return;
-    nodesSig = sig;
+    // Узлы на месте и подпись та же — ничего не делаем. Пропали (окно пересобрали, сбой) — рисуем заново.
+    if (sig === nodesSig && nodesEl.isConnected && nodesEl.querySelector('[data-key="comp"]')) return;
     const mk = (key, cls, iconPath, title, sub, extra, click) => {
       const el = document.createElement(click ? 'button' : 'div');
       if (click) { el.type = 'button'; el.addEventListener('click', click); el.title = key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»'; }
@@ -103,6 +107,7 @@ const Branches = (() => {
     comp.querySelector('small').textContent = d.compSub;
     out.push(comp);
     nodesEl.replaceChildren(...out);
+    nodesSig = sig; // только после успешной сборки: при сбое на следующем обновлении соберём снова
     placeNodes();
   }
   function placeNodes() {
@@ -285,7 +290,7 @@ const Branches = (() => {
   function shape(k, time) {
     const b = br[k], p = geom(k), steps = 80, until = Math.max(2, Math.floor(steps * b.grow));
     const kb = Math.max(0, b.speed) / 1024;
-    const w0 = b.active ? 3 + Math.min(12, Math.sqrt(kb) * 0.55) : 2.5, w1 = Math.max(1.8, w0 * 0.45);
+    const w0 = b.thin ? 2.2 : b.active ? 3 + Math.min(12, Math.sqrt(kb) * 0.55) : 2.5, w1 = Math.max(1.8, w0 * 0.45);
     const L = [], R = [], off = data.offline;
     for (let i = 0; i <= until; i++) {
       const t = i / steps, pt = bez(p, t), n = norm(p, t);
@@ -307,7 +312,8 @@ const Branches = (() => {
     for (let i = R.length - 1; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
     ctx.closePath(); ctx.fillStyle = col;
     if (!dead) { ctx.shadowColor = col; ctx.shadowBlur = dragOver === k ? 26 : 12; }
-    ctx.globalAlpha = dead ? .55 : (dragOver && dragOver !== k ? .4 : 1);
+    // «Всё через сервер»: прямая ветка остаётся целой, но тонкой и бледной — по ней идёт только локальная сеть и ваши правила.
+    ctx.globalAlpha = dead ? .55 : b.thin ? .35 : (dragOver && dragOver !== k ? .4 : 1);
     ctx.fill(); ctx.restore();
     if (!dead && w0 > 6) {
       ctx.beginPath();
@@ -356,14 +362,19 @@ const Branches = (() => {
   function update(container, d) {
     mount(container, d);
     data = d;
+    // Размер схемы сверяем каждую секунду, а не только по ResizeObserver: после сворачивания в трей
+    // и разворачивания WebView не всегда сообщает о новом размере — ветки и узлы съезжали.
+    const r = box.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0 && (Math.abs(r.width - W) > 1 || Math.abs(r.height - H) > 1)) resize();
     const keys = new Set(d.lanes.map(l => l.key));
     for (const l of d.lanes) {
       const b = br[l.key] || (br[l.key] = { grow: 0, speed: 0 });
       Object.assign(b, { color: l.color, active: l.active, want: l.active ? l.speed : 0, wilt: l.wilt,
-        target: d.phase === 'on' || l.key === 'direct' ? (l.thin ? 0.16 : 1) : 0 });
+        thin: !!l.thin, target: d.phase === 'on' || l.key === 'direct' ? 1 : 0 });
     }
     for (const k in br) if (!keys.has(k)) br[k].target = 0;
-    renderNodes();
+    try { renderNodes(); } catch (e) { nodesSig = ''; console.error('branches: nodes', e); }
+    placeNodes();
     syncLeaves();
     layout();
     return overflow;
