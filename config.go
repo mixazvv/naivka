@@ -674,6 +674,21 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	if !isIP(host) {
 		dnsRemote["domain_resolver"] = tagDNSDirect
 	}
+	if s.TwitchAdFree && (s.Mode == "tun" || env.Mobile) {
+		// В режиме TUN программа подключается к IP-адресу, а прокси TTV LOL пускает только по имени
+		// сайта (на IP отвечает 403 — плейлисты Twitch не грузятся). Для плейлистов Twitch DNS отдаёт
+		// подставной адрес (fakeip): по нему ядро знает имя сайта и передаёт прокси именно его.
+		fake := M{"type": "fakeip", "tag": "dns-twitch", "inet4_range": "198.18.0.0/15"}
+		if !s.IPv4Only {
+			fake["inet6_range"] = "fc00::/18"
+		}
+		dnsServers = append(dnsServers, fake)
+		r := M{"query_type": []any{"A", "AAAA"}, "server": "dns-twitch"}
+		for k, v := range twitchPlaylistRule {
+			r[k] = v
+		}
+		dnsRules = append([]any{r}, dnsRules...)
+	}
 	dns := M{
 		"servers": append([]any{dnsDirect, dnsRemote}, dnsServers...),
 		"final":   dnsFinal,
