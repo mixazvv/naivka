@@ -2845,7 +2845,6 @@ function buildCoreBox() {
   }, c.present ? 'Обновить до последней версии' : 'Скачать ядро');
   out.push(h('div', { class: 'row' }, btn, ST.running && h('span', { class: 'hint' }, 'Отключитесь, чтобы обновить ядро.')));
   out.push(h('p', { class: 'hint mt' }, (ST.portable ? 'Портативный режим. Данные: ' : 'Данные: ') + ST.dataDir));
-  if (ST.portable) out.push(notice('warn', 'В портативном режиме пароли серверов хранятся в папке Naivka-data без шифрования (иначе их нельзя было бы открыть на другом компьютере). Не держите её на общем компьютере или флешке, которую дают другим.'));
   return out;
 }
 

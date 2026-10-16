@@ -86,8 +86,14 @@ func main() {
 		return
 	}
 
-	encryptSecrets = runtime.GOOS == "windows" && !portable
+	// Пароли шифруются всегда, и в портативном режиме тоже: на другом компьютере их придётся
+	// ввести заново (или перенести настройки резервной копией), зато папку с ними не прочитать.
+	encryptSecrets = runtime.GOOS == "windows"
 	s, serr := LoadSettings(dir)
+	// Пароли, сохранённые прежними версиями открытым текстом, сразу шифруем.
+	if serr == nil && encryptSecrets {
+		_ = SaveSettings(dir, s)
+	}
 
 	// TUN и zapret требуют прав администратора — перезапускаемся сразу, до всего остального.
 	if runtime.GOOS == "windows" && s.needsAdmin() && !isAdmin() && !args["--no-elevate"] {
