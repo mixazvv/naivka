@@ -177,9 +177,6 @@ func classify(chains []string) (route string, direct bool) {
 		if c == tagDirect {
 			return tagDirect, true
 		}
-		if c == tagTwitch {
-			return tagTwitch, false
-		}
 	}
 	if len(chains) > 0 {
 		return chains[0], false
@@ -231,7 +228,7 @@ func (m *Monitor) refreshZapretSet(s *Settings) {
 // trafficServerKey — под каким ключом истории считать трафик через сервер.
 func trafficServerKey(route string) string {
 	switch {
-	case strings.HasPrefix(route, "s-"), route == tagTwitch:
+	case strings.HasPrefix(route, "s-"):
 		return route
 	case route == "wl", strings.HasPrefix(route, "w-"):
 		return "wl"

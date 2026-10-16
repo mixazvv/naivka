@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,12 +41,10 @@ func TestConfigsWithSingbox(t *testing.T) {
 		{"zapret+tg", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretActive: true, ZapretDomains: []string{"youtube.com", "discord.com"}, TgWsProxy: true}},
 		{"zapret-route", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretActive: true, ZapretRoute: true, ZapretDomains: []string{"youtube.com", "discord.com"}}},
 		{"zapret-route-off", "proxy", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretRoute: true, ZapretDomains: []string{"youtube.com"}}},
-		{"twitch", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db"}},
-		{"twitch-mobile", "proxy", ConfigEnv{Mobile: true}},
+		{"adblock", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db"}},
 	} {
 		s := DefaultSettings()
-		s.TwitchAdFree = strings.HasPrefix(c.name, "twitch")
-		s.AdBlock = c.name == "twitch"
+		s.AdBlock = c.name == "adblock"
 		s.Servers = servers
 		s.Mode = c.mode
 		s.Rules = []Rule{{"process", "Telegram.exe", "proxy"}, {"domain", "youtube.com", "proxy"}, {"domain", "rutracker.org", "zapret"}}
@@ -76,58 +73,6 @@ func TestConfigsWithSingbox(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
-
-// Twitch без рекламы: плейлисты — в группу прокси TTV LOL PRO, их QUIC отклоняется,
-// а сами куски видео и остальной Twitch идут по обычным правилам.
-func TestTwitchAdFreeConfig(t *testing.T) {
-	s := DefaultSettings()
-	s.Servers = []Server{{ID: "a", Type: "naive", Host: "nl.example.com", Port: 443}}
-	s.normalize()
-	cfg, err := BuildConfig(s, ConfigEnv{APIPort: 9090})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := json.Marshal(cfg); contains(string(b), tagTwitch) {
-		t.Fatal("выключено, а прокси Twitch в конфиге")
-	}
-
-	s.TwitchAdFree = true
-	s.UDPProxy = true
-	s.Servers = append(s.Servers, Server{ID: "b", Type: "vless", Host: "nl.example.com", Port: 8443, UUID: "d39351d5-2ec2-4ac7-aab4-8ca53a5816fc", Security: "reality", PublicKey: "k", SNI: "nl.example.com"})
-	cfg, err = BuildConfig(s, ConfigEnv{APIPort: 9090})
-	if err != nil {
-		t.Fatal(err)
-	}
-	group := map[string]bool{}
-	for _, o := range cfg["outbounds"].([]any) {
-		if m := o.(M); m["tag"] == tagTwitch {
-			for _, t := range m["outbounds"].([]any) {
-				group[t.(string)] = true
-			}
-		}
-	}
-	if len(group) != len(twitchProxies) {
-		t.Fatalf("группа %s: %v", tagTwitch, group)
-	}
-	var tcp, udp int
-	for _, r := range cfg["route"].(M)["rules"].([]any) {
-		m := r.(M)
-		if m["domain"] == nil || !contains(fmt.Sprint(m["domain"]), "usher.ttvnw.net") {
-			continue
-		}
-		switch {
-		case m["outbound"] == tagTwitch && m["network"] == nil:
-			tcp++
-		case m["network"] == "udp" && m["action"] == "reject":
-			udp++
-		default:
-			t.Errorf("лишнее правило для плейлистов Twitch: %v", m)
-		}
-	}
-	if tcp != 1 || udp != 1 {
-		t.Errorf("правила плейлистов: tcp=%d udp=%d", tcp, udp)
-	}
-}
 
 func TestDirectDNS(t *testing.T) {
 	for in, want := range map[string]directDNS{

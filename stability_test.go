@@ -587,30 +587,3 @@ func TestSmartObserveAndLists(t *testing.T) {
 		t.Fatal("Forget")
 	}
 }
-
-func TestTwitchFakeIPInTun(t *testing.T) {
-	s := DefaultSettings()
-	s.Servers = []Server{{ID: "a", Type: "naive", Name: "A", Host: "a.example", Port: 443, Username: "u", Password: "p"}}
-	s.Selected = "a"
-	s.TwitchAdFree = true
-	s.Mode = "tun"
-	cfg, err := BuildConfig(s, ConfigEnv{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	dns := cfg["dns"].(M)
-	b, _ := json.Marshal(dns)
-	if !strings.Contains(string(b), `"type":"fakeip"`) {
-		t.Fatal("в TUN нет fakeip для плейлистов Twitch")
-	}
-	first, _ := json.Marshal(dns["rules"].([]any)[0])
-	if !strings.Contains(string(first), "dns-twitch") || !strings.Contains(string(first), "playlist") {
-		t.Fatalf("правило fakeip должно быть первым: %s", first)
-	}
-	s.Mode = "proxy"
-	cfg, _ = BuildConfig(s, ConfigEnv{})
-	b, _ = json.Marshal(cfg["dns"])
-	if strings.Contains(string(b), "fakeip") {
-		t.Fatal("в режиме прокси fakeip не нужен: имя сайта и так приходит")
-	}
-}
