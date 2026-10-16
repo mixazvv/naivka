@@ -1022,6 +1022,13 @@ function renderLanes() {
   const Y0 = (top + bottom) / 2;
   const nodeX = { proxy: 500, tg: 405, zapret: 595, direct: 500 };
   const mc = document.documentElement.dataset.skin === 'blocks';
+  if (!mc) {
+    const lsv = $('#lanesSvg');
+    if (lsv && lsv.firstChild) { lsv.replaceChildren(); delete lsv.dataset.built; flowsBegin('lane:'); flowsEnd('lane:'); }
+    renderLaneLegend(lanes, total, renderBranches(lanes));
+    return;
+  }
+  Branches.unmount();
   const geo = lanes.map((l, i) => ({ ...l, ny: n === 1 ? Y0 : top + i * (bottom - top) / (n - 1), nx: nodeX[l.key] }));
   geo.forEach(l => {
     const share = total > 0 ? l.speed / total : 0;
@@ -1102,7 +1109,12 @@ function renderLanes() {
     flowsEnd('lane:');
   }
   for (const l of lanes) flowSpeed('lane:' + l.key, l.active ? l.speed : 0);
-  // Легенда обновляется каждую секунду отдельно — анимацию схемы это не трогает.
+  renderLaneLegend(lanes, total, {});
+}
+
+// Легенда обновляется каждую секунду отдельно — анимацию схемы это не трогает.
+// over — сколько сайтов не поместилось на каждой ветке схемы.
+function renderLaneLegend(lanes, total, over) {
   const leg = $('#lanesLegend');
   if (leg) leg.replaceChildren(...lanes.map(l => {
     const share = total > 0 && l.speed > 0 ? Math.round(l.speed / total * 100) : 0;
@@ -1111,8 +1123,67 @@ function renderLanes() {
       h('span', { class: 'leg-name' }, l.name),
       h('b', null, !l.active ? 'выключено' : l.unmeasured ? (l.key === 'zapret' ? 'работает' : 'всё остальное') : tnum('lane-' + l.key, l.speed, fmtSpeed)),
       share ? h('span', { class: 'leg-share num' }, share + '%') : null,
+      over[l.key] ? h('span', { class: 'leg-share' }, `ещё ${count(over[l.key], 'сайт', 'сайта', 'сайтов')}`) : null,
       signalBar(l.active && !l.unmeasured ? l.speed : 0));
   }));
+}
+
+// ---------- живые ветви (web/branches.js) ----------
+// Сайт → его основной домен: cache12-fra1.steamcontent.com → steamcontent.com, x.co.uk → x.co.uk.
+function baseDomain(host) {
+  const p = host.toLowerCase().replace(/\.$/, '').split('.');
+  if (p.length <= 2) return p.join('.');
+  const sld = p[p.length - 2], tld = p[p.length - 1];
+  return (tld.length === 2 && /^(com|net|org|co|gov|edu|ac|msk|spb)$/.test(sld) ? p.slice(-3) : p.slice(-2)).join('.');
+}
+const DL_DOMAINS = ['steamcontent.com', 'steamserver.net', 'steampipe.akamaized.net', 'steamcdn-a.akamaihd.net', 'steamstatic.com', 'epicgames.com', 'windowsupdate.com', 'microsoft.com'];
+let smartMap = {}, smartAt = 0;
+function branchWhy(host, b) {
+  const r = S.rules.find(r => r.kind === 'domain' && (host === r.value.toLowerCase() || host.endsWith('.' + r.value.toLowerCase())));
+  if (r) return `Ваше правило: ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret', block: 'блокировать' }[r.action]}.`;
+  if (b === 'zapret') return 'Из списков zapret: его замедляют, zapret обходит это без сервера.';
+  if (S.routing === 'global' && b === 'proxy') return 'Режим «Всё через сервер».';
+  const sm = smartMap[host];
+  if (sm !== undefined) return sm ? 'Автоопределение: открывается из России нормально — напрямую быстрее.' : 'Автоопределение: напрямую не открывается или закрыт для России — через сервер.';
+  if (b === 'direct' && S.downloadsDirect && DL_DOMAINS.some(d => host === d || host.endsWith('.' + d))) return 'Загрузки игр и обновлений — сразу напрямую, чтобы закачка не забивала сервер.';
+  return b === 'direct' ? 'Напрямую: российский сайт или открывается из России без сервера.'
+    : 'Через сервер: заблокирован в России, закрыт для российских IP или ещё проверяется.';
+}
+function branchDrop(host, b) {
+  if (b === 'zapret' && !zapretOn()) { toast('zapret выключен — на эту ветку сейчас нельзя'); return false; }
+  const action = b === 'proxy' ? 'proxy' : b;
+  S.rules = S.rules.filter(r => !(r.kind === 'domain' && r.value.toLowerCase() === host));
+  S.rules.push({ kind: 'domain', value: host, action });
+  save(0);
+  toast(`${displayDomain(host)} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. Правило сохранено, заработает после переподключения`);
+  return true;
+}
+function renderBranches(lanes) {
+  const lb = $('#lanesBox');
+  if (!lb) return {};
+  const p = phase();
+  if (p === 'on' && Date.now() - smartAt > 30000 && S.smartDirect) {
+    smartAt = Date.now();
+    api('/api/smart').then(v => { smartMap = {}; for (const x of v.recent || []) smartMap[x.host] = x.direct; }).catch(() => {});
+  }
+  // Листья — по основному домену: десяток узлов одного CDN становится одним листом.
+  const seen = new Set(), top = [];
+  for (const t of (STATS && STATS.top) || []) {
+    if (!t.host || /^[\d.:[\]]+$/.test(t.host)) continue;
+    const host = baseDomain(t.host);
+    if (seen.has(host)) continue;
+    seen.add(host); top.push({ host, route: t.route, speed: t.speed });
+  }
+  const sp = lanes.map(l => ({ ...l,
+    thin: l.key === 'direct' && p === 'on' && S.routing === 'global',
+    wilt: l.key === 'zapret' && AD && AD.zapret && AD.zapret.degraded }));
+  return Branches.update(lb, {
+    phase: p, offline: !!(STATS && STATS.health === 'offline' && p === 'on'), lanes: sp, top,
+    endSub: ROUTING[S.routing],
+    compSub: p === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : p === 'revive' ? 'нажмите, чтобы отключить' : 'нажмите, чтобы подключить',
+    flag: code => flag(code), displayDomain, why: branchWhy, onDrop: branchDrop,
+    onNode: k => go(k === 'proxy' ? 'servers' : 'bypass'), toast,
+  }) || {};
 }
 
 // Сила сигнала 0–15, как у проводов в кубических играх: растёт со скоростью (логарифмически).
