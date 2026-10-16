@@ -234,7 +234,7 @@ button.br-node:hover .br-disc { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c
 .br-disc { width: 44px; height: 44px; border-radius: 50%; background: var(--raised); border: 2px solid var(--c, var(--line)); display: grid; place-items: center; overflow: hidden;
   box-shadow: 0 6px 16px -10px rgba(0, 0, 0, .5); transition: box-shadow .2s; }
 .br-disc svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.br-disc .flag { width: 26px; height: auto; border-radius: 2px; }
+.br-disc .flag { width: 26px; height: 17px; margin: 0; vertical-align: 0; border-radius: 2px; }
 .br-txt { display: grid; gap: 1px; }
 .br-node.side .br-txt { padding-top: 4px; }
 .br-txt b { font-weight: 600; font-size: 13px; white-space: nowrap; }
