@@ -115,12 +115,43 @@ const Branches = (() => {
     for (const el of nodesEl.children) {
       const k = el.dataset.key;
       let p;
-      if (k === 'comp') p = [cx0(), H * 0.5 + (narrow() ? 46 : 62)];
+      if (k === 'comp') p = [cx0(), H * 0.5 + (narrow() ? 38 : 48)];
       else if (k === 'net') p = [cx1(), H * 0.5];
       else if (k === 'tg') p = geom('tg')[3];
       else p = bez(geom(k), .5);
       el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px';
     }
+    measureHoles();
+  }
+
+  // Ветки не проходят сквозь кружки: вокруг каждого кружка (и кнопки подключения) в рисунке
+  // вырезается зазор, и ветка «вырастает» из края кружка. Места кружков меряем по самим элементам.
+  const GAP = 5;
+  let holes = [];
+  function measureHoles() {
+    if (!box || !nodesEl) return;
+    const sr = box.getBoundingClientRect(), out = [];
+    const add = el => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 2) return;
+      out.push({ x: r.left - sr.left + r.width / 2, y: r.top - sr.top + r.height / 2, r: r.width / 2 + GAP,
+        square: getComputedStyle(el).borderRadius === '0px' });
+    };
+    for (const d of nodesEl.querySelectorAll('.br-disc')) add(d);
+    const pw = box.querySelector('.power');
+    if (pw) add(pw);
+    holes = out;
+  }
+  function cutHoles() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    for (const c of holes) {
+      if (c.square) ctx.rect(c.x - c.r, c.y - c.r, c.r * 2, c.r * 2);
+      else { ctx.moveTo(c.x + c.r, c.y); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); }
+    }
+    ctx.fill();
+    ctx.restore();
   }
 
   // ---------- листья ----------
@@ -178,6 +209,7 @@ const Branches = (() => {
   const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   function layout() {
     if (!box || !data) return;
+    measureHoles();
     const sr = box.getBoundingClientRect(), pad = 6, blocked = [];
     for (const el of nodesEl.children) { const r = el.getBoundingClientRect(); blocked.push({ x: r.left - sr.left - pad, y: r.top - sr.top - pad, w: r.width + pad * 2, h: r.height + pad * 2 }); }
     const pw = box.querySelector('.power');
@@ -356,6 +388,7 @@ const Branches = (() => {
     const key = Object.keys(br).map(k => k + (br[k].grow > .6 ? 1 : 0)).join('');
     if (key !== growKey) { growKey = key; layout(); }
     for (const k of ['tg', 'zapret', 'proxy', 'direct']) drawBranch(k, time);
+    cutHoles();
   }
 
   // ---------- вход из app.js раз в секунду ----------

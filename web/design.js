@@ -560,7 +560,10 @@ function pxRingCells(cx, cy, r0, r1, G) {
 function pxNode(cx, cy, r, ic, color, cls) {
   const G = 3;
   const ring = pxRingCells(cx, cy, r - 3, r + 1, G), core = pxRingCells(cx, cy, -1, r - 3, G);
+  // Зазор цвета фона вокруг узла: ветка обрывается у края и «вырастает» из узла, а не проходит насквозь.
+  const gap = pxRingCells(cx, cy, r, r + 8, G);
   return s('g', { class: 'px-node ' + (cls || ''), style: `color:${color}` },
+    s('path', { d: pxCellsPath(gap.map(c => c[0] + ',' + c[1]), G), class: 'px-node-gap' }),
     s('path', { d: pxCellsPath(core.map(c => c[0] + ',' + c[1]), G), class: 'px-node-bg' }),
     s('path', { d: pxCellsPath(ring.map(c => c[0] + ',' + c[1]), G), class: 'px-node-ring' }),
     ic ? icon(ic, cx, cy, r * 1.05, 'currentColor') : null);
@@ -574,6 +577,7 @@ function pxPowerParts() {
   const icon = pxRingCells(60, 60, 17, 23, G).filter(c => Math.abs(c[2]) > 0.75);
   for (let gy = 9; gy <= 14; gy++) for (const gx of [14]) icon.push([gx, gy]);
   return s('g', { class: 'pw-px' },
+    s('path', { d: path(pxRingCells(60, 60, 40, 67, G)), class: 'pw-px-gap' }),
     s('path', { d: path(pxRingCells(60, 60, 57, 61, G)), class: 'pw-px-halo' }),
     ...ring.sort((p, q) => p[2] - q[2]).map((c, i, arr) => s('rect', { x: c[0] * G, y: c[1] * G, width: G, height: G, class: 'pw-px-ring', style: `--i:${Math.round(i / arr.length * 28)}` })),
     s('path', { d: path(pxRingCells(60, 60, -1, 41, G)), class: 'pw-px-core' }),
