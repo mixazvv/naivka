@@ -49,6 +49,7 @@ type App struct {
 	dnsg       dnsGuard      // запасной DNS, если прямой перестал отвечать
 	ytdns      youtubeDNS    // DNS Google для адресов YouTube
 	smart      *Smart        // автоопределение: что открывается из России напрямую
+	self       selfUpdater   // обновление самой Naivka
 	proxyGuard proxyGuard
 	zr         zapretRouteState // куда сейчас идут сайты zapret    // чтобы чужая программа не перехватила системный прокси
 
@@ -112,6 +113,8 @@ func main() {
 	if serr != nil {
 		log.Println(serr)
 	}
+
+	go cleanupUpdate(dir)
 
 	// Если в прошлый раз программа упала с включённым системным прокси — вернём как было.
 	restoreSystemProxy(dir)

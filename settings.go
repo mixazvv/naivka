@@ -256,7 +256,10 @@ func DefaultSettings() *Settings {
 }
 
 // externalLinks — адреса, которые интерфейс может открыть в браузере (POST /api/open).
-var externalLinks = map[string]string{"feedback": "https://t.me/mixazvv"}
+var externalLinks = map[string]string{
+	"feedback": "https://t.me/mixazvv",
+	"releases": "https://github.com/" + appRepo + "/releases/latest",
+}
 
 // accents — акцентные цвета интерфейса (сами цвета — в web/app.css).
 // Акцент — любой цвет #RRGGBB (остальные цвета интерфейса выводятся из него в web/app.js).

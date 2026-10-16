@@ -140,6 +140,14 @@ func (a *App) routes() http.Handler {
 		return a.wl.View(), nil
 	})
 	api("GET", "/api/self", func(*http.Request) (any, error) { return map[string]string{"version": appVersion}, nil })
+	api("GET", "/api/app/update", func(*http.Request) (any, error) { return a.self.view(), nil })
+	api("POST", "/api/app/update/check", func(*http.Request) (any, error) {
+		if err := a.self.check(a, false); err != nil {
+			return nil, fmt.Errorf("Не удалось проверить: %v", err)
+		}
+		return a.self.view(), nil
+	})
+	api("POST", "/api/app/update/install", func(*http.Request) (any, error) { return a.self.view(), a.self.install(a) })
 	api("POST", "/api/wl/test", func(*http.Request) (any, error) {
 		cl := a.core.Clash()
 		if cl == nil {

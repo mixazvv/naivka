@@ -137,6 +137,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pill small:empty { display: none; }
 .feedback { display: flex; align-items: center; justify-content: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; font-size: 13px; white-space: nowrap; }
 .feedback svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.side-foot #helpBtn:hover { color: var(--ink); border-color: var(--muted); }
 .feedback:hover { color: var(--tg); border-color: color-mix(in srgb, var(--tg) 55%, var(--line)); }
 
 .stage-wrap { position: relative; min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); overflow: hidden; }
@@ -491,6 +492,9 @@ dialog { border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px;
 dialog.wide { width: min(700px, 94vw); }
 dialog::backdrop { background: rgba(5, 10, 18, .55); }
 dialog h2 { margin-top: 0; }
+.guide { margin: 0; padding-left: 22px; display: grid; gap: 12px; }
+.guide li::marker { color: var(--tunnel); font-weight: 600; }
+.guide p { margin: 2px 0 6px; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 9px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 80vw; z-index: 50; }
 .toast.show { opacity: 1; transform: translateX(-50%); }
 .toast.bad { background: var(--danger); color: #fff; }
