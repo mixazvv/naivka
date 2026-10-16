@@ -2,6 +2,7 @@
 /* Палитра MZ: тёплый графит, лаймовый акцент (трафик через сервер) и небесно-голубой (напрямую). */
 :root, :root[data-theme="dark"] {
   --bg: #0E1012;
+  --on-ink: #0E1012; /* текст на светлой плашке (подсказки, уведомления): не --bg — в Windows 11 с Mica он прозрачный */
   --nav: #0B0C0E;
   --surface: #16181B;
   --raised: #1E2125;
@@ -249,7 +250,7 @@ button.br-node:hover .br-disc { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c
 .br-leaf[data-hidden="true"] { opacity: 0; pointer-events: none; }
 .br-leaf.born { transition: none; opacity: 0; }
 .br-leaf[data-dead="true"] { --c: var(--faint) !important; opacity: .7; }
-.br-leaf .why { position: absolute; left: 50%; transform: translateX(-50%); top: calc(100% + 8px); background: var(--ink); color: var(--bg); border-radius: 9px; padding: 7px 10px;
+.br-leaf .why { position: absolute; left: 50%; transform: translateX(-50%); top: calc(100% + 8px); background: var(--ink); color: var(--on-ink); border-radius: 9px; padding: 7px 10px;
   font-size: 11.5px; line-height: 1.4; white-space: normal; width: 230px; display: none; pointer-events: none; }
 .br-leaf .why span + span::before { content: " "; }
 .br-leaf.up .why { top: auto; bottom: calc(100% + 8px); }
@@ -495,7 +496,7 @@ dialog h2 { margin-top: 0; }
 .guide { margin: 0; padding-left: 22px; display: grid; gap: 12px; }
 .guide li::marker { color: var(--tunnel); font-weight: 600; }
 .guide p { margin: 2px 0 6px; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 9px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 80vw; z-index: 50; }
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--on-ink); padding: 9px 16px; border-radius: 9px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 80vw; z-index: 50; }
 .toast.show { opacity: 1; transform: translateX(-50%); }
 .toast.bad { background: var(--danger); color: #fff; }
 .offline { position: fixed; inset: 0; background: var(--bg); display: grid; place-items: center; text-align: center; padding: 24px; z-index: 60; }
