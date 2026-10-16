@@ -47,6 +47,7 @@ type App struct {
 	life       lifeState     // включение и выключение — по одному, и чего хочет пользователь
 	fo         failoverState // временный переход на другой сервер
 	dnsg       dnsGuard      // запасной DNS, если прямой перестал отвечать
+	smart      *Smart        // автоопределение: что открывается из России напрямую
 	proxyGuard proxyGuard
 	zr         zapretRouteState // куда сейчас идут сайты zapret    // чтобы чужая программа не перехватила системный прокси
 
@@ -121,6 +122,7 @@ func main() {
 	a.zapret = newZapret(a)
 	a.tgws = newTgWs(a)
 	a.wl = newWL(a)
+	a.smart = newSmart(a)
 	a.xray = newXray(a)
 	a.lists = newListCache(a.dir)
 	a.traffic = newTrafficStore(a.dir)
@@ -131,6 +133,7 @@ func main() {
 	go a.zapret.healthLoop()
 	go a.zapret.failWatch()
 	go a.dnsWatch()
+	go a.smart.run()
 	go a.updatesLoop()
 	go a.wl.loop()
 	if serr != nil {

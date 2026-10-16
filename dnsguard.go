@@ -52,7 +52,10 @@ func (a *App) dnsWatch() {
 		}
 		s := a.settingsCopy()
 		dd, err := parseDirectDNS(s.DNSDirect)
-		if err != nil || !dd.Encrypted() || a.dnsg.fallback.Load() || !a.core.Running() {
+		// Во время подбора стратегии zapret перезапускает winws — обрывы ожидаемы, а перезапуск
+		// ядра посреди подбора испортил бы его результат.
+		if err != nil || !dd.Encrypted() || a.dnsg.fallback.Load() || !a.core.Running() ||
+			a.mon.SinceWake() < wakeGrace || a.zapret.busy() {
 			fails = nil
 			continue
 		}
@@ -73,6 +76,11 @@ func (a *App) dnsWatch() {
 			continue
 		}
 		fails = nil
+		// Обрывы бывают и когда пропал сам интернет или DoH лишь на миг моргнул (сменилась сеть).
+		// Переходим на запасной, только если интернет есть, а DoH из настроек правда не отвечает.
+		if !a.internetUp() || a.dohWorks(dd) {
+			continue
+		}
 		a.dnsg.fallback.Store(true)
 		a.mon.Event("warn", "DNS напрямую ("+dd.Host+") перестал отвечать — временно перешёл на обычный DNS "+dnsFallbackAddr(dd)+". Вернусь к нему при следующем подключении", true)
 		a.restartCore()

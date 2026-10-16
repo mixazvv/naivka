@@ -39,6 +39,8 @@ var ruleSetURL = map[string]string{
 	"ru-blocked-ip":       "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs",
 	"ru-inside":           "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs",
 	"ads":                 "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
+	// Сервисы, которые сами не пускают пользователей из России (ИИ, магазины, облака).
+	"geoblock": "https://github.com/itdoginfo/allow-domains/releases/latest/download/geoblock.srs",
 }
 
 // Twitch без рекламы. Twitch вставляет рекламу прямо в плейлист трансляции, и решает это
@@ -97,6 +99,8 @@ type ConfigEnv struct {
 	InlineLists map[string]*inlineList
 	// DNSFallback — прямой DoH/DoT перестал отвечать: вместо него обычный DNS (dnsguard.go).
 	DNSFallback bool
+	// SmartDir — папка со списками автоопределения (smart.go); "" — автоопределение выключено.
+	SmartDir string
 }
 
 func serverTag(sv Server) string { return "s-" + sv.ID }
@@ -519,6 +523,20 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		rules = append(rules,
 			M{"rule_set": rs("ru-blocked"), "outbound": tagProxy},
 			M{"rule_set": rs("ru-blocked-ip"), "outbound": tagProxy},
+		)
+		if env.SmartDir != "" {
+			// Автоопределение: после заблокированного и закрытого для России, до российских сайтов.
+			rules = append(rules,
+				M{"rule_set": rs("geoblock"), "outbound": tagProxy},
+				M{"rule_set": []any{tagSmartProxy}, "outbound": tagProxy},
+				M{"rule_set": []any{tagSmartDirect}, "outbound": tagDirect},
+			)
+			dnsRules = append(dnsRules,
+				M{"rule_set": rs("geoblock"), "server": tagDNSRemote},
+				M{"rule_set": []any{tagSmartDirect}, "server": tagDNSDirect},
+			)
+		}
+		rules = append(rules,
 			M{"domain_suffix": ruZones, "outbound": tagDirect},
 			M{"rule_set": rs("geosite-category-ru"), "outbound": tagDirect},
 			M{"rule_set": rs("geoip-ru"), "outbound": tagDirect},
@@ -549,6 +567,12 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 
 	ruleSets = append(ruleSets, listSets...)
+	if env.SmartDir != "" && s.Routing == "ru-direct" {
+		for _, tag := range []string{tagSmartDirect, tagSmartProxy} {
+			// Ядро само перечитывает эти файлы, когда Naivka их меняет, — без перезапуска.
+			ruleSets = append(ruleSets, M{"type": "local", "tag": tag, "format": "source", "path": smartRuleSetPath(env.SmartDir, tag)})
+		}
+	}
 
 	if udpTarget != "" {
 		var out []any

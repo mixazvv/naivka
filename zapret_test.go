@@ -61,14 +61,14 @@ func TestZapretDomainsAndLists(t *testing.T) {
 	if len(d) < 20 || !contains(strings.Join(d, ","), "youtube.com") || !contains(strings.Join(d, ","), "discord.com") {
 		t.Fatalf("домены zapret: %d %v", len(d), d[:5])
 	}
-	for _, mode := range []string{"none", "any", "loaded"} {
+	for _, mode := range []string{"none", "any", "loaded"} { // "any" из старых настроек — как "none"
 		s.Zapret.IPSet = mode
 		if err := z.writeLists(s); err != nil {
 			t.Fatalf("%s: %v", mode, err)
 		}
 		b, _ := os.ReadFile(filepath.Join(root, "lists", "ipset-all.txt"))
 		got := strings.TrimSpace(string(b))
-		want := map[string]string{"none": "203.0.113.113/32", "any": "", "loaded": "1.2.3.0/24"}[mode]
+		want := map[string]string{"none": "203.0.113.113/32", "any": "203.0.113.113/32", "loaded": "1.2.3.0/24"}[mode]
 		if got != want {
 			t.Errorf("ipset %s: %q", mode, got)
 		}

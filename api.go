@@ -158,6 +158,17 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/speedtest", func(*http.Request) (any, error) { return nil, a.StartSpeedTest() })
 	api("GET", "/api/speedtest", func(*http.Request) (any, error) { return speedView(), nil })
 	api("GET", "/api/processes", func(*http.Request) (any, error) { return a.Processes(), nil })
+	api("GET", "/api/smart", func(*http.Request) (any, error) { return a.smart.View(), nil })
+	api("POST", "/api/smart/forget", func(r *http.Request) (any, error) {
+		var req struct {
+			Host string `json:"host"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		a.smart.Forget(req.Host)
+		return a.smart.View(), nil
+	})
 	api("GET", "/api/report", func(*http.Request) (any, error) {
 		return map[string]string{"name": "naivka-report-" + time.Now().Format("2006-01-02-1504") + ".txt", "text": a.buildReport()}, nil
 	})

@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -433,5 +438,139 @@ func TestDNSFallbackConfig(t *testing.T) {
 	}
 	if dnsFallbackAddr(directDNS{Kind: "https", Host: "1.1.1.1"}) != "1.1.1.1" {
 		t.Fatal("DoH по IP — тот же адрес по UDP")
+	}
+}
+
+func TestDNSQueryWire(t *testing.T) {
+	b, err := base64.RawURLEncoding.DecodeString(dnsQuery("ya.ru"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte{0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 'y', 'a', 2, 'r', 'u', 0, 0, 1, 0, 1}
+	if !bytes.Equal(b, want) {
+		t.Fatalf("запрос %v, нужно %v", b, want)
+	}
+}
+
+func TestSmartConfig(t *testing.T) {
+	dir := t.TempDir()
+	for _, tag := range []string{tagSmartDirect, tagSmartProxy} {
+		os.WriteFile(smartRuleSetPath(dir, tag), smartRuleSetJSON(nil), 0o644)
+	}
+	s := DefaultSettings()
+	s.Servers = []Server{{ID: "a", Type: "naive", Name: "A", Host: "a.example", Port: 443, Username: "u", Password: "p"}}
+	s.Selected = "a"
+	cfg, err := BuildConfig(s, ConfigEnv{SmartDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(cfg)
+	js := string(b)
+	iBlocked := strings.Index(js, `"outbound":"proxy","rule_set":["ru-blocked"]`)
+	iGeo := strings.Index(js, `"outbound":"proxy","rule_set":["geoblock"]`)
+	iSmartP := strings.Index(js, `"outbound":"proxy","rule_set":["smart-proxy"]`)
+	iSmartD := strings.Index(js, `"outbound":"direct","rule_set":["smart-direct"]`)
+	iRu := strings.Index(js, `"outbound":"direct","rule_set":["geosite-category-ru"]`)
+	if !(iBlocked >= 0 && iBlocked < iGeo && iGeo < iSmartP && iSmartP < iSmartD && iSmartD < iRu) {
+		t.Fatalf("порядок правил: blocked %d geoblock %d smart-proxy %d smart-direct %d ru %d", iBlocked, iGeo, iSmartP, iSmartD, iRu)
+	}
+	if !strings.Contains(js, `"type":"local"`) {
+		t.Fatal("нет локальных списков")
+	}
+	if bin := os.Getenv("SINGBOX"); bin != "" {
+		p := filepath.Join(dir, "c.json")
+		os.WriteFile(p, b, 0o600)
+		if out, err := exec.Command(bin, "check", "-c", p).CombinedOutput(); err != nil {
+			t.Fatalf("sing-box check: %v %s", err, out)
+		}
+	}
+	// В режиме «всё через сервер» автоопределения нет.
+	s.Routing = "global"
+	cfg, _ = BuildConfig(s, ConfigEnv{SmartDir: dir})
+	b, _ = json.Marshal(cfg)
+	if strings.Contains(string(b), "smart-direct") {
+		t.Fatal("автоопределение в режиме «всё через сервер»")
+	}
+}
+
+func TestSmartDecide(t *testing.T) {
+	ok := func(st int, ms int) smartProbe {
+		return smartProbe{ok: true, status: st, ttfb: time.Duration(ms) * time.Millisecond}
+	}
+	cases := []struct {
+		name          string
+		d, p          smartProbe
+		https         bool
+		direct, known bool
+	}{
+		{"открывается напрямую", ok(200, 100), ok(200, 300), true, true, true},
+		{"напрямую не открывается", smartProbe{}, ok(200, 300), true, false, true},
+		{"ничего не открывается", smartProbe{}, smartProbe{}, true, false, false},
+		{"недоступно в вашей стране", ok(403, 100), ok(200, 300), true, false, true},
+		{"корень везде 403", ok(403, 100), ok(403, 300), true, true, true},
+		{"сильно медленнее напрямую", ok(200, 3000), ok(200, 300), true, false, true},
+		{"чуть медленнее напрямую", ok(200, 500), ok(200, 300), true, true, true},
+		{"HTTP: подмена ответа", smartProbe{ok: true, status: 302, location: "http://blocked.isp.ru/"}, smartProbe{ok: true, status: 200}, false, false, true},
+		{"HTTP: одинаково", smartProbe{ok: true, status: 301, location: "https://a.com/"}, smartProbe{ok: true, status: 301, location: "https://a.com/x"}, false, true, true},
+		{"сервер не отвечает", ok(200, 100), smartProbe{}, true, true, true},
+	}
+	for _, c := range cases {
+		d, k := smartDecide(c.d, c.p, c.https)
+		if d != c.direct || k != c.known {
+			t.Errorf("%s: напрямую %v решено %v", c.name, d, k)
+		}
+	}
+	if !smartNeverMatch("rr3---sn-abc.googlevideo.com") || smartNeverMatch("github.com") {
+		t.Error("smartNever")
+	}
+	m := smartFailRe.FindStringSubmatch("ERROR [1 5.0s] connection: open connection to mobile.yandex.net:443 using outbound/direct[direct]: dial tcp 77.88.21.110:443: i/o timeout")
+	if m == nil || m[1] != "mobile.yandex.net" {
+		t.Errorf("smartFailRe: %v", m)
+	}
+}
+
+func TestSmartObserveAndLists(t *testing.T) {
+	a := &App{dir: t.TempDir(), settings: DefaultSettings()}
+	a.core = NewCore(a.dir)
+	sm := newSmart(a)
+	s := DefaultSettings()
+	c := Conn{Rule: "final"}
+	c.Metadata.Network, c.Metadata.Host, c.Metadata.DestPort = "tcp", "Example.COM", "443"
+	sm.observe(c, s)
+	c.Rule = "rule_set=ru-blocked => route(proxy)"
+	sm.observe(c, s)
+	if len(sm.queue) != 1 {
+		t.Fatalf("в очереди %d, нужно 1 (только то, что попало в final)", len(sm.queue))
+	}
+	if j := <-sm.queue; j.host != "example.com" || !j.https {
+		t.Fatalf("job %+v", j)
+	}
+	s.Routing = "global"
+	c.Rule = "final"
+	sm.observe(c, s)
+	if len(sm.queue) != 0 {
+		t.Fatal("в режиме «всё через сервер» не проверяем")
+	}
+	now := time.Now()
+	sm.hosts["a.com"] = smartEntry{Direct: true, At: now.Unix()}
+	sm.hosts["b.com"] = smartEntry{Direct: false, At: now.Unix()}
+	sm.hosts["old.com"] = smartEntry{Direct: false, At: now.Add(-13 * time.Hour).Unix()}
+	if sm.due("a.com", now) || sm.due("b.com", now) || !sm.due("old.com", now) || !sm.due("new.com", now) {
+		t.Fatal("due")
+	}
+	d, p := sm.lists()
+	if strings.Join(d, ",") != "a.com" || strings.Join(p, ",") != "b.com,old.com" {
+		t.Fatalf("списки %v %v", d, p)
+	}
+	if err := sm.writeRuleSets(); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(smartRuleSetPath(sm.dir(), tagSmartDirect))
+	if !strings.Contains(string(b), `"a.com"`) {
+		t.Fatalf("smart-direct.json: %s", b)
+	}
+	sm.Forget("")
+	if v := sm.View(); v.Direct+v.Proxy != 0 {
+		t.Fatal("Forget")
 	}
 }

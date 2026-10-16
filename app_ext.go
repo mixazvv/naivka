@@ -103,6 +103,11 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 	}
 	env.TgWsProxy = s.Telegram.Enabled
 	env.DNSFallback = a.dnsg.fallback.Load()
+	if smartOn(s) && a.smart != nil {
+		if err := a.smart.writeRuleSets(); err == nil { // файлы должны быть до запуска ядра
+			env.SmartDir = a.smart.dir()
+		}
+	}
 	a.fillLists(s, env, env.APIPort > 0)
 	env.WLServers = a.wl.Servers(s)
 	if env.APIPort > 0 { // превью конфига не должно считаться «применённым» списком

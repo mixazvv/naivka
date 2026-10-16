@@ -355,7 +355,7 @@ func (z *Zapret) writeLists(s *Settings) error {
 			gen = append(gen, r.Value)
 		}
 	}
-	// Соединения с нашими серверами zapret трогать не должен (особенно в режиме ipset any).
+	// Соединения с нашими серверами zapret трогать не должен.
 	var exDom, exIP []string
 	for _, sv := range zapretExcludedServers(s, z.a.wl.Servers(s)) {
 		if ip := net.ParseIP(sv.Host); ip != nil {
@@ -394,19 +394,15 @@ func (z *Zapret) writeLists(s *Settings) error {
 		}
 	}
 	ipset := filepath.Join(lists, "ipset-all.txt")
-	switch s.Zapret.IPSet {
-	case "none":
-		return os.WriteFile(ipset, []byte("203.0.113.113/32\n"), 0o644)
-	case "any":
-		return os.WriteFile(ipset, nil, 0o644)
-	case "loaded":
+	if s.Zapret.IPSet == "loaded" {
 		b, err := os.ReadFile(ipset + ".backup")
 		if err != nil {
 			return errors.New("в этой версии zapret нет полного списка IP (ipset-all.txt.backup)")
 		}
 		return os.WriteFile(ipset, b, 0o644)
 	}
-	return nil
+	// Без списка IP: один заведомо пустой адрес (пустой файл winws понял бы как «любые IP»).
+	return os.WriteFile(ipset, []byte("203.0.113.113/32\n"), 0o644)
 }
 
 // zapretExcludedServers — серверы, соединения с которыми zapret трогать не должен:
@@ -923,6 +919,17 @@ func (z *Zapret) failWatch() {
 		if len(lines) > 0 {
 			seq = lines[len(lines)-1].Seq
 		}
+		s := z.a.settingsCopy()
+		_, applied := z.a.zr.get()
+		z.pmu.Lock()
+		busy, degraded := z.pick.Active || z.trial.Active, z.degraded
+		z.pmu.Unlock()
+		// Считаем только обрывы, пока сайты zapret правда идут напрямую через него: обрывы времён,
+		// когда они шли через сервер или шёл подбор стратегии, к нему не относятся.
+		if busy || degraded || !s.Zapret.Fallback || applied != tagDirect || !z.Running() || z.a.mon.SinceWake() < wakeGrace {
+			fails = nil
+			continue
+		}
 		now := time.Now()
 		for _, l := range lines {
 			if zapretFailLine(l.Text) {
@@ -936,16 +943,14 @@ func (z *Zapret) failWatch() {
 			}
 		}
 		fails = keep
-		s := z.a.settingsCopy()
-		_, applied := z.a.zr.get()
-		z.pmu.Lock()
-		busy, degraded := z.pick.Active || z.trial.Active, z.degraded
-		z.pmu.Unlock()
-		if len(fails) < limit || busy || degraded || !s.Zapret.Fallback || applied != tagDirect || !z.Running() {
+		if len(fails) < limit {
 			continue
 		}
 		n := len(fails)
 		fails = nil
+		if !z.a.internetUp() {
+			continue // пропал сам интернет — zapret тут ни при чём
+		}
 		z.pmu.Lock()
 		z.holdUntil = now.Add(30 * time.Minute)
 		z.pmu.Unlock()

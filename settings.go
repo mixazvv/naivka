@@ -117,7 +117,7 @@ type ZapretSettings struct {
 	Enabled     bool   `json:"enabled"`
 	Strategy    string `json:"strategy"`    // имя bat-файла без .bat, например "general (ALT)"
 	GameFilter  string `json:"gameFilter"`  // off | all | tcp | udp
-	IPSet       string `json:"ipset"`       // none | loaded | any
+	IPSet       string `json:"ipset"`       // none | loaded
 	RouteDirect bool   `json:"routeDirect"` // сайты из списков zapret — напрямую, а не через сервер
 	Fallback    bool   `json:"fallback"`    // zapret перестал справляться — пустить эти сайты через сервер
 }
@@ -164,6 +164,9 @@ type Settings struct {
 	RuInsideDirect bool `json:"ruInsideDirect"` // сайты, работающие только из РФ, — напрямую
 	BlockQUIC      bool `json:"blockQuic"`      // отклонять UDP/443
 	UDPDirect      bool `json:"udpDirect"`      // остальной UDP — напрямую
+
+	// SmartDirect — автоопределение (режим «Россия напрямую»): что открывается из России напрямую, идёт напрямую (smart.go).
+	SmartDirect bool `json:"smartDirect"`
 
 	MixedPort       int    `json:"mixedPort"`
 	DNSRemote       string `json:"dnsRemote"` // DoH через сервер: IP, домен или https://host/path
@@ -219,6 +222,7 @@ func DefaultSettings() *Settings {
 		Mode:           "proxy",
 		Routing:        "ru-direct",
 		RuInsideDirect: true,
+		SmartDirect:    true,
 		BlockQUIC:      true,
 		UDPDirect:      true,
 		MixedPort:      2080,
@@ -415,8 +419,10 @@ func (s *Settings) normalize() {
 	default:
 		s.Zapret.GameFilter = "off"
 	}
+	// «Любые IP» больше нет: тогда zapret трогал вообще все прямые соединения, а не только свои
+	// сайты, и ломал то, что к нему не относится.
 	switch s.Zapret.IPSet {
-	case "none", "loaded", "any":
+	case "none", "loaded":
 	default:
 		s.Zapret.IPSet = "none"
 	}
