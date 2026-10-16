@@ -383,6 +383,7 @@ func (z *Zapret) writeLists(s *Settings) error {
 			}
 		}
 	}
+	exIP = append(exIP, googleDNSIP) // DNS Google для адресов YouTube — тоже мимо zapret
 	files := map[string][]string{
 		"list-general-user.txt":  append([]string{"domain.example.abc"}, gen...),
 		"list-exclude-user.txt":  append([]string{"domain.example.abc"}, exDom...),

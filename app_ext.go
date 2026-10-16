@@ -103,6 +103,9 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 	}
 	env.TgWsProxy = s.Telegram.Enabled
 	env.DNSFallback = a.dnsg.fallback.Load()
+	if (env.ZapretActive || env.ZapretRoute) && !env.Mobile && env.APIPort > 0 {
+		env.YouTubeDNS = a.ytdns.usable()
+	}
 	if smartOn(s) && a.smart != nil {
 		if err := a.smart.writeRuleSets(); err == nil { // файлы должны быть до запуска ядра
 			env.SmartDir = a.smart.dir()
