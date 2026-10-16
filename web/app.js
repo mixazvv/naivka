@@ -1137,25 +1137,85 @@ function baseDomain(host) {
   return (tld.length === 2 && /^(com|net|org|co|gov|edu|ac|msk|spb)$/.test(sld) ? p.slice(-3) : p.slice(-2)).join('.');
 }
 const DL_DOMAINS = ['steamcontent.com', 'steamserver.net', 'steampipe.akamaized.net', 'steamcdn-a.akamaihd.net', 'steamstatic.com', 'epicgames.com', 'windowsupdate.com', 'microsoft.com'];
-let smartMap = {}, smartAt = 0;
-function branchWhy(host, b) {
-  const r = S.rules.find(r => r.kind === 'domain' && (host === r.value.toLowerCase() || host.endsWith('.' + r.value.toLowerCase())));
-  if (r) return `Ваше правило: ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret', block: 'блокировать' }[r.action]}.`;
-  if (b === 'zapret') return 'Из списков zapret: его замедляют, zapret обходит это без сервера.';
-  if (S.routing === 'global' && b === 'proxy') return 'Режим «Всё через сервер».';
-  const sm = smartMap[host];
-  if (sm !== undefined) return sm ? 'Автоопределение: открывается из России нормально — напрямую быстрее.' : 'Автоопределение: напрямую не открывается или закрыт для России — через сервер.';
-  if (b === 'direct' && S.downloadsDirect && DL_DOMAINS.some(d => host === d || host.endsWith('.' + d))) return 'Загрузки игр и обновлений — сразу напрямую, чтобы закачка не забивала сервер.';
-  return b === 'direct' ? 'Напрямую: российский сайт или открывается из России без сервера.'
-    : 'Через сервер: заблокирован в России, закрыт для российских IP или ещё проверяется.';
+
+// Листья на схеме — не домены, а понятные сервисы: десяток адресов Twitch — один лист «Twitch».
+const SERVICES = [
+  ['YouTube', 'youtube.com googlevideo.com ytimg.com youtu.be ggpht.com youtube-nocookie.com'],
+  ['Twitch', 'twitch.tv ttvnw.net jtvnw.net live-video.net twitchcdn.net twitchsvc.net 7tv.io 7tv.app betterttv.net frankerfacez.com'],
+  ['Discord', 'discord.com discord.gg discordapp.com discordapp.net discord.media'],
+  ['Telegram', 'telegram.org t.me telegram.me telesco.pe'],
+  ['WhatsApp', 'whatsapp.com whatsapp.net wa.me'],
+  ['Instagram', 'instagram.com cdninstagram.com'],
+  ['Facebook', 'facebook.com fbcdn.net fb.com messenger.com'],
+  ['X (Twitter)', 'x.com twitter.com twimg.com t.co'],
+  ['ChatGPT', 'openai.com chatgpt.com oaistatic.com oaiusercontent.com'],
+  ['Claude', 'claude.ai anthropic.com claude.com'],
+  ['Google', 'google.com google.ru gstatic.com googleapis.com googleusercontent.com gvt1.com gvt2.com googleadservices.com'],
+  ['Яндекс', 'yandex.ru yandex.net yandex.com ya.ru yastatic.net yandex.by yandex.kz yandexcloud.net yandex.st'],
+  ['ВКонтакте', 'vk.com vk.ru userapi.com vkuserphoto.ru vk-portal.net vkuser.net vk.me'],
+  ['Одноклассники', 'ok.ru mycdn.me'],
+  ['Mail.ru', 'mail.ru imgsmail.ru mradx.net'],
+  ['Steam', 'steampowered.com steamcommunity.com steamcontent.com steamstatic.com steamserver.net steamgames.com valvesoftware.com steam-chat.com'],
+  ['Epic Games', 'epicgames.com epicgames.dev unrealengine.com'],
+  ['Microsoft', 'microsoft.com office.com office.net live.com skype.com bing.com msn.com windows.com windowsupdate.com sfx.ms microsoftonline.com msftconnecttest.com msedge.net azureedge.net xboxlive.com'],
+  ['Apple', 'apple.com icloud.com mzstatic.com cdn-apple.com'],
+  ['GitHub', 'github.com githubassets.com githubusercontent.com github.io'],
+  ['Spotify', 'spotify.com scdn.co spotifycdn.com'],
+  ['Netflix', 'netflix.com nflxvideo.net nflximg.net'],
+  ['Кинопоиск', 'kinopoisk.ru kp.ru'],
+  ['Wildberries', 'wildberries.ru wbstatic.net wb.ru'],
+  ['Ozon', 'ozon.ru ozone.ru'],
+  ['Госуслуги', 'gosuslugi.ru'],
+  ['Сбер', 'sberbank.ru sber.ru'],
+  ['Т-Банк', 'tbank.ru tinkoff.ru'],
+  ['Reddit', 'reddit.com redd.it redditmedia.com redditstatic.com'],
+  ['Pinterest', 'pinterest.com pinimg.com'],
+  ['TikTok', 'tiktok.com tiktokcdn.com tiktokv.com byteoversea.com'],
+  ['Cloudflare', 'cloudflare.com cloudflare-dns.com'],
+].map(([name, list]) => ({ name, domains: list.split(' ') }));
+// Счётчики, реклама и фоновая телеметрия — их на схеме не показываем, только счётчиком «в фоне».
+const BACKGROUND = /(^|\.)(scorecardresearch|doubleclick|google-analytics|googletagmanager|googlesyndication|adfox|criteo|taboola|outbrain|hotjar|mixpanel|segment|amplitude|appsflyer|adjust|branch|sentry|newrelic|datadoghq|cdndex|iabtechnologylab|qianxin|360safe|kaspersky-labs|drweb|avast|avcdn|msftncsi|digicert|letsencrypt|ocsp|pki|crashlytics|app-measurement|onesignal|adriver|admitad|yandexadexchange|mediascope|tns-counter|top100|liveinternet|tiqcdn|demdex|omtrdc|rubiconproject|pubmatic|openx|adnxs|casalemedia)\.[a-z]+$/;
+function serviceOf(base) {
+  for (const sv of SERVICES) for (const d of sv.domains) if (base === d || base.endsWith('.' + d)) return sv;
+  return null;
 }
-function branchDrop(host, b) {
+const PROC_NAME = { 'chrome.exe': 'Chrome', 'msedge.exe': 'Edge', 'firefox.exe': 'Firefox', 'opera.exe': 'Opera', 'browser.exe': 'Яндекс Браузер',
+  'steam.exe': 'Steam', 'steamwebhelper.exe': 'Steam', 'discord.exe': 'Discord', 'telegram.exe': 'Telegram', 'spotify.exe': 'Spotify',
+  'epicgameslauncher.exe': 'Epic Games', 'svchost.exe': 'служба Windows', 'msedgewebview2.exe': 'встроенный браузер' };
+const procName = p => { const k = (p || '').toLowerCase(); return PROC_NAME[k] || (k ? k.replace(/\.exe$/, '') : ''); };
+
+// Решения автоопределения (раз в 30 с) и сводка листьев за последний опрос: ключ → { label, domains, procs }.
+let smartMap = {}, smartAt = 0;
+let branchLeaves = {};
+function branchWhy(key, b) {
+  const e = branchLeaves[key] || { domains: [key], procs: [] };
+  const r = S.rules.find(r => r.kind === 'domain' && e.domains.some(h => h === r.value.toLowerCase() || h.endsWith('.' + r.value.toLowerCase())));
+  let why;
+  if (r) why = `Ваше правило: ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret', block: 'блокировать' }[r.action]}.`;
+  else if (b === 'zapret') why = 'Из списков zapret: его замедляют, zapret обходит это без сервера.';
+  else if (S.routing === 'global' && b === 'proxy') why = 'Режим «Всё через сервер».';
+  else {
+    const sm = e.domains.map(h => smartMap[h]).find(v => v !== undefined);
+    if (sm !== undefined) why = sm ? 'Автоопределение: открывается из России нормально — напрямую быстрее.' : 'Автоопределение: напрямую не открывается или закрыт для России — через сервер.';
+    else if (b === 'direct' && S.downloadsDirect && e.domains.some(h => DL_DOMAINS.some(d => h === d || h.endsWith('.' + d)))) why = 'Загрузки игр и обновлений — сразу напрямую, чтобы закачка не забивала сервер.';
+    else why = b === 'direct' ? 'Напрямую: открывается из России без сервера.'
+      : 'Через сервер: заблокирован в России, закрыт для российских IP или ещё проверяется.';
+  }
+  // Части подсказки — отдельными строками: так их переводит английский интерфейс.
+  return [why,
+    e.domains.length > 1 || e.label !== e.domains[0] ? 'Адреса: ' + e.domains.slice(0, 4).map(displayDomain).join(', ') + (e.domains.length > 4 ? ' …' : '') + '.' : '',
+    e.procs.length ? 'Программа: ' + e.procs.slice(0, 2).join(', ') + '.' : ''].filter(Boolean);
+}
+function branchDrop(key, b) {
   if (b === 'zapret' && !zapretOn()) { toast('zapret выключен — на эту ветку сейчас нельзя'); return false; }
-  const action = b === 'proxy' ? 'proxy' : b;
-  S.rules = S.rules.filter(r => !(r.kind === 'domain' && r.value.toLowerCase() === host));
-  S.rules.push({ kind: 'domain', value: host, action });
+  const e = branchLeaves[key] || { label: key, domains: [key] };
+  // Для известного сервиса правило ставится на все его адреса — иначе видео пошло бы одним путём, а сайт другим.
+  const sv = SERVICES.find(x => x.name === key);
+  const doms = sv ? sv.domains : e.domains;
+  S.rules = S.rules.filter(r => !(r.kind === 'domain' && doms.includes(r.value.toLowerCase())));
+  for (const d of doms) S.rules.push({ kind: 'domain', value: d, action: b });
   save(0);
-  toast(`${displayDomain(host)} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. Правило сохранено, заработает после переподключения`);
+  toast(`${e.label} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. Правило сохранено, заработает после переподключения`);
   return true;
 }
 function renderBranches(lanes) {
@@ -1166,14 +1226,29 @@ function renderBranches(lanes) {
     smartAt = Date.now();
     api('/api/smart').then(v => { smartMap = {}; for (const x of v.recent || []) smartMap[x.host] = x.direct; }).catch(() => {});
   }
-  // Листья — по основному домену: десяток узлов одного CDN становится одним листом.
-  const seen = new Set(), top = [];
+  // Листья — понятные сервисы: адреса одного сервиса сводятся в один лист; незнакомые сайты
+  // с заметным трафиком — по основному домену; счётчики и фоновая мелочь не показываются.
+  const groups = new Map();
+  let bg = 0;
   for (const t of (STATS && STATS.top) || []) {
-    if (!t.host || /^[\d.:[\]]+$/.test(t.host)) continue;
-    const host = baseDomain(t.host);
-    if (seen.has(host)) continue;
-    seen.add(host); top.push({ host, route: t.route, speed: t.speed });
+    if (!t.host || /^[\d.:[\]]+$/.test(t.host) || t.route === 'telegram') continue;
+    const base = baseDomain(t.host), sv = serviceOf(base);
+    // Мелочь (до 20 КБ/с и 2 МБ за сеанс) — фоновые запросы и телеметрия: на схеме только шум.
+    if (BACKGROUND.test(base) || (t.speed < 20 * 1024 && t.total < 2 * 1024 * 1024)) { bg++; continue; }
+    const key = sv ? sv.name : base;
+    const g = groups.get(key) || { key, label: sv ? sv.name : displayDomain(base), domains: [], procs: [], routes: {} };
+    if (!g.domains.includes(base)) g.domains.push(base);
+    const pn = procName(t.proc); if (pn && !g.procs.includes(pn)) g.procs.push(pn);
+    const rb = t.route === 'direct' || t.route === 'zapret' ? t.route : 'proxy';
+    g.routes[rb] = (g.routes[rb] || 0) + t.speed + 1;
+    groups.set(key, g);
   }
+  branchLeaves = {};
+  const top = [...groups.values()].map(g => {
+    branchLeaves[g.key] = g;
+    const route = Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][0];
+    return { key: g.key, label: g.label, route };
+  });
   const sp = lanes.map(l => ({ ...l,
     thin: l.key === 'direct' && p === 'on' && S.routing === 'global',
     wilt: l.key === 'zapret' && AD && AD.zapret && AD.zapret.degraded }));
