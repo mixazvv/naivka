@@ -1164,7 +1164,7 @@ function renderChart() {
     h('span', null, h('i', { style: 'background:none;border-top:1.5px dashed var(--muted);border-radius:0;height:0;vertical-align:3px' }), 'Отдача', h('b', null, fmtSpeed(l.pu + l.du + l.zu + l.tu))));
 }
 
-const ROUTE_STYLE = { direct: ['direct', 'напрямую'], zapret: ['zapret', 'через zapret'], telegram: ['tg', 'tg-ws-proxy'], 'twitch-adfree': ['proxy', 'Twitch без рекламы'] };
+const ROUTE_STYLE = { direct: ['direct', 'напрямую'], zapret: ['zapret', 'через zapret'], telegram: ['tg', 'tg-ws-proxy'] };
 
 function renderTop() {
   const list = $('#topList');
@@ -1291,7 +1291,6 @@ function routeOf(c) {
   const srv = chains.find(t => t.startsWith('s-') || t.startsWith('w-'));
   if (srv) { const sv = serverByTag(srv); return { cls: 'proxy', text: sv ? sv.name : srv }; }
   if (chains.includes('direct')) return { cls: 'direct', text: 'Напрямую' };
-  if (chains.includes('twitch-adfree')) return { cls: 'proxy', text: 'Twitch без рекламы' };
   if (chains.length) return { cls: 'proxy', text: chains[0] };
   return { cls: 'block', text: '—' };
 }
@@ -2308,8 +2307,7 @@ function viewRules() {
       check('blockQuic', 'Блокировать QUIC', 'Нужно для серверов Naive.', refreshSpecialNote),
       check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки — мимо сервера.', refreshSpecialNote),
       check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Для серверов VLESS, Hysteria2, TUIC, Trojan и Shadowsocks. Работает в режиме TUN.', refreshSpecialNote),
-      check('adBlock', 'Блокировать рекламу и трекеры', 'Баннеры, счётчики и рекламные сети. Рекламу в видео YouTube так не убрать.', refreshSpecialNote),
-      check('twitchAdFree', 'Twitch без рекламы', 'Для трансляций. Если они перестали открываться — выключите.', refreshSpecialNote))),
+      check('adBlock', 'Блокировать рекламу и трекеры', 'Баннеры, счётчики и рекламные сети. Рекламу в видео YouTube так не убрать.', refreshSpecialNote))),
     more('Правила sing-box вручную', S.extraRules.trim() ? 'есть свои правила' : 'для опытных',
       h('p', { class: 'hint' }, 'JSON-массив для route.rules, вставляется сразу после ваших правил. Можно ссылаться на outbound proxy, direct, auto и на свои outbounds из настроек.'),
       jsonArea('extraRules', '[\n  { "domain_keyword": ["openai"], "outbound": "proxy" }\n]', true)));
@@ -2408,7 +2406,7 @@ const MODE_DESC = {
 };
 
 function specialNote() {
-  const on = [S.adBlock && 'реклама блокируется', S.twitchAdFree && 'Twitch без рекламы', S.ruInsideDirect && 'российские сервисы напрямую', S.blockQuic && 'QUIC блокируется', S.udpProxy ? 'UDP через VLESS' : S.udpDirect && 'UDP напрямую'].filter(Boolean);
+  const on = [S.adBlock && 'реклама блокируется', S.ruInsideDirect && 'российские сервисы напрямую', S.blockQuic && 'QUIC блокируется', S.udpProxy ? 'UDP через VLESS' : S.udpDirect && 'UDP напрямую'].filter(Boolean);
   return on.length ? on.join(', ') : 'всё выключено';
 }
 function refreshSpecialNote() {
@@ -2429,7 +2427,7 @@ const CATS = [
 
 function ruleCategory(rule) {
   if (rule === 'final') return 'final';
-  if (/inbound=\[?probe/.test(rule) || rule.includes('twitch-adfree') || rule.includes('ttvnw') || rule.includes('ip_is_private') || rule.includes('network=udp') || rule.includes('protocol=dns')) return null;
+  if (/inbound=\[?probe/.test(rule) || rule.includes('ip_is_private') || rule.includes('network=udp') || rule.includes('protocol=dns')) return null;
   if (rule.includes('steamcontent.com')) return 'downloads';
   if (rule.includes('smart-direct')) return 'smart';
   if (rule.includes('smart-proxy')) return 'smartp';
@@ -3410,7 +3408,6 @@ function renderTraffic() {
     let name = null;
     if (key.startsWith('s-')) { const sv = serverById(key.slice(2)); name = sv ? sv.name : 'удалённый сервер'; }
     else if (key === 'wl') name = 'подписка «белые списки»';
-    else if (key === 'twitch-adfree') name = 'Twitch без рекламы';
     if (name) rows.push(['  ' + name, v]);
   }
   rows.push(['Напрямую', k.direct], ['Через zapret', k.zapret], ['Telegram (tg-ws-proxy)', k.telegram]);

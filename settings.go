@@ -210,7 +210,6 @@ type Settings struct {
 	AdBlock         bool             `json:"adBlock"`
 	TrafficLimitGB  int              `json:"trafficLimitGB"`  // предупреждать о трафике через сервер за месяц; 0 — нет
 	TrafficResetDay int              `json:"trafficResetDay"` // с какого числа считается месяц (1–28)
-	TwitchAdFree    bool             `json:"twitchAdFree"`    // плейлисты Twitch — через прокси без рекламы
 	UDPProxy        bool             `json:"udpProxy"`        // UDP (голос Discord, игры) — через сервер VLESS
 	LogLevel        string           `json:"logLevel"`
 	AutoConnect     bool             `json:"autoConnect"`

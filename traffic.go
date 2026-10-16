@@ -18,7 +18,7 @@ const trafficKeepDays = 400
 
 // TrafficDay — один день: ключ → [загрузка, отдача] в байтах.
 // Ключи: proxy (всё через сервер), direct, zapret, telegram, а ещё s-<id> (свой сервер),
-// wl (подписка) и twitch-adfree — части proxy.
+// wl (подписка) — части proxy.
 type TrafficDay map[string][2]int64
 
 type trafficStore struct {

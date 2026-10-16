@@ -43,26 +43,6 @@ var ruleSetURL = map[string]string{
 	"geoblock": "https://github.com/itdoginfo/allow-domains/releases/latest/download/geoblock.srs",
 }
 
-// Twitch без рекламы. Twitch вставляет рекламу прямо в плейлист трансляции, и решает это
-// по стране, из которой пришёл запрос плейлиста. Поэтому запросы плейлистов (usher и
-// video-weaver; сами куски видео идут как обычно) уходят через прокси проекта TTV LOL PRO
-// (github.com/younesaassila/ttv-lol-pro) — они стоят там, где Twitch рекламу не показывает.
-// Прокси видит только имя сайта: соединение до Twitch зашифровано насквозь.
-const (
-	tagTwitch     = "twitch-adfree"
-	twitchProxyPt = 2023
-)
-
-var twitchProxies = []string{"chromium.api.cdn-perfprod.com", "firefox.api.cdn-perfprod.com"}
-
-var twitchPlaylistRule = M{
-	"domain": []any{"usher.ttvnw.net"},
-	"domain_regex": []any{
-		`^[a-z0-9-]+\.playlist\.(live-video|ttvnw)\.net$`,
-		`^video-weaver\.[a-z0-9-]+\.hls\.ttvnw\.net$`,
-	},
-}
-
 // Российские доменные зоны: .ru, .рф, .su, .рус
 var ruZones = []any{"ru", "xn--p1ai", "su", "xn--p1acf"}
 
@@ -274,17 +254,6 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			udpTarget = "wl"
 		}
 	}
-	if s.TwitchAdFree {
-		var tw []any
-		for i, host := range twitchProxies {
-			tag := fmt.Sprintf("%s-%d", tagTwitch, i+1)
-			outbounds = append(outbounds, M{"type": "http", "tag": tag, "server": host, "server_port": twitchProxyPt})
-			tw = append(tw, tag)
-		}
-		// Проверяем прокси запросом к самому Twitch: на чужие сайты они могут и не пускать.
-		outbounds = append(outbounds, M{"type": "urltest", "tag": tagTwitch, "outbounds": tw,
-			"url": "https://usher.ttvnw.net/", "interval": "10m", "tolerance": 150, "idle_timeout": "1h"})
-	}
 	if t := strings.TrimSpace(s.ExtraOutbounds); t != "" {
 		var extra []any
 		if err := json.Unmarshal([]byte(t), &extra); err != nil {
@@ -361,14 +330,6 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		M{"protocol": "dns", "action": "hijack-dns"},
 		M{"ip_is_private": true, "outbound": tagDirect},
 	)
-	if s.TwitchAdFree {
-		// HTTP-прокси передаёт только TCP: QUIC к плейлистам отклоняем, браузер повторит по TCP.
-		udp, tcp := M{"network": "udp", "action": "reject"}, M{"outbound": tagTwitch}
-		for k, v := range twitchPlaylistRule {
-			udp[k], tcp[k] = v, v
-		}
-		rules = append(rules, udp, tcp)
-	}
 	var dnsRules []any
 
 	// Пользовательские правила: сначала блокировки, потом «напрямую», потом «через сервер».
@@ -673,21 +634,6 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 	if !isIP(host) {
 		dnsRemote["domain_resolver"] = tagDNSDirect
-	}
-	if s.TwitchAdFree && (s.Mode == "tun" || env.Mobile) {
-		// В режиме TUN программа подключается к IP-адресу, а прокси TTV LOL пускает только по имени
-		// сайта (на IP отвечает 403 — плейлисты Twitch не грузятся). Для плейлистов Twitch DNS отдаёт
-		// подставной адрес (fakeip): по нему ядро знает имя сайта и передаёт прокси именно его.
-		fake := M{"type": "fakeip", "tag": "dns-twitch", "inet4_range": "198.18.0.0/15"}
-		if !s.IPv4Only {
-			fake["inet6_range"] = "fc00::/18"
-		}
-		dnsServers = append(dnsServers, fake)
-		r := M{"query_type": []any{"A", "AAAA"}, "server": "dns-twitch"}
-		for k, v := range twitchPlaylistRule {
-			r[k] = v
-		}
-		dnsRules = append([]any{r}, dnsRules...)
 	}
 	dns := M{
 		"servers": append([]any{dnsDirect, dnsRemote}, dnsServers...),
