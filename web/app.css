@@ -1139,8 +1139,10 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
 :root[data-skin="blocks"] .power:hover:not(:disabled) .pw-px-ring { fill: var(--tunnel); }
 :root[data-skin="blocks"] .power:hover:not(:disabled) .pw-px-icon { fill: var(--tunnel); }
 :root[data-skin="blocks"] .power:active:not(:disabled) svg { transform: translateY(2px); }
-:root[data-skin="blocks"] body[data-state="on"] .pw-px-ring, :root[data-skin="blocks"] body[data-state="on"] .pw-px-core { fill: #4FD08A; }
-:root[data-skin="blocks"] body[data-state="on"] .pw-px-icon { fill: #0C2016; }
+/* Подключено: как у узлов схемы — цветная обводка и значок, середина остаётся тёмной. */
+:root[data-skin="blocks"] body[data-state="on"] .pw-px-ring, :root[data-skin="blocks"] body[data-state="on"] .pw-px-icon { fill: #4FD08A; }
+:root[data-skin="blocks"] body[data-state="on"] .power:hover .pw-px-core { fill: #2E3A33; }
+:root[data-skin="blocks"] .px-node-gap, :root[data-skin="blocks"] .pw-px-gap { fill: #141518; }
 :root[data-skin="blocks"] body[data-state="on"] .pw-px-halo { animation: pxBreathe 3.2s steps(4) infinite; }
 @keyframes pxBreathe { 0%, 100% { opacity: .08; } 50% { opacity: .3; } }
 :root[data-skin="blocks"] body[data-state="wait"] .pw-px-ring { animation: pxRun 1.12s steps(1) infinite; animation-delay: calc(var(--i) * .04s); }
@@ -1215,3 +1217,25 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
 :root[data-skin="blocks"]:not([data-nav="wheel"]) .nav-item[aria-current="page"] { background: #1D1E22; }
 :root[data-skin="blocks"]:not([data-nav="wheel"]) .nav-key { border-radius: 0; border: 0; background: #26282D; }
 :root[data-skin="blocks"]:not([data-nav="wheel"]) .nav-item:hover { background: #1D1E22; }
+
+/* Кнопка подключения в схеме ветвей — такой же узел, как остальные кружки: тёмный круг
+   с обводкой цвета состояния и значком, без сплошной заливки и ореолов. Во всех темах со схемой ветвей. */
+.pw-px-gap { display: none; }
+:root[data-skin="blocks"] .pw-px-gap { display: inline; }
+.lanes-box.branches .power { width: 66px; }
+.lanes-box.branches.small .power { width: 54px; }
+.lanes-box.branches .power .pw-h, .lanes-box.branches .pw-halo { display: none; }
+.lanes-box.branches .power .pw-c:not(.pw-halo) { display: inline; }
+.lanes-box.branches .pw-track { fill: var(--raised); stroke: var(--line); stroke-width: 4.5; }
+.lanes-box.branches .pw-ring { stroke-width: 4.5; stroke-linecap: round; }
+.lanes-box.branches .pw-core { fill: none; stroke: none; transition: fill .3s; }
+.lanes-box.branches .pw-icon { stroke-width: 6.5; transform: scale(.82); transform-origin: 60px 60px; }
+.lanes-box.branches .power:hover:not(:disabled) .pw-core { fill: color-mix(in srgb, var(--tunnel) 12%, transparent); }
+body[data-state="on"] .lanes-box.branches .power { color: var(--tunnel); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--tunnel) 40%, transparent)); }
+body[data-state="on"] .lanes-box.branches .pw-core { fill: none; stroke: none; }
+body[data-state="on"] .lanes-box.branches .power:hover .pw-core { fill: color-mix(in srgb, var(--tunnel) 14%, transparent); }
+body[data-state="blocked"] .lanes-box.branches .pw-core { fill: none; }
+@media (prefers-reduced-motion: reduce) { body[data-state="on"] .lanes-box.branches .power { filter: none; } }
+
+/* Узкое окно: подпись «Компьютер» прижата к левому краю кнопки, чтобы не обрезалась. */
+.lanes-box.branches.small .br-node.comp { transform: translate(-27px, 0); justify-items: start; text-align: left; }
