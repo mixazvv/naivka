@@ -295,6 +295,8 @@ func freePort() (int, error) {
 }
 
 func (c *Core) Start(s *Settings) (err error) {
+	// До всего, что пишет в папку run (списки автоопределения, конфиг): права на папку и её файлы.
+	restrictDir(c.runDir())
 	c.mu.Lock()
 	if c.running || c.starting {
 		c.mu.Unlock()
@@ -363,9 +365,11 @@ func (c *Core) Start(s *Settings) (err error) {
 	}
 	b, _ := json.MarshalIndent(cfg, "", "  ")
 	cfgPath := filepath.Join(c.runDir(), "config.json")
-	restrictDir(c.runDir())
+	// Старый файл удаляем, а не перезаписываем: удалить его можно, даже если права на сам файл
+	// испорчены (это решают права папки), а новый файл получит правильные права от папки.
+	_ = os.Remove(cfgPath)
 	if err := os.WriteFile(cfgPath, b, 0o600); err != nil {
-		return err
+		return fmt.Errorf("не удалось записать конфиг ядра: %v", err)
 	}
 	// В конфиге все пароли открытым текстом. sing-box читает его один раз при запуске —
 	// после этого (или при ошибке) файл не нужен и не должен лежать на диске.

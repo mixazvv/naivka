@@ -79,10 +79,19 @@ func restrictDir(dir string) {
 	if sid := currentUserSID(); sid != "" {
 		grants = append(grants, "*"+sid+":(OI)(CI)F")
 	}
-	args := append([]string{dir, "/inheritance:r", "/grant:r"}, grants...)
-	cmd := exec.Command("icacls", append(args, "/T", "/C", "/Q")...)
-	hideWindow(cmd)
-	if err := cmd.Run(); err != nil {
+	// Права ставятся только самой папке, а файлы внутри сбрасываются на «наследовать от папки».
+	// (2.3.6 применяла правило и к файлам с ключом /T — у уже лежавших файлов права пропадали
+	// совсем, и ядро не могло записать config.json. Сброс ниже чинит и это.)
+	run := func(args ...string) error {
+		cmd := exec.Command("icacls", args...)
+		hideWindow(cmd)
+		return cmd.Run()
+	}
+	err := run(append(append([]string{dir, "/inheritance:r", "/grant:r"}, grants...), "/C", "/Q")...)
+	if err2 := run(filepath.Join(dir, "*"), "/reset", "/T", "/C", "/Q"); err == nil {
+		err = err2
+	}
+	if err != nil {
 		restricted.Delete(dir)
 	}
 }
