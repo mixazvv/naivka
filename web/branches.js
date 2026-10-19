@@ -9,7 +9,6 @@ const Branches = (() => {
   let W = 0, H = 0, dpr = 1, raf = 0, ro = null;
   let data = null;             // последнее состояние из app.js
   let dragOver = null;
-  let dragging = false;        // что-то тащат (лист или программу с полки) — ветки показываются широкими дорожками
   const br = {};               // ветки: key → { grow, speed, color, active }
   const parts = {};            // частицы по веткам
   const leaves = new Map();    // host → { host, b, pref, side, t, pos, base, el, seen, pending, over }
@@ -75,7 +74,7 @@ const Branches = (() => {
   }
 
   // Узлы — HTML поверх canvas.
-  let nodesSig = '', popNodes = false;
+  let nodesSig = '';
   function renderNodes() {
     const d = data, sig = JSON.stringify([d.phase, d.lanes.map(l => [l.key, l.node && [l.node.title, l.node.sub, l.node.cc], l.active]), d.endSub, d.compSub, narrow()]);
     // Узлы на месте и подпись та же — ничего не делаем. Пропали (окно пересобрали, сбой) — рисуем заново.
@@ -108,13 +107,6 @@ const Branches = (() => {
     comp.querySelector('small').textContent = d.compSub;
     out.push(comp);
     nodesEl.replaceChildren(...out);
-    if (popNodes) {
-      popNodes = false;
-      for (const el of out) {
-        const delay = (GROW_DELAY[el.dataset.key] ?? 0) + 380;
-        if (el.dataset.key !== 'comp' && el.dataset.key !== 'net') { el.classList.add('pop-in'); el.style.animationDelay = delay + 'ms'; }
-      }
-    }
     nodesSig = sig; // только после успешной сборки: при сбое на следующем обновлении соберём снова
     placeNodes();
   }
@@ -179,7 +171,7 @@ const Branches = (() => {
           let old = null; for (const x of leaves.values()) if (!old || x.seen < old.seen) old = x;
           if (old && now - old.seen > 4000) { old.el.remove(); leaves.delete(old.host); } else continue;
         }
-        lf = { host, label: t.label || host, icon: t.icon, b, pref: .2 + Math.random() * .6, side: Math.random() < .5 ? -1 : 1, seen: now, fresh: true };
+        lf = { host, label: t.label || host, b, pref: .2 + Math.random() * .6, side: Math.random() < .5 ? -1 : 1, seen: now, fresh: true };
         makeLeaf(lf); leaves.set(host, lf);
       }
       lf.seen = now;
@@ -194,7 +186,7 @@ const Branches = (() => {
   function makeLeaf(lf) {
     const el = document.createElement('button');
     el.type = 'button'; el.className = 'br-leaf';
-    el.innerHTML = (lf.icon ? `<span class="svc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${lf.icon}"/></svg></span>` : LEAF) + '<span class="h"></span><span class="why"></span>';
+    el.innerHTML = LEAF + '<span class="h"></span><span class="why"></span>';
     el.querySelector('.h').textContent = lf.label;
     lf.el = el; leavesEl.append(el); bindDrag(lf);
   }
@@ -209,7 +201,7 @@ const Branches = (() => {
       w.replaceChildren(...parts.map(t => { const e = document.createElement('span'); e.textContent = t; return e; }));
       w.dataset.t = sig;
     }
-    lf.el.setAttribute('aria-label', `${lf.label}: ${BRANCH_NAME[lf.b]}. Enter — выбрать путь`);
+    lf.el.setAttribute('aria-label', `${lf.label}: ${BRANCH_NAME[lf.b]}. Enter — перенести на другую ветку`);
   }
 
   // Раскладка: каждый лист — в ближайшее свободное место у своей ветки, без наложений
@@ -276,7 +268,7 @@ const Branches = (() => {
       const p = geom(k);
       for (let i = 4; i <= 56; i++) { const t = i / 60, q = bez(p, t), d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = k; bt = t; } }
     }
-    return bd < 110 ? { k: best, t: bt } : null;
+    return bd < 90 ? { k: best, t: bt } : null;
   }
   function bindDrag(lf) {
     let sx, sy, ox, oy, moved = false, id = null;
@@ -290,7 +282,7 @@ const Branches = (() => {
     el.addEventListener('pointermove', e => {
       if (e.pointerId !== id) return;
       if (!moved && Math.hypot(e.clientX - sx, e.clientY - sy) < 5) return;
-      moved = true; el.classList.add('drag'); dragging = true;
+      moved = true; el.classList.add('drag');
       const sr = box.getBoundingClientRect(), x = e.clientX - sr.left - ox, y = e.clientY - sr.top - oy;
       el.style.transform = `translate(${x - el.offsetWidth / 2}px, ${y - el.offsetHeight / 2}px)`;
       const nb = nearestBranch(x, y); dragOver = nb && nb.k;
@@ -298,9 +290,8 @@ const Branches = (() => {
     const end = e => {
       if (e.pointerId !== id) return;
       id = null;
-      // Просто нажали — меню с выбором пути (тянуть не обязательно).
-      if (!moved) { if (data.onPick) data.onPick({ kind: 'site', key: lf.host, label: lf.label, icon: lf.icon, current: lf.pending ? lf.pending.b : lf.b }, el); return; }
-      el.classList.remove('drag'); dragging = false;
+      if (!moved) return;
+      el.classList.remove('drag');
       const sr = box.getBoundingClientRect(), x = e.clientX - sr.left - ox, y = e.clientY - sr.top - oy;
       const nb = nearestBranch(x, y); dragOver = null;
       if (nb) moveTo(lf, nb.k, nb.t, y); else layout();
@@ -309,7 +300,8 @@ const Branches = (() => {
     el.addEventListener('keydown', e => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
-      if (data.onPick) data.onPick({ kind: 'site', key: lf.host, label: lf.label, icon: lf.icon, current: lf.pending ? lf.pending.b : lf.b }, el);
+      const order = ['proxy', 'direct', 'zapret'].filter(k => br[k] && br[k].active);
+      moveTo(lf, order[(order.indexOf(lf.b) + 1) % order.length], .5);
     });
   }
   function moveTo(lf, k, t, y) {
@@ -382,45 +374,19 @@ const Branches = (() => {
     }
     ctx.globalAlpha = 1;
   }
-  // Пока что-то тащат, ветки — широкие подписанные дорожки: в них легко попасть.
-  const BAND_NAME = { proxy: 'ЧЕРЕЗ СЕРВЕР', direct: 'НАПРЯМУЮ', zapret: 'ЧЕРЕЗ ZAPRET' };
-  function drawBands(time) {
-    for (const k of ['proxy', 'direct', 'zapret']) {
-      const b = br[k];
-      if (!b || b.grow < .6 || !b.active) continue;
-      const p = geom(k), col = css(b.color, time);
-      ctx.save();
-      ctx.beginPath();
-      for (let i = 0; i <= 40; i++) { const q = bez(p, i / 40); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
-      ctx.strokeStyle = col; ctx.lineWidth = 64; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.globalAlpha = dragOver === k ? .28 : .1; ctx.stroke();
-      const q = bez(p, .8);
-      ctx.globalAlpha = dragOver === k ? 1 : .75; ctx.fillStyle = col;
-      ctx.font = '600 11px ' + (getComputedStyle(box).fontFamily || 'sans-serif');
-      ctx.textAlign = 'center'; ctx.fillText(BAND_NAME[k], q[0], q[1] + (k === 'proxy' ? 26 : k === 'zapret' ? -20 : 24));
-      ctx.restore();
-    }
-  }
-
   let growKey = '';
-  // Подключение — одно движение: ветки вырастают из кнопки по очереди, узлы раскрываются следом.
-  const GROW_DELAY = { proxy: 250, tg: 450, zapret: 650, direct: 0 };
-  let onAt = 0, lastPhase = '';
   function frame(time) {
     raf = requestAnimationFrame(frame);
     if (!box || !box.isConnected || document.hidden || !data) return;
     ctx.clearRect(0, 0, W, H);
-    const since = performance.now() - onAt;
     for (const k in br) {
       const b = br[k];
-      const target = b.target > 0 && since < (GROW_DELAY[k] || 0) && !reduce() ? 0 : b.target;
-      b.grow += (target - b.grow) * (reduce() ? 1 : 0.07);
-      if (Math.abs(target - b.grow) < .002) b.grow = target;
+      b.grow += (b.target - b.grow) * (reduce() ? 1 : 0.07);
+      if (Math.abs(b.target - b.grow) < .002) b.grow = b.target;
       b.speed += (b.want - b.speed) * 0.08;
     }
     const key = Object.keys(br).map(k => k + (br[k].grow > .6 ? 1 : 0)).join('');
     if (key !== growKey) { growKey = key; layout(); }
-    if (dragging) drawBands(time);
     for (const k of ['tg', 'zapret', 'proxy', 'direct']) drawBranch(k, time);
     cutHoles();
   }
@@ -428,8 +394,6 @@ const Branches = (() => {
   // ---------- вход из app.js раз в секунду ----------
   function update(container, d) {
     mount(container, d);
-    if (d.phase === 'on' && lastPhase && lastPhase !== 'on') { onAt = performance.now(); popNodes = true; }
-    lastPhase = d.phase;
     data = d;
     // Размер схемы сверяем каждую секунду, а не только по ResizeObserver: после сворачивания в трей
     // и разворачивания WebView не всегда сообщает о новом размере — ветки и узлы съезжали.
@@ -449,23 +413,5 @@ const Branches = (() => {
     return overflow;
   }
 
-  // Перетаскивание программы с полки (она вне схемы): app.js сообщает, где указатель.
-  function hoverAt(cx, cy) {
-    if (!box) return null;
-    const r = box.getBoundingClientRect();
-    dragging = true;
-    const nb = nearestBranch(cx - r.left, cy - r.top);
-    dragOver = nb && nb.k;
-    return dragOver;
-  }
-  function endHover() { dragging = false; const k = dragOver; dragOver = null; return k; }
-  // Путь выбран в меню — лист переезжает на новую ветку (правило уже сохранено в app.js).
-  function moveLeaf(host, k) {
-    const lf = leaves.get(host);
-    if (!lf || !br[k]) return;
-    lf.b = k; lf.pref = .3 + Math.random() * .4; lf.drop = true; lf.pending = { b: k, at: Date.now() };
-    paintLeaf(lf); layout();
-  }
-
-  return { update, unmount, hoverAt, endHover, moveLeaf };
+  return { update, unmount };
 })();
