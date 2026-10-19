@@ -1083,7 +1083,8 @@ function laneList() {
   });
   if (zapretOn()) lanes.push({
     key: 'zapret', name: 'zapret', color: 'var(--warn)', speed: on ? sp.zd + sp.zu : 0, active: true, unmeasured: !on,
-    node: { icon: 'shield', title: 'zapret', sub: AD.zapret.degraded ? 'не справляется' : AD.zapret.strategy },
+    // AD (сведения о zapret) приходит позже состояния: при запуске zapret уже работает, а AD ещё нет.
+    node: { icon: 'shield', title: 'zapret', sub: AD && AD.zapret && AD.zapret.degraded ? 'не справляется' : (AD && AD.zapret && AD.zapret.strategy) || S.zapret.strategy || '' },
   });
   lanes.push({ key: 'direct', name: 'Напрямую', color: 'var(--direct)', speed: on ? sp.dd + sp.du : 0, active: true, unmeasured: !on, node: null });
   return lanes;
