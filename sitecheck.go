@@ -31,7 +31,10 @@ type CheckResult struct {
 	Direct    ProbeResult `json:"direct"`
 	Proxy     ProbeResult `json:"proxy"`
 	Verdict   string      `json:"verdict"`
-	Suggest   string      `json:"suggest"` // proxy | direct | ""
+	Suggest   string      `json:"suggest"` // proxy | direct | zapret | ""
+	// zapret: работает ли он и есть ли сайт в его списках. Если есть — прямая проверка уже шла через zapret.
+	ZapretOn     bool `json:"zapretOn"`
+	ZapretCovers bool `json:"zapretCovers"`
 }
 
 // Адреса страниц, на которые провайдеры отправляют вместо заблокированного сайта.
@@ -51,6 +54,11 @@ func (a *App) apiCheck(r *http.Request) (any, error) {
 	res := &CheckResult{Host: host}
 	directPort, proxyPort := a.core.ProbePorts()
 	running := a.core.Running()
+	if a.zapret.Running() {
+		res.ZapretOn = true
+		s := a.settingsCopy()
+		res.ZapretCovers = domainListed(host, append(a.zapret.Domains(s), zapretRuleDomains(s)...))
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -69,6 +77,28 @@ func (a *App) apiCheck(r *http.Request) (any, error) {
 	wg.Wait()
 	verdict(res, running)
 	return res, nil
+}
+
+// domainListed — входит ли сайт (или его родительский домен) в список.
+func domainListed(host string, list []string) bool {
+	for _, d := range list {
+		d = strings.ToLower(strings.TrimSpace(d))
+		if d != "" && (host == d || strings.HasSuffix(host, "."+d)) {
+			return true
+		}
+	}
+	return false
+}
+
+// zapretRuleDomains — сайты, которые пользователь сам отправил «через zapret».
+func zapretRuleDomains(s *Settings) []string {
+	var out []string
+	for _, r := range s.Rules {
+		if r.Action == "zapret" && r.Kind == "domain" {
+			out = append(out, r.Value)
+		}
+	}
+	return out
 }
 
 func checkTarget(t string) (string, error) {
@@ -175,6 +205,13 @@ func verdict(r *CheckResult, running bool) {
 			r.Verdict = "Сайт открывается напрямую. Подключитесь, чтобы проверить и путь через сервер."
 		} else {
 			r.Verdict = "Напрямую сайт не открывается. Подключитесь, чтобы проверить, откроется ли через сервер."
+		}
+	case d.OK && r.ZapretCovers && r.RouteKind != "proxy":
+		r.Verdict = "Сайт открывается без сервера: он в списках zapret, и zapret обходит его замедление."
+	case !d.OK && r.ZapretOn && !r.ZapretCovers && p.OK:
+		r.Verdict = "Напрямую сайт не открывается, через сервер — открывается. Можно попробовать и через zapret: это не тратит трафик сервера, но помогает не со всеми сайтами."
+		if r.RouteKind == "direct" {
+			r.Suggest = "proxy"
 		}
 	case !d.OK && p.OK:
 		r.Verdict = "Сайт недоступен напрямую — похоже на блокировку. Через сервер открывается."

@@ -490,13 +490,16 @@ func zapretConflict() string {
 	if runtime.GOOS != "windows" {
 		return ""
 	}
-	sc := exec.Command("sc", "query", "zapret")
+	// Обе проверки ограничены по времени: подключение ждёт их под общей блокировкой.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	sc := exec.CommandContext(ctx, "sc", "query", "zapret")
 	hideWindow(sc) // консольная программа: без этого на долю секунды мелькает окно
 	out, _ := sc.CombinedOutput()
 	if strings.Contains(string(out), "RUNNING") {
 		return "Уже работает служба zapret, установленная через service.bat. Удалите её: service.bat → Remove Services."
 	}
-	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq winws.exe", "/NH")
+	cmd := exec.CommandContext(ctx, "tasklist", "/FI", "IMAGENAME eq winws.exe", "/NH")
 	hideWindow(cmd)
 	out, _ = cmd.CombinedOutput()
 	if strings.Contains(strings.ToLower(string(out)), "winws.exe") {

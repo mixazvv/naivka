@@ -216,6 +216,23 @@ func (a *App) routes() http.Handler {
 		}
 		return nil, nil
 	})
+	// Ошибки в окне (JavaScript) — в журнал: без этого сбой интерфейса не виден в отчёте.
+	api("POST", "/api/uilog", func(r *http.Request) (any, error) {
+		var req struct {
+			Msg string `json:"msg"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		if uiLogLimit.allow(20, 10*time.Minute) {
+			msg := strings.Join(strings.Fields(req.Msg), " ")
+			if len([]rune(msg)) > 400 {
+				msg = string([]rune(msg)[:400]) + "…"
+			}
+			a.core.logs.Add("[окно] " + msg)
+		}
+		return nil, nil
+	})
 	api("GET", "/api/logs", func(r *http.Request) (any, error) {
 		after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 		return a.core.logs.After(after), nil
@@ -421,11 +438,15 @@ type stateResp struct {
 	Protected    bool   `json:"protected"` // ядро в Program Files
 	Legacy       bool   `json:"legacy"`    // Windows 7/8
 	Install      bool   `json:"install"`   // есть установка своего сервера по SSH
+	ZapretOn     bool   `json:"zapretOn"`  // zapret работает (для режима «Только zapret»)
 
 	Conflicts []ConflictInfo `json:"conflicts"`          // мешающие программы
 	Reviving  bool           `json:"reviving"`           // ядро упало, сторож поднимает его снова
 	Failover  *failoverView  `json:"failover,omitempty"` // временно работаем через другой сервер
 }
+
+// uiLogLimit — не больше 20 ошибок окна за 10 минут: зациклившаяся ошибка не забьёт журнал.
+var uiLogLimit crashBudget
 
 type failoverView struct {
 	From string `json:"from"`
@@ -443,6 +464,7 @@ func (a *App) apiState(*http.Request) (any, error) {
 		conflicts = []ConflictInfo{}
 	}
 	reviving := a.life.trying.Load() > 0 && !st.Running
+	zapretOn := a.zapret.Running()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return stateResp{
@@ -461,6 +483,7 @@ func (a *App) apiState(*http.Request) (any, error) {
 		Protected:    a.core.Protected(),
 		Legacy:       legacyWindows(),
 		Install:      serverInstallSupported,
+		ZapretOn:     zapretOn,
 	}, nil
 }
 

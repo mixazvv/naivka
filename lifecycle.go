@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +22,10 @@ type lifeState struct {
 
 // connect — подключиться по просьбе пользователя (или автоподключение при запуске).
 func (a *App) connect() error {
+	// Режим «Только zapret»: кнопка включает zapret (и Telegram), сервер и ядро не нужны.
+	if a.settingsCopy().ZapretOnly {
+		return a.zapretOnlyOn()
+	}
 	a.life.want.Store(true)
 	a.dnsg.fallback.Store(false) // пользователь подключается сам — снова пробуем DNS из настроек
 	a.life.mu.Lock()
@@ -45,6 +51,9 @@ func (a *App) disconnect() {
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
 	a.core.Stop()
+	if a.settingsCopy().ZapretOnly {
+		a.zapretOnlyOff()
+	}
 	a.fo.clear()
 	a.mu.Lock()
 	a.applied = ""
@@ -175,4 +184,46 @@ func (a *App) keepTrying(gen int64, first int) {
 			a.mon.Event("error", "Пока не удаётся восстановить соединение ("+firstLine(err.Error())+"). Продолжаю пробовать", true)
 		}
 	}
+}
+
+// zapretOnlyOn — режим «Только zapret»: включить zapret (запомнить в настройках, чтобы он поднимался
+// вместе с Naivka) и Telegram, если он включён. Ядро не запускается.
+func (a *App) zapretOnlyOn() error {
+	a.life.mu.Lock()
+	defer a.life.mu.Unlock()
+	a.core.Stop() // если до этого было подключение через сервер
+	if a.zapret.root() == "" {
+		return errors.New("Сначала установите zapret в разделе «Обход»")
+	}
+	if runtime.GOOS == "windows" && !isAdmin() {
+		return errNeedAdmin
+	}
+	a.mu.Lock()
+	a.settings.Zapret.Enabled = true
+	ns := a.settings.clone()
+	a.mu.Unlock()
+	_ = SaveSettings(a.dir, ns)
+	if !a.zapret.Running() && !a.zapret.busy() {
+		if err := a.zapret.Start(ns); err != nil {
+			return err
+		}
+	}
+	if ns.Telegram.Enabled && a.tgws.snapshot().Installed != "" && !a.tgws.Running() {
+		if err := a.tgws.Start(ns); err != nil {
+			a.mon.Event("warn", "tg-ws-proxy не запустился: "+firstLine(err.Error()), false)
+		}
+	}
+	a.mon.Event("ok", "zapret работает — без сервера", true)
+	return nil
+}
+
+// zapretOnlyOff — выключить zapret в режиме «Только zapret» (вызывается под a.life.mu).
+func (a *App) zapretOnlyOff() {
+	a.mu.Lock()
+	a.settings.Zapret.Enabled = false
+	ns := a.settings.clone()
+	a.mu.Unlock()
+	_ = SaveSettings(a.dir, ns)
+	a.zapret.Stop()
+	a.mon.Event("info", "zapret выключен", false)
 }
