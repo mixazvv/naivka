@@ -421,6 +421,7 @@ type stateResp struct {
 	Protected    bool   `json:"protected"` // ядро в Program Files
 	Legacy       bool   `json:"legacy"`    // Windows 7/8
 	Install      bool   `json:"install"`   // есть установка своего сервера по SSH
+	ZapretOn     bool   `json:"zapretOn"`  // zapret работает (для режима «Только zapret»)
 
 	Conflicts []ConflictInfo `json:"conflicts"`          // мешающие программы
 	Reviving  bool           `json:"reviving"`           // ядро упало, сторож поднимает его снова
@@ -443,6 +444,7 @@ func (a *App) apiState(*http.Request) (any, error) {
 		conflicts = []ConflictInfo{}
 	}
 	reviving := a.life.trying.Load() > 0 && !st.Running
+	zapretOn := a.zapret.Running()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return stateResp{
@@ -461,6 +463,7 @@ func (a *App) apiState(*http.Request) (any, error) {
 		Protected:    a.core.Protected(),
 		Legacy:       legacyWindows(),
 		Install:      serverInstallSupported,
+		ZapretOn:     zapretOn,
 	}, nil
 }
 
