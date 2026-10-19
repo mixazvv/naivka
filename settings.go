@@ -205,8 +205,6 @@ type Settings struct {
 	Zapret          ZapretSettings   `json:"zapret"`
 	Telegram        TelegramSettings `json:"telegram"`
 	UpdateCheck     bool             `json:"updateCheck"`
-	UpdateChannel   string           `json:"updateChannel"` // stable | beta — получать ли бета-версии
-	ZapretOnly      bool             `json:"zapretOnly"`    // режим «Только zapret»: кнопка включает zapret без сервера
 	WL              WLSettings       `json:"wl"`
 	Share           ShareSettings    `json:"share"`
 	AdBlock         bool             `json:"adBlock"`
@@ -374,13 +372,6 @@ func (s *Settings) fingerprint() string {
 }
 
 func (s *Settings) normalize() {
-	if s.UpdateChannel != "beta" && s.UpdateChannel != "stable" {
-		// Бету поставили вручную — по умолчанию и дальше получать бета-версии.
-		s.UpdateChannel = "stable"
-		if isPrerelease(appVersion) {
-			s.UpdateChannel = "beta"
-		}
-	}
 	d := DefaultSettings()
 	if s.Mode != "proxy" && s.Mode != "tun" {
 		s.Mode = d.Mode

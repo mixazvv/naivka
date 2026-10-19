@@ -127,7 +127,7 @@ let APPUP = null; // обновление самой Naivka: {installed, latest,
 async function refreshAppUpdate() {
   try { APPUP = await api('/api/app/update'); } catch (_) { return; }
   updateStatus();
-  if (view === 'settings') patch('selfBox', JSON.stringify([SELF, APPUP, S && S.updateChannel]), selfBox);
+  if (view === 'settings') patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox);
 }
 const wlName = tag => WL && WL.names && WL.names[tag];
 const serverByTag = tag => {
@@ -467,8 +467,6 @@ async function tick() {
 function phase() {
   if (!ST) return 'off';
   if (busy || ST.starting) return 'wait';
-  // «Только zapret»: включено — значит работает zapret, ядра нет.
-  if (zapretOnly()) return ST.zapretOn ? 'on' : 'off';
   if (ST.blocked) return 'blocked';
   if (ST.running) return 'on';
   if (ST.reviving) return 'revive';
@@ -476,7 +474,6 @@ function phase() {
   return 'off';
 }
 
-const zapretOnly = () => !!(S && S.zapretOnly);
 const TITLES = { on: 'Подключено', off: 'Отключено', wait: 'Подключение…', err: 'Не удалось подключиться', blocked: 'Трафик заблокирован', revive: 'Восстанавливаю соединение…' };
 const ROUTING = { 'ru-direct': 'Россия напрямую', 'global': 'Всё через сервер' };
 
@@ -505,7 +502,6 @@ function updateStatus() {
   if (!ST || !S) return;
   const p = phase();
   document.body.dataset.state = p;
-  document.body.classList.toggle('zapret-only', zapretOnly());
   $('#navTitle').textContent = TITLES[p];
   const cs = currentServer();
   $('#navSub').textContent = p === 'on' ? (cs.auto ? `${cs.name}, авто` : cs.name) : (ST.mode === 'tun' || S.mode === 'tun' ? 'режим TUN' : '');
@@ -517,10 +513,9 @@ function updateStatus() {
   if (tbs) tbs.textContent = TITLES[p] + (p === 'on' ? ' · ' + cs.name : '');
 
   if ($('#statusTitle')) {
-    $('#statusTitle').textContent = zapretOnly() && p === 'on' ? 'zapret работает' : TITLES[p];
-    let sub = zapretOnly() ? 'Режим «Только zapret»: нажмите на кнопку, чтобы включить zapret.' : 'Трафик идёт как обычно, без сервера.';
-    if (p === 'on' && zapretOnly()) sub = 'Без сервера: YouTube, Discord и другие сайты из списков zapret. Остальное — как обычно.';
-    else if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - ST.startedAt)}`;
+    $('#statusTitle').textContent = TITLES[p];
+    let sub = 'Трафик идёт как обычно, без сервера.';
+    if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - ST.startedAt)}`;
     else if (p === 'wait') sub = 'Запускаю sing-box и проверяю конфиг.';
     else if (p === 'err') sub = 'Подробности ниже и в журнале.';
     else if (p === 'revive') sub = 'Связь пропала. Naivka подключится снова сама, как только получится.';
@@ -577,13 +572,13 @@ function buildNotices() {
   const out = [];
   const up = appUpdateNotice();
   if (up) out.push(up);
-  if (!S.servers.length && !zapretOnly()) out.push(notice('info', 'Сначала добавьте сервер.', h('button', { class: 'btn small', onclick: () => go('servers') }, 'Добавить сервер')));
+  if (!S.servers.length) out.push(notice('info', 'Сначала добавьте сервер.', h('button', { class: 'btn small', onclick: () => go('servers') }, 'Добавить сервер')));
   if (!ST.core.present) out.push(notice('warn', 'Ядро sing-box ещё не скачано.', h('button', { class: 'btn small', onclick: () => go('settings') }, 'Перейти к загрузке')));
   if (ST.core.present && !ST.core.naive && S.servers.some(x => x.type === 'naive')) {
     out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать серверы остальных протоколов (Reality, Hysteria2 и другие).'));
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
-  if (S.servers.length && !zapretOnly() && S.routing !== 'global' && !dnsEncrypted(S.dnsDirect) && !sessionStorage.getItem('naivka-dns-ok')) {
+  if (S.servers.length && S.routing !== 'global' && !dnsEncrypted(S.dnsDirect) && !sessionStorage.getItem('naivka-dns-ok')) {
     out.push(notice('info', 'DNS для сайтов «напрямую» не зашифрован: провайдер видит, какие сайты вы открываете.',
       h('div', { class: 'row', style: 'flex-wrap:nowrap' },
         h('button', { class: 'btn small', onclick: () => {
@@ -621,18 +616,10 @@ function buildNotices() {
 // ---------- действия ----------
 async function toggleConnect() {
   if (busy) return;
-  const pw = $('#connectBtn');
-  if (pw) { pw.classList.remove('ripple'); void pw.offsetWidth; pw.classList.add('ripple'); }
-  // «Только zapret» без прав администратора: zapret включается после перезапуска с правами.
-  if (zapretOnly() && !(ST && ST.zapretOn) && needElevation()) {
-    S.zapret.enabled = true; save(0); await saveNow();
-    await elevateFor('zapret');
-    return;
-  }
   busy = true;
   updateStatus();
   try {
-    if (ST && (ST.running || ST.blocked || ST.reviving || (zapretOnly() && ST.zapretOn))) await api('/api/disconnect', {});
+    if (ST && (ST.running || ST.blocked || ST.reviving)) await api('/api/disconnect', {});
     else { await saveNow(); await api('/api/connect', {}); PXAt = 0; }
   } catch (e) {
     toast(e.message.split('\n')[0], true);
@@ -765,7 +752,7 @@ function refreshView(v = view) {
   if (v === 'own') renderOwn();
   if (v === 'rules') { renderRules(); renderLists(); renderSmart(); }
   if (v === 'bypass') refreshAddons();
-  if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP, S && S.updateChannel]), selfBox)); }
+  if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
 }
 
@@ -903,23 +890,6 @@ function openDialog(...content) {
 }
 
 // ---------- обзор ----------
-// Переключение режима: «Сервер + zapret» ↔ «Только zapret». Включённое отключаем, чтобы не осталось
-// ядра без кнопки (или zapret, который пользователь не включал).
-async function setZapretOnly(v) {
-  const want = v === 'zap';
-  if (want === zapretOnly()) return;
-  const p = phase();
-  if (p === 'on' || p === 'wait' || p === 'revive' || p === 'blocked') {
-    busy = true; updateStatus();
-    try { await api('/api/disconnect', {}); } catch (_) { /* не важно */ }
-    busy = false;
-  }
-  S.zapretOnly = want; save(0); await saveNow();
-  document.body.classList.toggle('zapret-only', want);
-  await refreshState(); await refreshAddons(); updateStatus();
-  toast(want ? 'Режим «Только zapret»: кнопка включает zapret без сервера' : 'Режим «Сервер + zapret»');
-}
-
 function viewOverview() {
   return h('div', { class: 'stage-inner' },
     h('div', { class: 'stage-head' },
@@ -930,13 +900,10 @@ function viewOverview() {
     h('div', { id: 'notices', class: 'stage-notices' }),
     h('div', { class: 'lanes-stage', id: 'lanesCard' },
       h('div', { class: 'lanes-box', id: 'lanesBox' }, h('div', { id: 'lanesSvg' }), powerButton('connectBtn')),
-      h('div', { class: 'lanes-legend', id: 'lanesLegend' }),
-      h('div', { class: 'proc-shelf', id: 'procShelf' })),
+      h('div', { class: 'lanes-legend', id: 'lanesLegend' })),
     h('div', { class: 'stage-controls' },
-      h('label', null, 'Режим', segmented([['srv', 'Сервер + zapret'], ['zap', 'Только zapret']], () => zapretOnly() ? 'zap' : 'srv', setZapretOnly, 'Режим')),
-      h('label', { class: 'srv-only' }, 'Перехват', segmented([['proxy', 'Системный прокси'], ['tun', 'Весь трафик (TUN)']], () => S.mode, v => { S.mode = v; save(); updateStatus(); }, 'Перехват')),
-      h('label', { class: 'srv-only' }, 'Маршрут', segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); updateStatus(); }, 'Маршрут'))),
-    h('div', { class: 'stage-help' }, h('button', { class: 'btn link', type: 'button', onclick: () => openDiag('check') }, 'Сайт не открывается?')),
+      h('label', null, 'Перехват', segmented([['proxy', 'Системный прокси'], ['tun', 'Весь трафик (TUN)']], () => S.mode, v => { S.mode = v; save(); updateStatus(); }, 'Перехват')),
+      h('label', null, 'Маршрут', segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); updateStatus(); }, 'Маршрут'))),
     h('div', { class: 'stage-tiles' },
       h('button', { class: 'tile', type: 'button', id: 'tileSpeed', onclick: () => openDiag('now'), title: 'График скорости и активные сайты' }),
       h('button', { class: 'tile', type: 'button', id: 'tileIp', onclick: () => openDiag('now'), title: 'Как вас видят сайты и карта' }),
@@ -950,17 +917,6 @@ function renderReady() {
   if (!box || !S || !ST) return;
   const cs = currentServer();
   const none = !S.servers.length && !(S.wl && S.wl.enabled);
-  if (zapretOnly()) {
-    const have = !!(AD && AD.zapret && AD.zapret.installed);
-    patch('stageReady', ['z', have, AD && AD.zapret && AD.zapret.strategy].join('|'), () => [
-      h('div', { class: 'ready-text' },
-        h('b', null, have ? 'Только zapret — без сервера' : 'Сначала установите zapret'),
-        h('span', null, have ? 'Замедленные YouTube, Discord и другие сайты из списков zapret откроются без сервера. Заблокированные сайты без сервера не откроются.'
-          : 'zapret скачивается в разделе «Обход» за минуту.')),
-      have ? h('button', { class: 'btn primary', onclick: toggleConnect }, 'Включить zapret')
-        : h('button', { class: 'btn primary', onclick: () => go('bypass') }, 'Открыть «Обход»')]);
-    return;
-  }
   patch('stageReady', [none, cs.name, cs.host, S.routing, S.mode, ST.core.present].join('|'), () => [
     h('div', { class: 'ready-text' },
       h('b', null, none ? 'Добавьте сервер, чтобы подключиться' : 'Готово к подключению'),
@@ -1014,7 +970,7 @@ function lastSpeeds() {
   return { ...ZERO, ...l };
 }
 
-const zapretOn = () => S.zapret && S.zapret.enabled && ((AD && AD.zapret && AD.zapret.running) || (ST && ST.zapretOn));
+const zapretOn = () => S.zapret && S.zapret.enabled && AD && AD.zapret && AD.zapret.running;
 const tgOn = () => S.telegram && S.telegram.enabled && AD && AD.telegram && AD.telegram.running;
 
 // Иконки 24×24, рисуются линией.
@@ -1046,7 +1002,7 @@ function laneList() {
   const g = cs.id && srvGeo[cs.id] && srvGeo[cs.id].info;
   const d = cs.id ? delayFor(cs.id) : null;
   const ms = d && !d.error && d.ms ? `${d.ms} мс` : '';
-  const lanes = zapretOnly() ? [] : [{
+  const lanes = [{
     key: 'proxy', name: 'Через сервер', color: 'var(--tunnel)', speed: on ? sp.pd + sp.pu : 0, active: on,
     node: cs.wlGroup
       ? { icon: 'server', title: cs.name, cc: cs.cc, sub: [cs.host, cs.wlMs ? `${cs.wlMs} мс` : ''].filter(Boolean).join(', ') }
@@ -1228,28 +1184,6 @@ const SERVICES = [
 ].map(([name, list]) => ({ name, domains: list.split(' ') }));
 // Счётчики, реклама и фоновая телеметрия — их на схеме не показываем, только счётчиком «в фоне».
 const BACKGROUND = /(^|\.)(scorecardresearch|doubleclick|google-analytics|googletagmanager|googlesyndication|adfox|criteo|taboola|outbrain|hotjar|mixpanel|segment|amplitude|appsflyer|adjust|branch|sentry|newrelic|datadoghq|cdndex|iabtechnologylab|qianxin|360safe|kaspersky-labs|drweb|avast|avcdn|msftncsi|digicert|letsencrypt|ocsp|pki|crashlytics|app-measurement|onesignal|adriver|admitad|yandexadexchange|mediascope|tns-counter|top100|liveinternet|tiqcdn|demdex|omtrdc|rubiconproject|pubmatic|openx|adnxs|casalemedia)\.[a-z]+$/;
-// Значки сервисов на листьях схемы: простые, в одном стиле, встроены в программу (ничего не грузится).
-const SVC_ICONS = {
-  video: 'M4 7h16v10H4zM10 10l4 2-4 2z', stream: 'M5 4h15v10l-4 4h-4l-3 3v-3H5zM11 8v4M15 8v4',
-  chat: 'M4 6h16v10H9l-4 3v-3H4zM9 11h.01M15 11h.01', send: 'M21 4L3 11.5l6.5 2.2M21 4l-3 16-8.5-6.3M21 4L9.5 13.7v5.8l3.2-3.7',
-  social: 'M5 5h14v14H5zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM16.5 7.5h.01', ai: 'M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z',
-  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4', game: 'M6 9h12a3 3 0 0 1 3 3v2a3 3 0 0 1-5 2l-1-1H9l-1 1a3 3 0 0 1-5-2v-2a3 3 0 0 1 3-3zM8 11v3M6.5 12.5h3M16 12h.01',
-  store: 'M5 8h14l-1.5 11h-11zM9 8a3 3 0 0 1 6 0', code: 'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12',
-  music: 'M9 18V6l10-2v12M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM19 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z',
-  bank: 'M3 10l9-5 9 5M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18', gov: 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-4',
-  cloud: 'M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A4 4 0 1 1 17 18z', mail: 'M4 6h16v12H4zM4 7l8 6 8-6',
-  windows: 'M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v6H4zM13 14h7v6h-7z', download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
-  globe: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
-  app: 'M4 5h16v14H4zM4 9h16',
-};
-const SVC_ICON = { YouTube: 'video', Twitch: 'stream', Discord: 'chat', Telegram: 'send', WhatsApp: 'chat', Instagram: 'social', Facebook: 'social',
-  'X (Twitter)': 'social', ChatGPT: 'ai', Claude: 'ai', Google: 'search', 'Яндекс': 'search', 'ВКонтакте': 'social', 'Одноклассники': 'social',
-  'Mail.ru': 'mail', Steam: 'game', 'Epic Games': 'game', Microsoft: 'windows', Apple: 'cloud', GitHub: 'code', Spotify: 'music', Netflix: 'video',
-  'Кинопоиск': 'video', Wildberries: 'store', Ozon: 'store', 'Госуслуги': 'gov', 'Сбер': 'bank', 'Т-Банк': 'bank', Reddit: 'social',
-  Pinterest: 'social', TikTok: 'video', Cloudflare: 'cloud' };
-const PROC_ICON = { 'Chrome': 'globe', 'Edge': 'globe', 'Firefox': 'globe', 'Opera': 'globe', 'Яндекс Браузер': 'globe', Steam: 'game', Discord: 'chat',
-  Telegram: 'send', Spotify: 'music', 'Epic Games': 'game', qbittorrent: 'download', utorrent: 'download' };
-
 function serviceOf(base) {
   for (const sv of SERVICES) for (const d of sv.domains) if (base === d || base.endsWith('.' + d)) return sv;
   return null;
@@ -1296,7 +1230,6 @@ function branchDrop(key, b) {
 function renderBranches(lanes) {
   const lb = $('#lanesBox');
   if (!lb) return {};
-  renderProcShelf();
   const p = phase();
   if (p === 'on' && Date.now() - smartAt > 30000 && S.smartDirect) {
     smartAt = Date.now();
@@ -1323,7 +1256,7 @@ function renderBranches(lanes) {
   const top = [...groups.values()].map(g => {
     branchLeaves[g.key] = g;
     const route = Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][0];
-    return { key: g.key, label: g.label, route, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'] };
+    return { key: g.key, label: g.label, route };
   });
   const sp = lanes.map(l => ({ ...l,
     thin: l.key === 'direct' && p === 'on' && S.routing === 'global',
@@ -1331,115 +1264,10 @@ function renderBranches(lanes) {
   return Branches.update(lb, {
     phase: p, offline: !!(STATS && STATS.health === 'offline' && p === 'on'), lanes: sp, top,
     endSub: ROUTING[S.routing],
-    compSub: zapretOnly() ? (p === 'on' ? 'zapret включён' : 'нажмите, чтобы включить zapret') : p === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : p === 'revive' ? 'нажмите, чтобы отключить' : 'нажмите, чтобы подключить',
-    flag: code => flag(code), displayDomain, why: branchWhy, onDrop: branchDrop, onPick: sitePick,
+    compSub: p === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : p === 'revive' ? 'нажмите, чтобы отключить' : 'нажмите, чтобы подключить',
+    flag: code => flag(code), displayDomain, why: branchWhy, onDrop: branchDrop,
     onNode: k => go(k === 'proxy' ? 'servers' : 'bypass'), toast,
   }) || {};
-}
-
-// ---------- выбор пути: меню по щелчку и программы целиком ----------
-const ROUTE_OPTS = [['proxy', 'Через сервер', 'var(--tunnel)'], ['direct', 'Напрямую', 'var(--direct)'], ['zapret', 'Через zapret', 'var(--warn)'], ['auto', 'Как решит Naivka', 'var(--faint)']];
-const ROUTE_SAY = { proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' };
-let routePop = null;
-function closeRoutePop() { if (routePop) { routePop.remove(); routePop = null; } }
-// routePicker — небольшое меню у элемента: куда пускать сайт или программу. Тянуть не обязательно.
-function routePicker(anchor, { title, sub, current, onPick }) {
-  closeRoutePop();
-  const opts = ROUTE_OPTS.filter(([k]) => k !== 'zapret' || zapretOn());
-  const pop = h('div', { class: 'route-pop', role: 'menu', 'aria-label': title },
-    h('b', null, title), sub ? h('small', null, sub) : null,
-    ...opts.map(([k, name, col]) => h('button', { role: 'menuitem', 'aria-current': String(current === k), onclick: () => { closeRoutePop(); onPick(k); anchor.focus && anchor.focus(); } },
-      h('i', { style: `background:${col}` }), name)));
-  document.body.append(pop);
-  const r = anchor.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
-  let x = Math.min(Math.max(8, r.left), innerWidth - pw - 8), y = r.bottom + 6;
-  if (y + ph > innerHeight - 8) y = Math.max(8, r.top - ph - 6);
-  pop.style.left = x + 'px'; pop.style.top = y + 'px';
-  routePop = pop;
-  pop.querySelector('button').focus();
-}
-document.addEventListener('pointerdown', e => { if (routePop && !routePop.contains(e.target)) closeRoutePop(); }, true);
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && routePop) { e.stopPropagation(); closeRoutePop(); } }, true);
-
-// Сайт (лист на схеме): меню вместо обязательного перетаскивания.
-function sitePick(item, el) {
-  const label = branchLeaves[item.key] ? branchLeaves[item.key].label : item.label;
-  routePicker(el, { title: label, sub: 'Этот сервис — все его адреса', current: item.current, onPick: k => {
-    if (k === 'auto') { siteClear(item.key); return; }
-    if (k !== item.current && branchDrop(item.key, k)) Branches.moveLeaf(item.key, k);
-  } });
-}
-function siteClear(key) {
-  const e = branchLeaves[key] || { label: key, domains: [key] };
-  const sv = SERVICES.find(x => x.name === key);
-  const doms = sv ? sv.domains : e.domains;
-  const before = S.rules.length;
-  S.rules = S.rules.filter(r => !(r.kind === 'domain' && doms.includes(r.value.toLowerCase())));
-  save(0);
-  toast(before === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. Заработает после переподключения`);
-}
-
-// Программы с трафиком — полка под схемой. Программа отправляется целиком (правило по процессу).
-const PROC_SKIP = /^(svchost|msedgewebview2|naivka.*|sing-box|system|lsass|services|winws|tg-ws-proxy|xray)\.exe$/i;
-function procRule(exe) { return S.rules.find(r => r.kind === 'process' && r.value.toLowerCase() === exe.toLowerCase()); }
-function procList() {
-  const m = new Map();
-  for (const t of (STATS && STATS.top) || []) {
-    const exe = (t.proc || '').split(/[\\/]/).pop();
-    if (!exe || PROC_SKIP.test(exe)) continue;
-    const x = m.get(exe.toLowerCase()) || { exe, speed: 0, total: 0 };
-    x.speed += t.speed || 0; x.total += t.total || 0; m.set(exe.toLowerCase(), x);
-  }
-  for (const r of S.rules) if (r.kind === 'process' && !m.has(r.value.toLowerCase())) m.set(r.value.toLowerCase(), { exe: r.value, speed: 0, total: 0 });
-  return [...m.values()].filter(x => procRule(x.exe) || x.speed >= 20 * 1024 || x.total >= 2 * 1024 * 1024)
-    .sort((a, b) => b.speed - a.speed).slice(0, 8);
-}
-function setProcRoute(exe, k) {
-  const name = procName(exe.toLowerCase()) || exe;
-  if (k === 'zapret' && !zapretOn()) { toast('zapret выключен — на эту ветку сейчас нельзя'); return; }
-  S.rules = S.rules.filter(r => !(r.kind === 'process' && r.value.toLowerCase() === exe.toLowerCase()));
-  if (k !== 'auto') S.rules.push({ kind: 'process', value: exe, action: k });
-  save(0);
-  toast(k === 'auto' ? `${name} — снова как решит Naivka` : `Вся программа ${name} — ${ROUTE_SAY[k]}. Заработает после переподключения`);
-  renderProcShelf(true);
-}
-function renderProcShelf(force) {
-  const box = $('#procShelf');
-  if (!box || !S) return;
-  const list = phase() === 'on' && !zapretOnly() ? procList() : [];
-  const sig = JSON.stringify(list.map(x => [x.exe, (procRule(x.exe) || {}).action]));
-  if (!force && box.dataset.sig === sig) return;
-  box.dataset.sig = sig;
-  if (!list.length) { box.replaceChildren(); return; }
-  box.replaceChildren(h('span', { class: 'proc-title' }, 'Программы'),
-    ...list.map(x => procChip(x)),
-    h('span', { class: 'proc-hint' }, 'Перетащите на ветку или нажмите — программа пойдёт этим путём целиком'));
-}
-function procChip(x) {
-  const name = procName(x.exe.toLowerCase()) || x.exe, rule = procRule(x.exe);
-  const col = rule ? (ROUTE_OPTS.find(o => o[0] === rule.action) || [])[2] : '';
-  const ic = SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'];
-  const el = h('button', { class: 'proc-chip' + (rule ? ' ruled' : ''), type: 'button', style: col ? `--c:${col}` : '',
-    'aria-label': `${name}: ${rule ? ROUTE_SAY[rule.action] : 'как решит Naivka'}. Нажмите, чтобы выбрать путь` },
-    h('span', { class: 'svc' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: ic }))), name);
-  let sx, sy, ghost = null, id = null;
-  el.addEventListener('pointerdown', e => { if (e.button !== 0) return; id = e.pointerId; el.setPointerCapture(id); sx = e.clientX; sy = e.clientY; });
-  el.addEventListener('pointermove', e => {
-    if (e.pointerId !== id) return;
-    if (!ghost && Math.hypot(e.clientX - sx, e.clientY - sy) < 6) return;
-    if (!ghost) { ghost = el.cloneNode(true); ghost.classList.add('proc-ghost'); document.body.append(ghost); el.classList.add('lifted'); }
-    ghost.style.left = (e.clientX - 20) + 'px'; ghost.style.top = (e.clientY - 14) + 'px';
-    Branches.hoverAt(e.clientX, e.clientY);
-  });
-  const end = e => {
-    if (e.pointerId !== id) return; id = null;
-    if (!ghost) { routePicker(el, { title: name, sub: 'Вся программа целиком', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }); return; }
-    ghost.remove(); ghost = null; el.classList.remove('lifted');
-    const k = Branches.endHover();
-    if (k && k !== (rule && rule.action)) setProcRoute(x.exe, k);
-  };
-  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
-  return el;
 }
 
 // Сила сигнала 0–15, как у проводов в кубических играх: растёт со скоростью (логарифмически).
@@ -1831,29 +1659,23 @@ function probeCard(title, p) {
 
 function renderCheck(out, r) {
   const routeTag = r.routeKind ? h('span', { class: 'route-tag ' + r.routeKind }, r.routeName) : h('span', { class: 'hint' }, 'подключитесь, чтобы узнать');
-  // Сделать правилом можно любой путь; рабочие подсвечены, рекомендованный — главной кнопкой.
-  const rule = act => async () => {
-    const res = mergeRules(S.rules, [{ kind: 'domain', value: r.host, action: act }]);
-    save(0);
-    if (await saveNow()) toast(res.added ? `${displayDomain(r.host)} — ${ROUTE_SAY[act]}. Правило добавлено, заработает после переподключения` : 'Действие правила изменено');
-  };
-  const works = { direct: r.direct.ok && !r.zapretCovers, zapret: r.zapretOn && r.zapretCovers && r.direct.ok, proxy: r.proxy.ok };
-  const best = r.suggest || (works.zapret ? 'zapret' : works.direct ? 'direct' : works.proxy ? 'proxy' : '');
-  const actions = ['zapret', 'proxy', 'direct'].filter(k => k !== 'zapret' || r.zapretOn).map(k =>
-    h('button', { class: 'btn' + (k === best ? ' primary' : ''), onclick: rule(k) }, `Всегда ${ROUTE_SAY[k]}`));
-  const zapretCard = h('div', { class: 'card probe' }, h('div', { class: 'hint' }, 'Через zapret'),
-    !r.zapretOn ? h('div', { class: 'cell-sub', style: 'margin-top:6px' }, 'zapret выключен')
-      : r.zapretCovers ? h('div', { style: 'margin-top:4px' }, r.direct.ok ? h('b', { style: 'color:var(--warn)' }, `открывается · ${r.direct.ms} мс`) : h('b', { style: 'color:var(--danger)' }, 'не помог'))
-        : h('div', { class: 'cell-sub', style: 'margin-top:6px' }, 'сайта нет в списках zapret — добавьте правилом «Всегда через zapret», чтобы попробовать'));
+  const actions = [];
+  if (r.suggest) {
+    const act = r.suggest;
+    actions.push(h('button', { class: 'btn primary', onclick: async () => {
+      const res = mergeRules(S.rules, [{ kind: 'domain', value: r.host, action: act }]);
+      save(0);
+      if (await saveNow()) toast(res.added ? 'Правило добавлено. Переподключитесь, чтобы оно заработало.' : 'Действие правила изменено');
+    } }, act === 'proxy' ? `Добавить правило: ${displayDomain(r.host)} через сервер` : `Добавить правило: ${displayDomain(r.host)} напрямую`));
+  }
   out.replaceChildren(
     h('div', { class: 'verdict' }, r.verdict),
     h('div', { class: 'check-grid' },
       probeCard('Напрямую', r.direct),
-      zapretCard,
       probeCard('Через сервер', r.proxy),
       h('div', { class: 'card probe' }, h('div', { class: 'hint' }, 'Сейчас идёт'), h('div', { style: 'margin:4px 0' }, routeTag),
         h('div', { class: 'cell-sub trunc', title: r.rule || '' }, r.rule ? 'правило: ' + r.rule : (r.routeKind ? 'без особого правила, по режиму' : '')))),
-    h('div', { class: 'row mt' }, ...actions));
+    actions.length ? h('div', { class: 'row mt' }, actions) : null);
 }
 
 // ---------- серверы ----------
@@ -3068,10 +2890,9 @@ function accentPicker() {
 
 function viewSettings() {
   const cfgOut = h('textarea', { readonly: true, style: 'min-height:320px', hidden: true });
-  return settingsCards(h('div', { class: 'view settings-view' },
+  return h('div', { class: 'view', style: 'max-width:860px' },
     h('h1', null, 'Настройки'),
-    h('div', { class: 'set-search' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('circle', { cx: 11, cy: 11, r: 7 }), s('path', { d: 'M20 20l-4-4' })),
-      h('input', { type: 'search', id: 'setSearch', placeholder: 'Найти настройку: dns, запуск, утечки…', 'aria-label': 'Найти настройку', oninput: e => filterSettings(e.target.value) })),
+    h('nav', { class: 'toc', 'aria-label': 'Разделы настроек' }),
 
     h('h2', null, 'О программе'),
     h('div', { id: 'selfBox' }),
@@ -3176,66 +2997,7 @@ function viewSettings() {
       h('button', { class: 'btn danger', onclick: async () => {
         try { await saveNow(); await api('/api/quit', {}); } catch (_) { /* уже закрывается */ }
         setTimeout(() => window.close(), 300);
-      } }, 'Выйти из Naivka'))));
-}
-
-// Настройки карточками: каждый раздел (заголовок h2 и всё до следующего) — отдельная карточка,
-// блоки «Для опытных» собраны в одну. Поиск прячет карточки и строки, где нет искомого.
-const SET_ICONS = {
-  'О программе': 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01', 'Язык · Language': 'M4 5h10M9 3v2M6 5c1 4 4 7 8 8M12 5c-1 4-4 7-8 8M14 21l4-9 4 9M15.5 18h5',
-  'Внешний вид': 'M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5S14 15 15 15h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8z', 'Разделы': 'M4 5h16v14H4zM9 5v14',
-  'Окно': 'M4 5h16v14H4zM4 9h16', 'Перехват трафика': 'M13 3L4 14h7l-1 7 9-11h-7z', 'Надёжность': 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z',
-  'Запуск': 'M5 12h14M13 6l6 6-6 6', 'Раздача на другие устройства': 'M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0M12 12v.01',
-  'Ядро sing-box': 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10', 'Резервная копия': 'M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6',
-  'Для опытных': 'M8 8l-4 4 4 4M16 8l4 4-4 4',
-};
-function settingsCards(view) {
-  const grid = h('div', { class: 'set-grid' });
-  const mores = h('section', { class: 'set-card' }, h('h2', null, 'Для опытных'));
-  let card = null;
-  for (const el of [...view.children]) {
-    if (el.tagName === 'H1' || el.classList.contains('set-search')) continue;
-    if (el.classList.contains('exit-row')) continue;
-    if (el.tagName === 'DETAILS') { mores.append(el); continue; }
-    if (el.tagName === 'H2') { card = h('section', { class: 'set-card' }); grid.append(card); }
-    if (card) card.append(el); else continue;
-  }
-  if (mores.children.length > 1) grid.append(mores);
-  for (const c of grid.children) {
-    const t = c.querySelector('h2'), ic = t && SET_ICONS[t.textContent];
-    if (ic) t.prepend(h('span', { class: 'set-ic' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: ic }))));
-  }
-  const exit = view.querySelector(':scope > .exit-row');
-  view.querySelector('.set-search').after(grid);
-  if (exit) grid.after(exit);
-  for (const el of [...view.children]) if (el.tagName !== 'H1' && el !== grid && el !== exit && !el.classList.contains('set-search')) el.remove();
-  return view;
-}
-function filterSettings(q) {
-  q = q.trim().toLowerCase();
-  // Русские окончания: «утечки» должно найти «утечек», «запуска» — «запуск».
-  const stems = q.length >= 5 ? [q, q.slice(0, -1), q.slice(0, -2)] : [q];
-  const has = t => stems.some(x => t.includes(x));
-  const grid = drawerBody.querySelector('.set-grid');
-  if (!grid) return;
-  let any = false;
-  for (const card of grid.children) {
-    const title = (card.querySelector('h2') || {}).textContent || '';
-    const titleHit = !q || has(title.toLowerCase());
-    let hit = titleHit;
-    for (const el of card.children) {
-      if (el.tagName === 'H2') continue;
-      if (el.tagName === 'DETAILS' && q) el.open = has(el.textContent.toLowerCase()) || el.open;
-      const m = titleHit || has(el.textContent.toLowerCase());
-      el.hidden = !!q && !m;
-      if (m) hit = true;
-    }
-    card.hidden = !hit;
-    if (hit) any = true;
-  }
-  let empty = drawerBody.querySelector('.set-empty');
-  if (!any && !empty) grid.after(h('p', { class: 'set-empty hint' }, 'Ничего не нашлось. Попробуйте другое слово.'));
-  if (any && empty) empty.remove();
+      } }, 'Выйти из Naivka')));
 }
 
 function backupDialog() {
@@ -3389,7 +3151,7 @@ async function boot() {
   refreshAppUpdate();
   let seen = true;
   try { seen = !!localStorage.getItem('naivka-guide'); } catch (_) { /* не показываем */ }
-  if (!seen && !S.servers.length && !zapretOnly()) setTimeout(openOnboarding, 300);
+  if (!seen && !S.servers.length) setTimeout(openGuide, 600);
 }
 
 
@@ -4014,17 +3776,7 @@ function selfBox() {
           catch (err) { toast(err.message, true); }
           finally { e.target.disabled = false; refreshAppUpdate(); }
         } }, 'Проверить обновления'),
-      h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')),
-    h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Канал обновлений'),
-      segmented([['stable', 'Стабильные'], ['beta', 'Бета']], () => S.updateChannel === 'beta' ? 'beta' : 'stable', async v => {
-        S.updateChannel = v; save(0); await saveNow();
-        try { APPUP = await api('/api/app/update/check', {}); } catch (_) { /* проверим позже */ }
-        refreshAppUpdate();
-        toast(v === 'beta' ? 'Бета: новые функции раньше всех, но возможны ошибки' : 'Стабильные версии');
-      }, 'Канал обновлений')),
-    h('p', { class: 'hint' }, S.updateChannel === 'beta'
-      ? 'Вы получаете бета-версии: новые функции раньше, но что-то может работать не так. Вернуться можно в любой момент — когда выйдет стабильная версия, Naivka предложит её.'
-      : 'Бета — новые функции раньше всех, по желанию. Если что-то сломается, можно вернуться на стабильные.'));
+      h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')));
 }
 
 function appUpdateNotice() {
@@ -4040,7 +3792,7 @@ function appUpdateNotice() {
         h('button', { class: 'btn small', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Скачать вручную'),
         h('button', { class: 'btn small primary', onclick: installAppUpdate }, 'Повторить')));
   }
-  return notice('info', h('span', null, h('b', null, /-/.test(u.latest) ? `Вышла бета Naivka ${u.latest}. ` : `Вышла Naivka ${u.latest}. `), `У вас ${u.installed}. Настройки и серверы сохранятся.`),
+  return notice('info', h('span', null, h('b', null, `Вышла Naivka ${u.latest}. `), `У вас ${u.installed}. Настройки и серверы сохранятся.`),
     h('div', { class: 'row', style: 'flex-wrap:nowrap' },
       h('button', { class: 'btn small', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового'),
       h('button', { class: 'btn small primary', onclick: installAppUpdate }, 'Обновить')));
@@ -4053,56 +3805,6 @@ async function installAppUpdate() {
     toast('Скачиваю обновление — Naivka перезапустится сама');
   } catch (e) { toast(e.message, true); }
   refreshAppUpdate();
-}
-
-// ---------- первый запуск ----------
-// Вместо всего интерфейса сразу — три шага на весь экран: привет → ссылка на сервер → подключить.
-// Без сервера можно сразу перейти в режим «Только zapret».
-function openOnboarding() {
-  try { localStorage.setItem('naivka-guide', '1'); } catch (_) { /* не важно */ }
-  const box = h('div', { class: 'onb-in' });
-  const ov = h('div', { class: 'onb', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Первый запуск Naivka' }, box);
-  const close = () => { ov.classList.add('out'); setTimeout(() => ov.remove(), 250); };
-  const dots = n => h('div', { class: 'onb-dots', 'aria-hidden': 'true' }, ...[0, 1, 2].map(i => h('i', { class: i <= n ? 'on' : '' })));
-  const skip = h('button', { class: 'btn link onb-skip', onclick: close }, 'Пропустить');
-  const zapretLink = h('button', { class: 'btn link onb-zap', onclick: async () => { close(); await setZapretOnly('zap'); if (!(AD && AD.zapret && AD.zapret.installed)) go('bypass'); } }, 'Нет своего сервера? Включить только zapret');
-  const step = n => {
-    if (n === 0) box.replaceChildren(dots(0), s('svg', { class: 'onb-logo', viewBox: '0 0 32 32', 'aria-hidden': 'true' }, s('rect', { class: 'logo-bg', width: 32, height: 32, rx: 8 }), s('path', { class: 'logo-ink', d: 'M9 23.5V9l14 14.5V12.5' }), s('circle', { class: 'logo-dot', cx: 23, cy: 9.3, r: 3 })),
-      h('h2', null, 'Привет, это Naivka'),
-      h('p', null, 'Открывает заблокированное через ваш сервер, а российские сайты оставляет напрямую — быстро и без лишнего трафика.'),
-      h('button', { class: 'btn primary', onclick: () => step(1) }, 'Начать'), zapretLink);
-    if (n === 1) {
-      const ta = h('textarea', { class: 'onb-paste', placeholder: 'Вставьте сюда ссылку (Ctrl+V): naive+https://…, vless://…, hysteria2://…', spellcheck: 'false' });
-      const err = h('p', { class: 'err-text' });
-      const add = async () => {
-        if (!ta.value.trim()) { ta.focus(); return; }
-        try {
-          const res = await api('/api/import', { text: ta.value });
-          S = res.settings;
-          if (!res.added) { err.textContent = 'Не удалось разобрать ссылку. ' + (res.errors || []).join(' '); return; }
-          step(2);
-        } catch (e) { err.textContent = e.message; }
-      };
-      ta.addEventListener('paste', () => setTimeout(add, 50));
-      box.replaceChildren(dots(1), h('h2', null, 'Вставьте ссылку на сервер'),
-        h('p', null, 'Ту, что вам дали: она начинается с naive+https://, vless://, hysteria2:// и т. п.'), ta, err,
-        h('div', { class: 'row', style: 'justify-content:center' }, h('button', { class: 'btn primary', onclick: add }, 'Добавить'), h('button', { class: 'btn', onclick: () => step(0) }, 'Назад')),
-        zapretLink);
-      ta.focus();
-    }
-    if (n === 2) {
-      const sv = S.servers[S.servers.length - 1] || {};
-      box.replaceChildren(dots(2), h('h2', null, 'Готово'),
-        h('p', null, 'Сервер добавлен. Нажмите кнопку — и всё заработает.'),
-        h('div', { class: 'onb-srv' }, h('b', null, sv.name || 'Сервер'), h('small', null, sv.type || '')),
-        h('button', { class: 'btn primary', onclick: () => { close(); toggleConnect(); } }, 'Подключить'));
-    }
-    if (!REDUCE.matches) box.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
-  };
-  ov.append(skip);
-  document.body.append(ov);
-  step(0);
-  ov.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 }
 
 // ---------- как пользоваться ----------
@@ -4119,8 +3821,8 @@ function openGuide() {
         h('button', { class: 'btn small', onclick: goto('settings') }, 'Открыть «Настройки»')) : null,
       step('Добавьте сервер.', 'Скопируйте ссылку, которую вам дали (начинается с naive+https://, vless://, hysteria2:// и т. п.). Откройте «Серверы» → «Вставить ссылки» и вставьте её.',
         h('button', { class: 'btn small', onclick: goto('servers') }, 'Открыть «Серверы»')),
-      step('Нажмите большую кнопку на главном экране.', 'Когда она светится и написано «Подключено» — всё работает. Российские сайты идут напрямую, заблокированные — через сервер, Naivka решает это сама. Хотите иначе — нажмите на сайт или программу под схемой и выберите путь.'),
-      step('YouTube и Discord без сервера — по желанию.', '«Обход» → включите zapret. Windows спросит разрешение — нажмите «Да». Нет своего сервера — переключите на главном экране режим «Только zapret».',
+      step('Нажмите большую кнопку на главном экране.', 'Когда она светится и написано «Подключено» — всё работает. Российские сайты идут напрямую, заблокированные — через сервер, Naivka решает это сама.'),
+      step('YouTube и Discord без сервера — по желанию.', '«Обход» → включите zapret. Windows спросит разрешение — нажмите «Да». Если какой-то сайт не открывается, нажмите там «Подобрать автоматически».',
         h('button', { class: 'btn small', onclick: goto('bypass') }, 'Открыть «Обход»')),
       step('Закройте другие VPN.', 'Karing, Hiddify, v2rayN, Happ, AmneziaVPN и подобные нельзя запускать вместе с Naivka — две такие программы ломают интернет друг другу. Naivka предупредит, если найдёт такую.'),
       step('Если что-то не работает.', '«Сводка» → «Журнал» → «Собрать отчёт» и отправьте файл автору через «Обратную связь».'),
