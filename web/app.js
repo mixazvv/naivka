@@ -127,7 +127,7 @@ let APPUP = null; // обновление самой Naivka: {installed, latest,
 async function refreshAppUpdate() {
   try { APPUP = await api('/api/app/update'); } catch (_) { return; }
   updateStatus();
-  if (view === 'settings') patch('selfBox', JSON.stringify([SELF, APPUP, S && S.updateChannel]), selfBox);
+  if (view === 'settings') patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox);
 }
 const wlName = tag => WL && WL.names && WL.names[tag];
 const serverByTag = tag => {
@@ -790,7 +790,7 @@ function refreshView(v = view) {
   if (v === 'own') renderOwn();
   if (v === 'rules') { renderRules(); renderLists(); renderSmart(); }
   if (v === 'bypass') refreshAddons();
-  if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP, S && S.updateChannel]), selfBox)); }
+  if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
 }
 
@@ -4041,17 +4041,7 @@ function selfBox() {
           catch (err) { toast(err.message, true); }
           finally { e.target.disabled = false; refreshAppUpdate(); }
         } }, 'Проверить обновления'),
-      h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')),
-    h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Канал обновлений'),
-      segmented([['stable', 'Стабильные'], ['beta', 'Бета']], () => S.updateChannel === 'beta' ? 'beta' : 'stable', async v => {
-        S.updateChannel = v; save(0); await saveNow();
-        try { APPUP = await api('/api/app/update/check', {}); } catch (_) { /* проверим позже */ }
-        refreshAppUpdate();
-        toast(v === 'beta' ? 'Бета: новые функции раньше всех, но возможны ошибки' : 'Стабильные версии');
-      }, 'Канал обновлений')),
-    h('p', { class: 'hint' }, S.updateChannel === 'beta'
-      ? 'Вы получаете бета-версии: новые функции раньше, но что-то может работать не так. Вернуться можно в любой момент — когда выйдет стабильная версия, Naivka предложит её.'
-      : 'Бета — новые функции раньше всех, по желанию. Если что-то сломается, можно вернуться на стабильные.'));
+      h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')));
 }
 
 function appUpdateNotice() {
@@ -4067,7 +4057,7 @@ function appUpdateNotice() {
         h('button', { class: 'btn small', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Скачать вручную'),
         h('button', { class: 'btn small primary', onclick: installAppUpdate }, 'Повторить')));
   }
-  return notice('info', h('span', null, h('b', null, /-/.test(u.latest) ? `Вышла бета Naivka ${u.latest}. ` : `Вышла Naivka ${u.latest}. `), `У вас ${u.installed}. Настройки и серверы сохранятся.`),
+  return notice('info', h('span', null, h('b', null, `Вышла Naivka ${u.latest}. `), `У вас ${u.installed}. Настройки и серверы сохранятся.`),
     h('div', { class: 'row', style: 'flex-wrap:nowrap' },
       h('button', { class: 'btn small', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового'),
       h('button', { class: 'btn small primary', onclick: installAppUpdate }, 'Обновить')));

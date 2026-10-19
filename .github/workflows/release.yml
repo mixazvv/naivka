@@ -39,9 +39,6 @@ jobs:
           elif [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"
           else TAG="v$(tr -d ' \r\n' < VERSION)"; fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          # Тег с дефисом (v2.4.0-beta.1) — бета: предварительный выпуск, не «последний».
-          # Его получают только те, кто выбрал канал обновлений «Бета».
-          case "$TAG" in *-*) echo "PRE=true" >> "$GITHUB_ENV";; *) echo "PRE=${{ inputs.prerelease == true }}" >> "$GITHUB_ENV";; esac
           echo "Релиз $TAG"
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
@@ -55,7 +52,7 @@ jobs:
       # принимают неподписанную программу на Go за подозрительную.
       - name: Сведения о версии в exe
         run: |
-          V="${TAG#v}"; IFS=. read -r MA MI PA <<< "${V%%-*}"  # у беты числа без «-beta.N»
+          V="${TAG#v}"; IFS=. read -r MA MI PA <<< "$V"
           GVI="go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1"
           ARGS="-ver-major=$MA -ver-minor=$MI -ver-patch=$PA -product-ver-major=$MA -product-ver-minor=$MI -product-ver-patch=$PA -file-version=$V -product-version=$V"
           $GVI -64 -o rsrc_windows_amd64.syso $ARGS versioninfo.json
@@ -101,11 +98,9 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Naivka ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
-          prerelease: ${{ env.PRE == 'true' }}
-          make_latest: ${{ env.PRE != 'true' }}
+          prerelease: ${{ inputs.prerelease == true }}
+          make_latest: true
           body: |
-            ${{ env.PRE == 'true' && '**Бета-версия.** Её получают только те, кто в Naivka выбрал «Настройки → О программе → Канал обновлений: Бета». Если что-то сломалось — вернитесь на «Стабильные» и пришлите отчёт.' || '' }}
-
             **Уже стоит Naivka?** Ничего скачивать не нужно: на главном экране программы появится
             «Вышла Naivka ${{ env.TAG }}» — нажмите «Обновить», она обновится и перезапустится сама.
             Настройки и серверы сохранятся. (Версии до 2.3.4 так не умеют — один раз скачайте архив
