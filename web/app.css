@@ -1240,3 +1240,86 @@ body[data-state="blocked"] .lanes-box.branches .pw-core { fill: none; }
 
 /* Узкое окно: подпись «Компьютер» прижата к левому краю кнопки, чтобы не обрезалась. */
 .lanes-box.branches.small .br-node.comp { transform: translate(-27px, 0); justify-items: start; text-align: left; }
+
+/* ---------- 2.4: режим «Только zapret» ---------- */
+body.zapret-only .srv-only { display: none; }
+
+/* ---------- 2.4: подключение одним движением ---------- */
+/* Узлы раскрываются вслед за выросшими ветками (задержку ставит branches.js). */
+.br-node.pop-in .br-disc { animation: brPop .55s cubic-bezier(.3,1.6,.5,1) both; animation-delay: inherit; }
+.br-node.pop-in .br-txt { animation: brFade .4s ease both; animation-delay: inherit; }
+@keyframes brPop { from { transform: scale(0); } }
+@keyframes brFade { from { opacity: 0; transform: translateY(-4px); } }
+/* Волна от кнопки в момент нажатия. */
+.power.ripple::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--tunnel); pointer-events: none; animation: pwRipple .8s ease-out; }
+body.zapret-only .power.ripple::before { border-color: var(--warn); }
+@keyframes pwRipple { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(2.2); } }
+body.zapret-only[data-state="on"] .lanes-box.branches .power { color: var(--warn); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--warn) 40%, transparent)); }
+body.zapret-only .lanes-box.branches .pw-ring { stroke: var(--warn); }
+@media (prefers-reduced-motion: reduce) { .br-node.pop-in .br-disc, .br-node.pop-in .br-txt, .power.ripple::before { animation: none; } }
+
+/* ---------- 2.4: значки сервисов на листьях ---------- */
+.br-leaf .svc { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--c) 18%, transparent); }
+.br-leaf .svc svg { width: 13px; height: 13px; fill: none; stroke: var(--c); stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- 2.4: меню выбора пути и полка программ ---------- */
+.route-pop { position: fixed; z-index: 60; background: var(--raised); border: 1px solid var(--line); border-radius: 14px; padding: 8px; display: grid; gap: 2px; width: 230px; box-shadow: var(--shadow); animation: routePopIn .2s cubic-bezier(.3,1.4,.5,1); }
+@keyframes routePopIn { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+.route-pop b { font-size: 13px; padding: 4px 8px 0; }
+.route-pop small { color: var(--muted); font-size: 12px; padding: 0 8px 6px; }
+.route-pop button { display: flex; align-items: center; gap: 9px; text-align: left; border: 0; background: none; color: var(--ink); padding: 8px; border-radius: 9px; font: inherit; font-size: 13.5px; cursor: pointer; }
+.route-pop button:hover, .route-pop button:focus-visible { background: var(--surface); outline: none; }
+.route-pop button i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.route-pop button[aria-current="true"]::after { content: "✓"; margin-left: auto; color: var(--tunnel); }
+.proc-shelf { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; margin-top: 10px; }
+.proc-shelf:empty { display: none; }
+.proc-title { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.proc-hint { color: var(--faint); font-size: 12px; flex-basis: 100%; text-align: center; }
+.proc-chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 10px; border: 1px dashed var(--line); background: var(--raised); color: var(--ink); font: inherit; font-size: 13px; cursor: grab; touch-action: none; transition: border-color .2s, opacity .2s; }
+.proc-chip.ruled { border-style: solid; border-color: color-mix(in srgb, var(--c) 60%, var(--line)); }
+.proc-chip:hover { border-color: var(--c, var(--muted)); }
+.proc-chip .svc { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; background: color-mix(in srgb, var(--c, #8F959B) 18%, transparent); }
+.proc-chip .svc svg { width: 13px; height: 13px; fill: none; stroke: var(--c, var(--ink)); stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+.proc-chip.lifted { opacity: .35; }
+.proc-ghost { position: fixed; z-index: 70; pointer-events: none; transform: scale(1.06) rotate(-2deg); box-shadow: 0 14px 30px -10px rgba(0,0,0,.7); border-style: solid; cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) { .route-pop { animation: none; } }
+
+/* ---------- 2.4: настройки карточками с поиском ---------- */
+.settings-view { max-width: 1100px; }
+.set-search { position: sticky; top: 0; z-index: 3; margin: 6px -34px 14px; padding: 10px 34px 12px; background: var(--bg); }
+.set-search input { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 10px 38px; color: var(--ink); font: inherit; }
+.set-search svg { position: absolute; left: 47px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 2; }
+.set-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
+.set-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 4px 18px 14px; min-width: 0; animation: setIn .35s cubic-bezier(.2,.8,.2,1) both; }
+.set-card:nth-child(2) { animation-delay: 30ms; } .set-card:nth-child(3) { animation-delay: 60ms; } .set-card:nth-child(4) { animation-delay: 90ms; }
+@keyframes setIn { from { opacity: 0; transform: translateY(10px); } }
+.set-card > h2 { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; font-size: 15px; }
+.set-ic { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; background: var(--tunnel-soft); flex: none; }
+.set-ic svg { width: 15px; height: 15px; fill: none; stroke: var(--tunnel); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.set-card details.more { border-bottom: 0; }
+.set-empty { text-align: center; padding: 30px 0; }
+@media (prefers-reduced-motion: reduce) { .set-card { animation: none; } }
+.stage-help { display: flex; justify-content: center; margin-top: 2px; }
+.stage-help .btn.link { color: var(--muted); font-size: 13px; }
+.stage-help .btn.link:hover { color: var(--ink); }
+.check-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+
+/* ---------- 2.4: первый запуск ---------- */
+.onb { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: radial-gradient(120% 90% at 50% 40%, var(--surface) 0%, var(--bg) 70%); animation: onbIn .3s ease both; }
+.onb.out { animation: onbOut .25s ease both; }
+@keyframes onbIn { from { opacity: 0; } } @keyframes onbOut { to { opacity: 0; } }
+.onb-in { width: min(480px, 100%); display: grid; gap: 16px; justify-items: center; text-align: center; }
+.onb-in h2 { font: 700 clamp(20px, 3vw, 26px)/1.2 var(--display); margin: 0; }
+.onb-in p { color: var(--muted); margin: 0; }
+.onb-dots { display: flex; gap: 6px; }
+.onb-dots i { width: 22px; height: 4px; border-radius: 3px; background: var(--line); transition: background .3s, width .3s; }
+.onb-dots i.on { background: var(--tunnel); width: 36px; }
+.onb-logo { width: 64px; height: 64px; }
+.onb-paste { width: 100%; min-height: 90px; resize: vertical; }
+.onb-srv { display: grid; gap: 2px; background: var(--raised); border-radius: 12px; padding: 10px 16px; min-width: 220px; }
+.onb-srv small { color: var(--muted); }
+.btn.link.onb-zap { color: var(--warn); font-size: 13px; }
+.btn.link.onb-skip { color: var(--muted); }
+.onb-skip { position: absolute; top: max(16px, env(safe-area-inset-top, 0px)); right: 20px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .onb, .onb.out { animation: none; } }
+body:has(.route-pop) .br-leaf .why { display: none !important; }
