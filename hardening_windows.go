@@ -3,12 +3,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -83,7 +85,10 @@ func restrictDir(dir string) {
 	// (2.3.6 применяла правило и к файлам с ключом /T — у уже лежавших файлов права пропадали
 	// совсем, и ядро не могло записать config.json. Сброс ниже чинит и это.)
 	run := func(args ...string) error {
-		cmd := exec.Command("icacls", args...)
+		// Ограничение по времени: зависший icacls не должен навсегда задержать подключение.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "icacls", args...)
 		hideWindow(cmd)
 		return cmd.Run()
 	}

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -40,42 +41,79 @@ type AppUpdateView struct {
 	Checked int64 `json:"checked"`
 }
 
-// parseVer: "v2.3.4" → [2 3 4]; не номер версии (сборка "dev") — nil.
-func parseVer(v string) []int {
-	parts := strings.Split(strings.TrimPrefix(strings.TrimSpace(v), "v"), ".")
+// ver — разобранный номер версии: «v2.4.0-beta.2» → nums [2 4 0], pre "beta", preN 2.
+type ver struct {
+	nums []int
+	pre  string // "" — выпуск; иначе предварительная версия (beta, rc…)
+	preN int
+}
+
+// parseVer: "v2.3.4", "v2.4.0-beta.1"; не номер версии (сборка "dev") — nil.
+func parseVer(v string) *ver {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	main, pre, _ := strings.Cut(v, "-")
+	parts := strings.Split(main, ".")
 	if len(parts) < 2 || len(parts) > 4 {
 		return nil
 	}
-	out := make([]int, len(parts))
+	out := &ver{nums: make([]int, len(parts))}
 	for i, p := range parts {
 		n, err := strconv.Atoi(p)
 		if err != nil || n < 0 {
 			return nil
 		}
-		out[i] = n
+		out.nums[i] = n
+	}
+	if pre != "" {
+		name, num, _ := strings.Cut(pre, ".")
+		if name == "" || strings.Trim(strings.ToLower(name), "abcdefghijklmnopqrstuvwxyz") != "" {
+			return nil
+		}
+		out.pre = strings.ToLower(name)
+		if num != "" {
+			n, err := strconv.Atoi(num)
+			if err != nil || n < 0 {
+				return nil
+			}
+			out.preN = n
+		}
 	}
 	return out
 }
 
-// versionNewer — latest новее current. Для сборки разработчика всегда false.
+// isPrerelease — бета или другая предварительная версия.
+func isPrerelease(v string) bool { p := parseVer(v); return p != nil && p.pre != "" }
+
+// versionNewer — latest новее current. Выпуск новее своих бета-версий (2.4.0 > 2.4.0-beta.3).
+// Для сборки разработчика всегда false.
 func versionNewer(latest, current string) bool {
 	l, c := parseVer(latest), parseVer(current)
 	if l == nil || c == nil {
 		return false
 	}
-	for i := 0; i < len(l) || i < len(c); i++ {
+	for i := 0; i < len(l.nums) || i < len(c.nums); i++ {
 		var x, y int
-		if i < len(l) {
-			x = l[i]
+		if i < len(l.nums) {
+			x = l.nums[i]
 		}
-		if i < len(c) {
-			y = c[i]
+		if i < len(c.nums) {
+			y = c.nums[i]
 		}
 		if x != y {
 			return x > y
 		}
 	}
-	return false
+	switch {
+	case l.pre == "" && c.pre == "":
+		return false
+	case l.pre == "":
+		return true // выпуск после своей беты
+	case c.pre == "":
+		return false
+	case l.pre != c.pre:
+		return l.pre > c.pre // beta < rc
+	}
+	return l.preN > c.preN
 }
 
 func (u *selfUpdater) view() AppUpdateView {
@@ -92,7 +130,13 @@ func (u *selfUpdater) check(a *App, notify bool) error {
 	if parseVer(appVersion) == nil {
 		return nil
 	}
-	tag, err := latestTag(appRepo)
+	var tag string
+	var err error
+	if a.settingsCopy().UpdateChannel == "beta" {
+		tag, err = latestAnyTag(appRepo)
+	} else {
+		tag, err = latestTag(appRepo) // «последний» на GitHub — всегда выпуск, не бета
+	}
 	if err != nil {
 		return err
 	}
@@ -104,6 +148,41 @@ func (u *selfUpdater) check(a *App, notify bool) error {
 		a.mon.Event("info", fmt.Sprintf("Вышла новая версия Naivka %s — обновить можно на главном экране одной кнопкой", tag), true)
 	}
 	return nil
+}
+
+// latestAnyTag — самая новая версия, включая бета-версии (канал «Бета»): список релизов через API GitHub.
+func latestAnyTag(repo string) (string, error) {
+	req, _ := http.NewRequest("GET", githubAPI+"repos/"+repo+"/releases?per_page=30", nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "Naivka")
+	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("API GitHub ответил %s", resp.Status)
+	}
+	var list []struct {
+		Tag   string `json:"tag_name"`
+		Draft bool   `json:"draft"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&list); err != nil {
+		return "", err
+	}
+	best := ""
+	for _, r := range list {
+		if r.Draft || parseVer(r.Tag) == nil {
+			continue
+		}
+		if best == "" || versionNewer(r.Tag, best) {
+			best = r.Tag
+		}
+	}
+	if best == "" {
+		return "", errors.New("на GitHub нет релизов")
+	}
+	return best, nil
 }
 
 // releaseAsset — какой архив из релиза подходит этой сборке.
