@@ -2632,42 +2632,50 @@ function displayDomain(v) {
 }
 
 function viewRules() {
+  // Разделы — отдельными блоками: заголовок, пояснение, кнопки — каждый на своей строке, ничего не наезжает.
+  const section = (title, sub, ...tools) => h('div', { class: 'sec-head' },
+    h('h2', { class: 'flush' }, title),
+    sub ? h('p', { class: 'sub', id: sub.id || null }, sub.text || '') : null,
+    tools.length ? h('div', { class: 'row sec-tools' }, ...tools) : null);
   return h('div', { class: 'view' },
     h('h1', null, 'Правила'),
     h('p', { class: 'sub' }, 'Что идёт через сервер, а что напрямую. Изменения применяются после переподключения.'),
-    h('h2', null, 'Режим'),
-    segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); $('#modeDesc').textContent = MODE_DESC[v]; renderSmart(); }, 'Режим'),
-    h('p', { class: 'hint mode-desc', id: 'modeDesc' }, MODE_DESC[S.routing]),
-    h('div', { id: 'smartBox' }),
-    h('div', { id: 'catBox' }),
 
-    h('div', { class: 'title-row mt-lg' },
-      h('h2', { class: 'flush' }, 'Свои правила'),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn', onclick: importRulesFile }, 'Импорт'),
-        h('button', { class: 'btn', onclick: exportRulesDialog }, 'Экспорт'),
-        h('button', { class: 'btn', onclick: pickProcesses }, 'Выбрать программы'),
-        h('button', { class: 'btn primary', onclick: () => addRulesDialog('') }, 'Добавить'))),
-    h('p', { class: 'sub', id: 'ruleSummary' }),
+    h('section', { class: 'card rules-card' },
+      h('h2', { class: 'flush' }, 'Режим'),
+      segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); $('#modeDesc').textContent = MODE_DESC[v]; renderSmart(); }, 'Режим'),
+      h('p', { class: 'hint mode-desc', id: 'modeDesc' }, MODE_DESC[S.routing]),
+      h('div', { id: 'smartBox' })),
+
+    // Особые случаи — сразу на виду, а не в свёрнутом блоке.
+    h('section', { class: 'card rules-card' },
+      h('h2', { class: 'flush' }, 'Особые случаи'),
+      h('div', { class: 'toggle-grid' },
+        check('ruInsideDirect', 'Сайты, которые работают только из России, всегда напрямую', 'Госуслуги, банки и другие сервисы, которые не пускают иностранные IP.'),
+        check('blockQuic', 'Блокировать QUIC', 'Нужно для серверов Naive.'),
+        check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки — мимо сервера.'),
+        check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Для серверов VLESS, Hysteria2, TUIC, Trojan и Shadowsocks. Работает в режиме TUN.'),
+        check('adBlock', 'Блокировать рекламу и трекеры', 'Баннеры, счётчики и рекламные сети. Рекламу в видео YouTube так не убрать.'))),
+
+    h('section', { class: 'card rules-card' },
+      h('h2', { class: 'flush' }, 'Куда идут соединения'),
+      h('div', { id: 'catBox' })),
+
+    section('Свои правила', { id: 'ruleSummary' },
+      h('button', { class: 'btn primary', onclick: () => addRulesDialog('') }, 'Добавить'),
+      h('button', { class: 'btn', onclick: pickProcesses }, 'Выбрать программы'),
+      h('button', { class: 'btn', onclick: importRulesFile }, 'Импорт'),
+      h('button', { class: 'btn', onclick: exportRulesDialog }, 'Экспорт')),
     h('div', { id: 'ruleSearch' }),
     h('div', { class: 'panel' }, h('table', { class: 'table rules' }, h('tbody', { id: 'ruleBody' }))),
     h('div', { id: 'ruleFoot' }),
 
-    h('div', { class: 'title-row mt-lg' },
-      h('h2', { class: 'flush' }, 'Списки по ссылке'),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn', id: 'listRefreshBtn', onclick: refreshListsNow }, 'Обновить'),
-        h('button', { class: 'btn', onclick: addListDialog }, 'Добавить список'))),
-    h('p', { class: 'sub' }, 'Готовые списки сайтов обновляются сами раз в сутки.'),
+    section('Списки по ссылке', { text: 'Готовые списки сайтов обновляются сами раз в сутки.' },
+      h('button', { class: 'btn', onclick: addListDialog }, 'Добавить список'),
+      h('button', { class: 'btn', id: 'listRefreshBtn', onclick: refreshListsNow }, 'Обновить')),
     h('div', { id: 'listBox' }),
 
     h('div', { class: 'mt-lg' }),
-    moreId('specialMore', more('Особые случаи', specialNote(),
-      check('ruInsideDirect', 'Сайты, которые работают только из России, всегда напрямую', 'Госуслуги, банки и другие сервисы, которые не пускают иностранные IP.', refreshSpecialNote),
-      check('blockQuic', 'Блокировать QUIC', 'Нужно для серверов Naive.', refreshSpecialNote),
-      check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки — мимо сервера.', refreshSpecialNote),
-      check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Для серверов VLESS, Hysteria2, TUIC, Trojan и Shadowsocks. Работает в режиме TUN.', refreshSpecialNote),
-      check('adBlock', 'Блокировать рекламу и трекеры', 'Баннеры, счётчики и рекламные сети. Рекламу в видео YouTube так не убрать.', refreshSpecialNote))),
     more('Правила sing-box вручную', S.extraRules.trim() ? 'есть свои правила' : 'для опытных',
       h('p', { class: 'hint' }, 'JSON-массив для route.rules, вставляется сразу после ваших правил. Можно ссылаться на outbound proxy, direct, auto и на свои outbounds из настроек.'),
       jsonArea('extraRules', '[\n  { "domain_keyword": ["openai"], "outbound": "proxy" }\n]', true)));
@@ -2765,15 +2773,6 @@ const MODE_DESC = {
   'global': 'Весь трафик через сервер, кроме локальной сети и ваших правил «Напрямую».',
 };
 
-function specialNote() {
-  const on = [S.adBlock && 'реклама блокируется', S.ruInsideDirect && 'российские сервисы напрямую', S.blockQuic && 'QUIC блокируется', S.udpProxy ? 'UDP через VLESS' : S.udpDirect && 'UDP напрямую'].filter(Boolean);
-  return on.length ? on.join(', ') : 'всё выключено';
-}
-function refreshSpecialNote() {
-  const s = document.querySelector('#specialMore summary small');
-  if (s) s.textContent = specialNote();
-}
-
 const CATS = [
   ['mine', 'Ваши правила', 'var(--warn)'],
   ['blocked', 'Списки блокировок — через сервер', 'var(--tunnel)'],
@@ -2841,9 +2840,9 @@ function renderCats() {
   if (!total) { box.replaceChildren(h('p', { class: 'hint mt' }, 'После подключения здесь будет видно, сколько соединений пошло по каждому правилу.')); return; }
   box.replaceChildren(
     h('div', { class: 'cat-bar' }, CATS.filter(([k]) => sum[k]).map(([k, , col]) => h('span', { style: `width:${sum[k] / total * 100}%;background:${col}`, title: `${sum[k]}` }))),
-    h('div', { class: 'legend' }, CATS.filter(([k]) => sum[k]).map(([k, label, col]) =>
-      h('span', null, h('i', { style: 'background:' + col }), label, h('b', null, String(sum[k]))))),
-    h('p', { class: 'hint', style: 'margin-top:6px' }, `${count(total, 'соединение', 'соединения', 'соединений')} за сеанс.`));
+    h('div', { class: 'cat-list' }, CATS.filter(([k]) => sum[k]).map(([k, label, col]) =>
+      h('div', { class: 'cat-row' }, h('i', { style: 'background:' + col }), h('span', null, label), h('b', { class: 'num' }, String(sum[k]))))),
+    h('p', { class: 'hint', style: 'margin-top:8px' }, `${count(total, 'соединение', 'соединения', 'соединений')} за сеанс.`));
 }
 
 function renderRules() {
@@ -3053,6 +3052,20 @@ function buildCoreBox() {
   return out;
 }
 
+// Темы — плитками с маленьким видом каждой: длинное название не переносится внутри переключателя.
+const THEMES = [['dark', 'Обычная', 'Спокойная, с вашим акцентом'], ['gold', 'Никогда не проси об этом', 'Чёрное с золотом'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт']];
+function themeTiles() {
+  const box = h('div', { class: 'theme-tiles', role: 'radiogroup', 'aria-label': 'Тема' });
+  const paint = () => box.querySelectorAll('.theme-tile').forEach(b => b.setAttribute('aria-checked', b.dataset.theme === (S.theme || 'dark') ? 'true' : 'false'));
+  for (const [k, name, sub] of THEMES) {
+    box.append(h('button', { class: 'theme-tile', type: 'button', role: 'radio', 'data-theme': k, onclick: () => { S.theme = k; save(); applyTheme(); paint(); } },
+      h('span', { class: 'theme-prev', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
+      h('b', null, name), h('small', null, sub)));
+  }
+  paint();
+  return box;
+}
+
 // Акцент: готовые цвета, палитра Windows/Chromium и поле HEX. Пока цвет подбирается, он только
 // показывается; сохраняется — когда выбран.
 function accentPicker() {
@@ -3116,7 +3129,7 @@ function viewSettings() {
     }, 'Язык'),
 
     h('h2', null, 'Внешний вид'),
-    segmented([['dark', 'Обычная'], ['gold', 'Никогда не проси об этом'], ['blocks', 'Пиксели']], () => S.theme, v => { S.theme = v; save(); applyTheme(); }, 'Тема'),
+    themeTiles(),
     h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
     h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
     accentPicker(),
@@ -3417,6 +3430,16 @@ async function boot() {
   let seen = true;
   try { seen = !!localStorage.getItem('naivka-guide'); } catch (_) { /* не показываем */ }
   if (!seen && !S.servers.length && !zapretOnly()) setTimeout(openOnboarding, 300);
+  autoCoreDownload();
+}
+
+// Без ядра Naivka не подключится — при первом запуске качаем его сразу, не отправляя человека в настройки.
+// Один раз за запуск: если загрузка не удалась, повтор — кнопкой (в «Настройках» или на экране первого запуска).
+let coreAutoTried = false;
+function autoCoreDownload() {
+  if (coreAutoTried || !ST || ST.core.present || ST.download.active) return;
+  coreAutoTried = true;
+  api('/api/core/download', {}).then(refreshState).catch(() => {});
 }
 
 
@@ -4112,13 +4135,38 @@ function openOnboarding() {
       box.replaceChildren(dots(2), h('h2', null, 'Готово'),
         h('p', null, 'Сервер добавлен. Нажмите кнопку — и всё заработает.'),
         h('div', { class: 'onb-srv' }, h('b', null, sv.name || 'Сервер'), h('small', null, sv.type || '')),
-        h('button', { class: 'btn primary', onclick: () => { close(); toggleConnect(); } }, 'Подключить'));
+        h('button', { class: 'btn primary onb-go', disabled: !coreReady(), onclick: () => { close(); toggleConnect(); } }, coreReady() ? 'Подключить' : 'Скачиваю ядро…'));
+      coreSig = '';
     }
     if (!REDUCE.matches) box.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
   };
-  ov.append(skip);
+  // Строка о ядре: оно качается само, пока человек вставляет ссылку.
+  const core = h('div', { class: 'onb-core', role: 'status' });
+  const coreReady = () => !!(ST && ST.core.present);
+  let coreSig = '';
+  const paintCore = () => {
+    if (!ov.isConnected) { clearInterval(coreTimer); return; }
+    const d = ST && ST.download, sig = JSON.stringify([coreReady(), d]);
+    if (sig === coreSig) return;
+    coreSig = sig;
+    const connect = ov.querySelector('.onb-go');
+    if (connect) { connect.disabled = !coreReady(); connect.textContent = coreReady() ? 'Подключить' : 'Скачиваю ядро…'; }
+    if (coreReady()) { core.replaceChildren(h('i', { class: 'onb-core-dot ok' }), 'Ядро sing-box установлено'); return; }
+    if (d && d.error) {
+      core.replaceChildren(h('i', { class: 'onb-core-dot bad' }), 'Ядро не скачалось: ' + d.error.split('\n')[0] + ' ',
+        h('button', { class: 'btn link', onclick: () => api('/api/core/download', {}).then(refreshState).catch(e => toast(e.message, true)) }, 'Повторить'));
+      return;
+    }
+    const pct = d && d.total > 0 ? Math.min(100, Math.round(d.done / d.total * 100)) : 0;
+    core.replaceChildren(h('i', { class: 'onb-core-dot' }), d && d.active ? `Скачиваю ядро sing-box… ${d.total > 0 ? pct + '%' : fmtBytes(d.done)}` : 'Готовлю загрузку ядра…',
+      h('span', { class: 'onb-core-bar' }, h('span', { style: `width:${pct}%` })));
+  };
+  const coreTimer = setInterval(paintCore, 500);
+  autoCoreDownload();
+  ov.append(skip, core);
   document.body.append(ov);
   step(0);
+  paintCore();
   ov.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 }
 
