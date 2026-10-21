@@ -1521,4 +1521,9 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
    иначе сквозь них просвечивали фон и обрезанные ветви. */
 :root:is(.mica:not([data-solid]), [data-wall]):not([data-skin]) .br-disc { background: #1C1F23; }
 :root:is(.mica:not([data-solid]), [data-wall]):not([data-skin]) .lanes-box.branches .pw-track { fill: #1C1F23; }
+/* «Пиксели»: подложка кнопки подключения — цвет поверхности темы (при своём фоне она не «дыра» в фоне). */
+:root[data-skin="blocks"] .pw-px-gap { fill: #16151A; }
+/* «Никогда не проси об этом» поверх своего фона: кружки и кнопка тоже сплошные. */
+:root[data-wall][data-skin="gold"] .br-disc { background: #0B0A08; }
+:root[data-wall][data-skin="gold"] .lanes-box.branches .pw-track { fill: #0B0A08; }
 
