@@ -196,6 +196,7 @@ type Settings struct {
 	Theme           string           `json:"theme"`       // dark | gold («Никогда не проси об этом») | blocks («Пиксели»)
 	Accent          string           `json:"accent"`      // акцентный цвет, #RRGGBB
 	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
+	Wall            WallSettings     `json:"wall"`        // свой фон окна (фото или видео)
 	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
 	NativeFrame     bool             `json:"nativeFrame"` // обычная рамка Windows вместо своей строки заголовка
 	OwnServer       bool             `json:"ownServer"`   // показывать раздел «Свой сервер»
@@ -243,6 +244,7 @@ func DefaultSettings() *Settings {
 		SleepReconnect:  true,
 		Notify:          true,
 		Theme:           "dark",
+		Wall:            WallSettings{Dim: 55, Blur: 0, React: true},
 		Accent:          accentDefault,
 		TrayMini:        true,
 		OwnServer:       true,
@@ -354,6 +356,7 @@ func (s *Settings) fingerprint() string {
 	c.ExitWithWindow = false
 	c.Window = nil
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
+	c.Wall = WallSettings{}
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
 		c.Servers[i].Fav = false
@@ -374,6 +377,7 @@ func (s *Settings) fingerprint() string {
 
 func (s *Settings) normalize() {
 	d := DefaultSettings()
+	s.Wall.normalize()
 	if s.Mode != "proxy" && s.Mode != "tun" {
 		s.Mode = d.Mode
 	}

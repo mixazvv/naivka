@@ -31,9 +31,12 @@ func (a *App) routes() http.Handler {
 	static := http.FileServer(http.FS(sub))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:")
 		static.ServeHTTP(w, r)
 	}))
+
+	// Фон окна: файл, а не JSON, — отдельный обработчик (тот же токен в заголовке).
+	mux.HandleFunc("/api/wallpaper", a.wallHandler)
 
 	// Один обработчик на адрес, внутри — выбор по методу (так работает и на Go 1.20).
 	table := map[string]map[string]apiFunc{}
@@ -504,6 +507,10 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 	if err := ns.Validate(); err != nil {
 		return nil, err
 	}
+	// Какой файл фона лежит на диске, знает только загрузка: окно могло прислать устаревшие сведения.
+	a.mu.Lock()
+	ns.Wall.Kind, ns.Wall.Ext, ns.Wall.Ver = a.settings.Wall.Kind, a.settings.Wall.Ext, a.settings.Wall.Ver
+	a.mu.Unlock()
 	if err := SaveSettings(a.dir, ns); err != nil {
 		return nil, fmt.Errorf("не удалось сохранить настройки: %v", err)
 	}

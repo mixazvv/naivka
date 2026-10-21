@@ -206,6 +206,7 @@ function applyTheme() {
   if (root.dataset.skin || root.dataset.oled !== undefined) root.dataset.solid = ''; else delete root.dataset.solid;
   if (root.dataset.skin === 'blocks' && root.dataset.prevSkin !== 'blocks' && $('#main') && $('#main').firstChild) setTimeout(() => chunkReveal($('#main'), 'var(--fog)'), 30);
   root.dataset.prevSkin = root.dataset.skin || '';
+  Wall.apply(S, TOKEN);
   if (!themeSent) { themeSent = 'dark'; api('/api/window/theme', { dark: true }).catch(() => { themeSent = ''; }); }
 }
 
@@ -3066,6 +3067,74 @@ function themeTiles() {
   return box;
 }
 
+// Фон окна: своё фото или видео. Пока файла нет — поле «перетащите или выберите»; есть — миниатюра,
+// ползунки затемнения и размытия (видно сразу, на настоящем фоне) и переключатели.
+function wallBox() {
+  const box = h('div', { class: 'wall-box', id: 'wallBox' });
+  const input = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm', hidden: true });
+  const upload = async file => {
+    if (!file) return;
+    if (file.size > 80 * 1024 * 1024) { toast('Файл больше 80 МБ — возьмите поменьше', true); return; }
+    box.classList.add('busy');
+    try {
+      const res = await fetch('/api/wallpaper', { method: 'POST', headers: { 'X-Naivka-Token': TOKEN, 'Content-Type': 'application/octet-stream' }, body: file });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Не удалось загрузить');
+      S.wall = data;
+      await Wall.apply(S, TOKEN);
+      toast(data.kind === 'video' ? 'Видео поставлено фоном' : 'Фото поставлено фоном');
+    } catch (e) { toast(e.message, true); }
+    finally { box.classList.remove('busy'); render(); }
+  };
+  input.addEventListener('change', () => { upload(input.files[0]); input.value = ''; });
+  const slider = (key, label, max, unit) => {
+    const out = h('b', { class: 'num' }, S.wall[key] + unit);
+    const r = h('input', { type: 'range', min: 0, max, step: 1, value: S.wall[key], 'aria-label': label,
+      oninput: () => { S.wall[key] = +r.value; out.textContent = r.value + unit; Wall.apply(S, TOKEN); },
+      onchange: () => save() });
+    return h('label', { class: 'wall-slider' }, h('span', null, label), r, out);
+  };
+  const flag = (key, title, desc) => h('label', { class: 'check' },
+    h('input', { type: 'checkbox', checked: !!S.wall[key], onchange: e => { S.wall[key] = e.target.checked; save(); Wall.apply(S, TOKEN); } }),
+    h('span', null, h('b', null, title), desc && h('small', null, desc)));
+  function render() {
+    const w = S.wall || {};
+    if (!w.kind) {
+      const drop = h('button', { class: 'wall-drop', type: 'button', onclick: () => input.click() },
+        s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: 'M4 16l4.5-5 3.5 4 2.5-3L20 16M4 5h16v14H4zM15.5 8.5h.01' })),
+        h('b', null, 'Свой фон окна'),
+        h('small', null, 'Перетащите сюда фото или видео, или нажмите, чтобы выбрать. JPG, PNG, WEBP, GIF, MP4, WEBM — до 80 МБ.'));
+      drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+      drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); upload(e.dataTransfer.files[0]); });
+      box.replaceChildren(h('h3', null, 'Фон окна'), drop, input);
+      return;
+    }
+    const thumb = h('div', { class: 'wall-thumb' });
+    const u = Wall.url();
+    if (u) thumb.append(w.kind === 'video' ? h('video', { src: u, muted: true, autoplay: true, loop: true, playsinline: true }) : h('img', { src: u, alt: '' }));
+    box.replaceChildren(
+      h('h3', null, 'Фон окна'),
+      h('div', { class: 'wall-row' }, thumb,
+        h('div', { class: 'wall-side' },
+          h('p', { class: 'hint' }, w.kind === 'video' ? 'Видео без звука, по кругу. В свёрнутом окне — на паузе.' : 'Фото под интерфейсом. Файл хранится только у вас.'),
+          h('div', { class: 'row' },
+            h('button', { class: 'btn', onclick: () => input.click() }, 'Заменить'),
+            h('button', { class: 'btn', onclick: async () => {
+              try { const res = await fetch('/api/wallpaper', { method: 'DELETE', headers: { 'X-Naivka-Token': TOKEN } }); S.wall = await res.json(); }
+              catch (e) { toast(e.message, true); }
+              Wall.apply(S, TOKEN); render(); toast('Фон убран');
+            } }, 'Убрать')))),
+      slider('dim', 'Затемнение', 90, '%'),
+      slider('blur', 'Размытие', 30, ' px'),
+      flag('react', 'Подсвечивать по состоянию', 'Зелёный оттенок — подключено, жёлтый — подключение, красный — ошибка.'),
+      S.theme === 'blocks' ? h('p', { class: 'hint' }, 'В теме «Пиксели» фон всегда пиксельный.') : flag('pixel', 'Пиксельный фон', 'Крупные клетки и упрощённые цвета, как в теме «Пиксели».'),
+      input);
+  }
+  render();
+  return box;
+}
+
 // Акцент: готовые цвета, палитра Windows/Chromium и поле HEX. Пока цвет подбирается, он только
 // показывается; сохраняется — когда выбран.
 function accentPicker() {
@@ -3130,6 +3199,7 @@ function viewSettings() {
 
     h('h2', null, 'Внешний вид'),
     themeTiles(),
+    wallBox(),
     h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
     h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
     accentPicker(),
