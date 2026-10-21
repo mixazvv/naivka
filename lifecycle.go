@@ -227,3 +227,28 @@ func (a *App) zapretOnlyOff() {
 	a.zapret.Stop()
 	a.mon.Event("info", "zapret выключен", false)
 }
+
+// autoApplyDelay — пауза перед переподключением: изменения подряд (ползунок, набор адреса) сливаются в одно.
+const autoApplyDelay = 1500 * time.Millisecond
+
+// scheduleAutoApply переподключает ядро само, если настройки, с которыми оно запущено, устарели
+// и в настройках включено «Применять изменения сразу».
+func (a *App) scheduleAutoApply() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.settings.AutoApply || a.applied == "" || a.applied == a.settings.fingerprint() {
+		return
+	}
+	if a.applyT != nil {
+		a.applyT.Stop()
+	}
+	a.applyT = time.AfterFunc(autoApplyDelay, func() {
+		a.mu.Lock()
+		stale := a.settings.AutoApply && a.applied != "" && a.applied != a.settings.fingerprint()
+		a.mu.Unlock()
+		if stale && a.core.Running() && !a.isRestarting() {
+			a.core.logs.Add("[naivka] настройки изменены — переподключаюсь сам")
+			a.restartCore()
+		}
+	})
+}

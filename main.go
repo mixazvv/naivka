@@ -31,7 +31,8 @@ type App struct {
 
 	mu       sync.Mutex
 	settings *Settings
-	applied  string // fingerprint настроек, с которыми запущено ядро
+	applied  string      // fingerprint настроек, с которыми запущено ядро
+	applyT   *time.Timer // отложенное переподключение после изменения настроек (AutoApply)
 
 	geo       serverGeoCache
 	mon       *Monitor
