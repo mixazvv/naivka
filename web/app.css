@@ -1450,3 +1450,60 @@ body:has(.route-pop) .br-leaf .why { display: none !important; }
 :root[data-skin="blocks"] .btn.link { background: none; box-shadow: none; clip-path: none; }
 :root[data-skin="blocks"] .onb { background: #0F0F11 var(--px-noise); }
 :root[data-skin="blocks"] .onb-core { border-radius: 0; clip-path: var(--px-r); background: #16151A; box-shadow: inset 0 0 0 2px #2C2A31; }
+
+/* ---------- Свой фон окна ----------
+   Слой под всем интерфейсом: файл (или пиксельный холст) на весь экран «с обрезкой», поверх — затемнение,
+   виньетка и, по желанию, оттенок состояния (тот же --glow, что у свечения). Поверхности над ним — стекло. */
+.wall { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #000; pointer-events: none; opacity: 0; transition: opacity .8s ease; }
+.wall.shown { opacity: 1; }
+.wall-media { position: absolute; inset: 0; }
+.wall-media > :is(img, video, canvas) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.wall.blurred .wall-media > :is(img, video) { filter: blur(var(--wall-blur)); transform: scale(1.08); }
+.wall-media > canvas.wall-px { image-rendering: pixelated; }
+/* Медленное «дыхание» фото — только без размытия: двигать размытую картинку дорого. */
+.wall:not(.blurred) .wall-media.drift > img { animation: wallDrift 46s ease-in-out infinite alternate; }
+@keyframes wallDrift { from { transform: scale(1.02) translate(0, 0); } to { transform: scale(1.09) translate(-1.2%, -.8%); } }
+.wall-tint { position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 35%, rgba(0, 0, 0, .45)), rgba(0, 0, 0, var(--wall-dim, .55)); }
+.wall.react .wall-tint::after { content: ""; position: absolute; inset: 0; transition: background .9s ease;
+  background: radial-gradient(110% 70% at 50% -10%, var(--glow), transparent 70%), radial-gradient(70% 60% at 0% 110%, color-mix(in srgb, var(--glow) 70%, transparent), transparent 70%); }
+body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"] .wall.react .wall-tint::after { animation: glowPulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .wall-media > img { animation: none !important; } .wall { transition: none; } }
+
+/* С фоном: основа окна прозрачная, боковая панель и карточки — матовое стекло, панель раздела — плотнее. */
+:root[data-wall] { --bg: transparent; --nav: transparent; }
+:root[data-wall], :root[data-wall] body { background: #000; }
+:root[data-wall] body { background: transparent; }
+:root[data-wall] .sidebar, :root[data-wall] .titlebar { background: rgba(10, 11, 13, .46); -webkit-backdrop-filter: blur(22px) saturate(1.15); backdrop-filter: blur(22px) saturate(1.15); }
+:root[data-wall] :is(.card, .panel, .set-card, .scard, .tile, .notice, .stage-ready, .seg, .pill, .sysline, .leg-chip, .feedback) {
+  background-color: color-mix(in srgb, var(--surface) 74%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.1); backdrop-filter: blur(16px) saturate(1.1); }
+:root[data-wall] .drawer { background: rgba(14, 15, 18, .86); -webkit-backdrop-filter: blur(30px) saturate(1.2); backdrop-filter: blur(30px) saturate(1.2); }
+:root[data-wall] .drawer :is(.card, .panel, .set-card) { background-color: rgba(34, 37, 42, .62); }
+:root[data-wall] .set-search { background: rgba(14, 15, 18, .9); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+:root[data-wall][data-skin="blocks"] .set-search { background: rgba(16, 15, 19, .94); }
+:root[data-wall] .ambient { opacity: .6; }
+/* «Пиксели» с фоном: фактура остаётся, но сквозь неё виден фон. */
+:root[data-wall][data-skin="blocks"] body, :root[data-wall][data-skin="blocks"] .titlebar { background: transparent var(--px-noise); }
+:root[data-wall][data-skin="blocks"] .sidebar { background: rgba(12, 12, 14, .62) var(--px-noise); }
+:root[data-wall][data-skin="blocks"] :is(.card, .panel, .set-card, .scard, .tile, .notice, .stage-ready, .theme-tile, .toggle-grid .check) { background-color: rgba(22, 21, 26, .8); }
+:root[data-wall][data-skin="blocks"] .drawer { background: rgba(16, 15, 19, .9) var(--px-noise); }
+:root[data-wall][data-skin="gold"] .sidebar { background: rgba(0, 0, 0, .55); }
+
+/* Блок «Фон окна» в настройках. */
+.wall-box { display: grid; gap: 10px; margin: 14px 0 6px; }
+.wall-box h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.wall-box.busy { opacity: .6; pointer-events: none; }
+.wall-drop { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; border-radius: 14px; border: 1.5px dashed var(--line); background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: center; transition: border-color .2s, background .2s; }
+.wall-drop:hover, .wall-drop.over { border-color: var(--tunnel); background: var(--tunnel-soft); }
+.wall-drop svg { width: 28px; height: 28px; fill: none; stroke: var(--tunnel); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.wall-drop small { color: var(--muted); max-width: 340px; line-height: 1.4; }
+.wall-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; align-items: center; }
+.wall-thumb { width: 140px; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: #000; border: 1px solid var(--line); }
+.wall-thumb > :is(img, video) { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wall-side { display: grid; gap: 8px; min-width: 0; }
+.wall-side .hint { margin: 0; }
+.wall-slider { display: grid; grid-template-columns: 110px 1fr 54px; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
+.wall-slider b { color: var(--ink); text-align: right; font-weight: 600; }
+.wall-slider input[type=range] { width: 100%; accent-color: var(--tunnel); }
+:root[data-skin="blocks"] :is(.wall-drop, .wall-thumb) { border-radius: 0; clip-path: var(--px-r); }
+:root[data-skin="blocks"] .wall-drop { border: 2px dashed #35333C; }
