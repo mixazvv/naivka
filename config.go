@@ -105,6 +105,9 @@ type ConfigEnv struct {
 	YouTubeDNS bool
 	// SmartDir — папка со списками автоопределения (smart.go); "" — автоопределение выключено.
 	SmartDir string
+	// UserRulesDir — папка со списками своих правил (userrules.go). "" — правила прямо в конфиге
+	// (превью конфига и профиль для телефона).
+	UserRulesDir string
 }
 
 func serverTag(sv Server) string { return "s-" + sv.ID }
@@ -362,31 +365,9 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		}
 		rules = append(rules, M{"process_name": []any{"TgWsProxy.exe", "TgWsProxy_windows.exe"}, "outbound": out})
 	}
-	for _, action := range []string{"block", "direct", "zapret", "proxy"} {
-		var domains, ips, procs []string
-		for _, r := range s.Rules {
-			if r.Action != action {
-				continue
-			}
-			switch r.Kind {
-			case "domain":
-				domains = append(domains, strings.TrimPrefix(strings.ToLower(r.Value), "."))
-			case "ip":
-				v := r.Value
-				if !strings.Contains(v, "/") {
-					if strings.Contains(v, ":") {
-						v += "/128"
-					} else {
-						v += "/32"
-					}
-				}
-				ips = append(ips, v)
-			case "process":
-				if !env.Mobile { // на телефоне правил по программам нет
-					procs = append(procs, r.Value)
-				}
-			}
-		}
+	var userSets []any
+	for _, action := range userRuleActions {
+		domains, ips, procs := userRuleParts(s, action, env.Mobile)
 		target := func(m M) M {
 			switch action {
 			case "block":
@@ -407,21 +388,35 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			}
 			return m
 		}
+		dnsTarget := func(m M) M {
+			switch action {
+			case "block":
+				m["action"] = "reject"
+			case "direct":
+				m["server"] = tagDNSDirect
+			case "zapret":
+				m["server"] = zapretDNS(env)
+			default:
+				m["server"] = tagDNSRemote
+			}
+			return m
+		}
+		if env.UserRulesDir != "" {
+			// Списки в файлах: правила ссылаются на них, даже пустые, — меняются без перезапуска ядра.
+			dTag, oTag := userRuleTag(action, true), userRuleTag(action, false)
+			rules = append(rules, target(M{"rule_set": []any{oTag}}), target(M{"rule_set": []any{dTag}}))
+			dnsRules = append(dnsRules, dnsTarget(M{"rule_set": []any{dTag}}))
+			for _, tag := range []string{dTag, oTag} {
+				userSets = append(userSets, M{"type": "local", "tag": tag, "format": "source", "path": userRuleSetPath(env.UserRulesDir, tag)})
+			}
+			continue
+		}
 		if len(procs) > 0 {
 			rules = append(rules, target(M{"process_name": strs(procs)}))
 		}
 		if len(domains) > 0 {
 			rules = append(rules, target(M{"domain_suffix": strs(domains)}))
-			switch action {
-			case "block":
-				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "action": "reject"})
-			case "direct":
-				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "server": tagDNSDirect})
-			case "zapret":
-				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "server": zapretDNS(env)})
-			default:
-				dnsRules = append(dnsRules, M{"domain_suffix": strs(domains), "server": tagDNSRemote})
-			}
+			dnsRules = append(dnsRules, dnsTarget(M{"domain_suffix": strs(domains)}))
 		}
 		if len(ips) > 0 {
 			rules = append(rules, target(M{"ip_cidr": strs(ips)}))
@@ -569,6 +564,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 
 	ruleSets = append(ruleSets, listSets...)
+	ruleSets = append(ruleSets, userSets...)
 	if env.SmartDir != "" && s.Routing == "ru-direct" {
 		for _, tag := range []string{tagSmartDirect, tagSmartProxy} {
 			// Ядро само перечитывает эти файлы, когда Naivka их меняет, — без перезапуска.
@@ -603,6 +599,11 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		"final":                   final,
 		"auto_detect_interface":   true,
 		"default_domain_resolver": tagDNSDirect,
+	}
+	if env.UserRulesDir != "" && !env.Mobile {
+		// Программу соединения ядро ищет само, только если правила по программам были при запуске;
+		// свои правила теперь меняются на ходу — ищем всегда.
+		route["find_process"] = true
 	}
 	// Списки правил качаются HTTP-клиентом из http_clients (sing-box 1.14+):
 	// напрямую или через сервер, если GitHub у провайдера открывается плохо.

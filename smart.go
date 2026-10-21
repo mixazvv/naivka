@@ -54,8 +54,24 @@ type smartEntry struct {
 }
 
 type smartJob struct {
-	host  string
+	host  string // какой адрес проверять
+	key   string // под каким ключом запомнить решение (smartKey)
 	https bool
+}
+
+// smartFamilies — сервисы, которые отдают видео с постоянно новых адресов (video-edge-….ttvnw.net).
+// Решение для них одно на весь адрес-семейство: иначе каждый новый адрес сначала шёл через сервер,
+// потом напрямую, и трансляция подтормаживала на каждом переключении.
+var smartFamilies = []string{"ttvnw.net", "live-video.net", "jtvnw.net", "twitchcdn.net", "twitchsvc.net", "twitch.tv"}
+
+// smartKey — ключ решения: ".семейство" для адресов из smartFamilies, иначе сам адрес.
+func smartKey(host string) string {
+	for _, f := range smartFamilies {
+		if host == f || strings.HasSuffix(host, "."+f) {
+			return "." + f
+		}
+	}
+	return host
 }
 
 type Smart struct {
@@ -65,13 +81,14 @@ type Smart struct {
 	pending map[string]bool
 	skip    map[string]time.Time // не получилось решить (оба пути не открылись) — не дёргаем полчаса
 	fails   map[string][]time.Time
+	sample  map[string]string // семейство адресов → последний настоящий адрес из него (для перепроверки)
 	dirty   bool
 	queue   chan smartJob
 }
 
 func newSmart(a *App) *Smart {
 	sm := &Smart{a: a, hosts: map[string]smartEntry{}, pending: map[string]bool{}, skip: map[string]time.Time{},
-		fails: map[string][]time.Time{}, queue: make(chan smartJob, 256)}
+		fails: map[string][]time.Time{}, sample: map[string]string{}, queue: make(chan smartJob, 256)}
 	if b, err := os.ReadFile(sm.statePath()); err == nil {
 		_ = json.Unmarshal(b, &sm.hosts)
 	}
@@ -113,7 +130,7 @@ func (sm *Smart) observe(c Conn, s *Settings) {
 		return
 	}
 	select {
-	case sm.queue <- smartJob{host, https}:
+	case sm.queue <- smartJob{host, smartKey(host), https}:
 	default: // очередь полна — увидим сайт ещё раз
 	}
 }
@@ -143,11 +160,14 @@ func (sm *Smart) run() {
 	go sm.failWatch()
 	go sm.sweep()
 	for j := range sm.queue {
-		if !sm.due(j.host, time.Now()) {
+		if j.key == "" {
+			j.key = smartKey(j.host)
+		}
+		if !sm.due(j.key, time.Now()) {
 			continue
 		}
 		sm.mu.Lock()
-		sm.pending[j.host] = true
+		sm.pending[j.key] = true
 		sm.mu.Unlock()
 		sem <- struct{}{}
 		go func(j smartJob) {
@@ -160,13 +180,13 @@ func (sm *Smart) run() {
 func (sm *Smart) check(j smartJob) {
 	defer func() {
 		sm.mu.Lock()
-		delete(sm.pending, j.host)
+		delete(sm.pending, j.key)
 		sm.mu.Unlock()
 	}()
 	s := sm.a.settingsCopy()
 	if !smartOn(s) || smartNeverMatch(j.host) || sm.zapretHost(s, j.host) {
 		sm.mu.Lock()
-		sm.skip[j.host] = time.Now().Add(6 * time.Hour)
+		sm.skip[j.key] = time.Now().Add(6 * time.Hour)
 		sm.mu.Unlock()
 		return
 	}
@@ -174,18 +194,25 @@ func (sm *Smart) check(j smartJob) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	if !decided {
-		sm.skip[j.host] = time.Now().Add(30 * time.Minute)
+		sm.skip[j.key] = time.Now().Add(30 * time.Minute)
 		return
 	}
-	prev, had := sm.hosts[j.host]
-	sm.hosts[j.host] = smartEntry{Direct: direct, At: time.Now().Unix()}
+	if j.key != j.host {
+		sm.sample[j.key] = j.host
+	}
+	prev, had := sm.hosts[j.key]
+	sm.hosts[j.key] = smartEntry{Direct: direct, At: time.Now().Unix()}
 	if !had || prev.Direct != direct {
 		sm.dirty = true
 		where := "через сервер"
 		if direct {
 			where = "напрямую"
 		}
-		sm.a.core.logs.Add("[naivka] автоопределение: " + j.host + " — " + where)
+		name := j.host
+		if j.key != j.host {
+			name = "*" + j.key // всё семейство адресов
+		}
+		sm.a.core.logs.Add("[naivka] автоопределение: " + name + " — " + where)
 	}
 }
 
@@ -307,7 +334,7 @@ func (sm *Smart) failWatch() {
 			if m == nil {
 				continue
 			}
-			host := strings.ToLower(m[1])
+			host := smartKey(strings.ToLower(m[1]))
 			if e, ok := sm.hosts[host]; !ok || !e.Direct {
 				continue
 			}
@@ -354,7 +381,11 @@ func (sm *Smart) sweep() {
 				delete(sm.hosts, host)
 				sm.dirty = true
 			} else if e.Direct && age > smartDirectTTL && len(recheck) < 30 {
-				recheck = append(recheck, host)
+				if h := sm.sample[host]; h != "" {
+					recheck = append(recheck, h) // семейство — перепроверяем настоящий адрес из него
+				} else if !strings.HasPrefix(host, ".") {
+					recheck = append(recheck, host)
+				}
 			}
 		}
 		for host, t := range sm.skip {
@@ -365,7 +396,7 @@ func (sm *Smart) sweep() {
 		sm.mu.Unlock()
 		for _, host := range recheck {
 			select {
-			case sm.queue <- smartJob{host, true}:
+			case sm.queue <- smartJob{host, smartKey(host), true}:
 			default:
 			}
 		}
@@ -422,8 +453,19 @@ func (sm *Smart) lists() (direct, proxy []string) {
 
 func smartRuleSetJSON(domains []string) []byte {
 	rules := []any{}
-	if len(domains) > 0 {
-		rules = append(rules, M{"domain": strs(domains)})
+	var exact, suffix []string
+	for _, d := range domains {
+		if strings.HasPrefix(d, ".") {
+			suffix = append(suffix, strings.TrimPrefix(d, ".")) // семейство адресов (smartFamilies)
+		} else {
+			exact = append(exact, d)
+		}
+	}
+	if len(exact) > 0 {
+		rules = append(rules, M{"domain": strs(exact)})
+	}
+	if len(suffix) > 0 {
+		rules = append(rules, M{"domain_suffix": strs(suffix)})
 	}
 	b, _ := json.Marshal(M{"version": 2, "rules": rules})
 	return b

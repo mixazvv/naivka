@@ -112,6 +112,13 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 		}
 	}
 	a.fillLists(s, env, env.APIPort > 0)
+	if env.APIPort > 0 && !env.Mobile { // настоящий запуск: свои правила — файлами, меняются без перезапуска
+		if err := writeUserRuleSets(a.core.runDir(), s); err == nil {
+			env.UserRulesDir = a.core.runDir()
+		} else {
+			a.core.logs.Add("[naivka] свои правила: " + err.Error())
+		}
+	}
 	env.WLServers = a.wl.Servers(s)
 	if env.APIPort > 0 { // превью конфига не должно считаться «применённым» списком
 		a.wl.markApplied(env.WLServers)

@@ -1297,7 +1297,7 @@ function branchWhy(key, b) {
   else if (b === 'zapret') why = 'Из списков zapret: его замедляют, zapret обходит это без сервера.';
   else if (S.routing === 'global' && b === 'proxy') why = 'Режим «Всё через сервер».';
   else {
-    const sm = e.domains.map(h => smartMap[h]).find(v => v !== undefined);
+    const sm = e.domains.map(h => smartMap[h] ?? smartMap['.' + h]).find(v => v !== undefined);
     if (sm !== undefined) why = sm ? 'Автоопределение: открывается из России нормально — напрямую быстрее.' : 'Автоопределение: напрямую не открывается или закрыт для России — через сервер.';
     else if (b === 'direct' && S.downloadsDirect && e.domains.some(h => DL_DOMAINS.some(d => h === d || h.endsWith('.' + d)))) why = 'Загрузки игр и обновлений — сразу напрямую, чтобы закачка не забивала сервер.';
     else why = b === 'direct' ? 'Напрямую: открывается из России без сервера.'
@@ -1308,6 +1308,11 @@ function branchWhy(key, b) {
     e.domains.length > 1 || e.label !== e.domains[0] ? 'Адреса: ' + e.domains.slice(0, 4).map(displayDomain).join(', ') + (e.domains.length > 4 ? ' …' : '') + '.' : '',
     e.procs.length ? 'Программа: ' + e.procs.slice(0, 2).join(', ') + '.' : ''].filter(Boolean);
 }
+// Свои правила применяются на ходу (ядро перечитывает их списки) — подсказка говорит, когда это случится.
+function ruleNote(action) {
+  if (!(ST && ST.running)) return 'Заработает при подключении.';
+  return action === 'zapret' ? 'Уже работает — zapret перезапустился на секунду.' : 'Уже работает, переподключаться не нужно.';
+}
 function branchDrop(key, b) {
   if (b === 'zapret' && !zapretOn()) { toast('zapret выключен — на эту ветку сейчас нельзя'); return false; }
   const e = branchLeaves[key] || { label: key, domains: [key] };
@@ -1317,7 +1322,7 @@ function branchDrop(key, b) {
   S.rules = S.rules.filter(r => !(r.kind === 'domain' && doms.includes(r.value.toLowerCase())));
   for (const d of doms) S.rules.push({ kind: 'domain', value: d, action: b });
   save(0);
-  toast(`${e.label} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. Правило сохранено, заработает после переподключения`);
+  toast(`${e.label} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. ${ruleNote(b)}`);
   return true;
 }
 function renderBranches(lanes) {
@@ -1403,7 +1408,7 @@ function siteClear(key) {
   const before = S.rules.length;
   S.rules = S.rules.filter(r => !(r.kind === 'domain' && doms.includes(r.value.toLowerCase())));
   save(0);
-  toast(before === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. Заработает после переподключения`);
+  toast(before === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. ${ruleNote('')}`);
 }
 
 // Программы с трафиком — полка под схемой. Программа отправляется целиком (правило по процессу).
@@ -1427,7 +1432,7 @@ function setProcRoute(exe, k) {
   S.rules = S.rules.filter(r => !(r.kind === 'process' && r.value.toLowerCase() === exe.toLowerCase()));
   if (k !== 'auto') S.rules.push({ kind: 'process', value: exe, action: k });
   save(0);
-  toast(k === 'auto' ? `${name} — снова как решит Naivka` : `Вся программа ${name} — ${ROUTE_SAY[k]}. Заработает после переподключения`);
+  toast(k === 'auto' ? `${name} — снова как решит Naivka. ${ruleNote('')}` : `Вся программа ${name} — ${ROUTE_SAY[k]}. ${ruleNote(k)}`);
   renderProcShelf(true);
 }
 function renderProcShelf(force) {
@@ -1863,7 +1868,7 @@ function renderCheck(out, r) {
   const rule = act => async () => {
     const res = mergeRules(S.rules, [{ kind: 'domain', value: r.host, action: act }]);
     save(0);
-    if (await saveNow()) toast(res.added ? `${displayDomain(r.host)} — ${ROUTE_SAY[act]}. Правило добавлено, заработает после переподключения` : 'Действие правила изменено');
+    if (await saveNow()) toast(res.added ? `${displayDomain(r.host)} — ${ROUTE_SAY[act]}. ${ruleNote(act)}` : 'Действие правила изменено');
   };
   const works = { direct: r.direct.ok && !r.zapretCovers, zapret: r.zapretOn && r.zapretCovers && r.direct.ok, proxy: r.proxy.ok };
   const best = r.suggest || (works.zapret ? 'zapret' : works.direct ? 'direct' : works.proxy ? 'proxy' : '');
@@ -2640,7 +2645,7 @@ function viewRules() {
     tools.length ? h('div', { class: 'row sec-tools' }, ...tools) : null);
   return h('div', { class: 'view' },
     h('h1', null, 'Правила'),
-    h('p', { class: 'sub' }, 'Что идёт через сервер, а что напрямую. Изменения применяются после переподключения.'),
+    h('p', { class: 'sub' }, 'Что идёт через сервер, а что напрямую. Свои правила работают сразу, режим и списки — после переподключения.'),
 
     h('section', { class: 'card rules-card' },
       h('h2', { class: 'flush' }, 'Режим'),
@@ -2813,7 +2818,7 @@ async function renderSmart() {
     const v = SMART || { direct: 0, proxy: 0, recent: [] };
     const forget = async host => { try { SMART = await api('/api/smart/forget', { host }); } catch (e) { toast(e.message, 'error'); } renderSmart(); };
     const rows = v.recent.map(x => h('tr', null,
-      h('td', null, displayDomain(x.host)),
+      h('td', null, x.host.startsWith('.') ? '*' + displayDomain(x.host) : displayDomain(x.host)),
       h('td', null, h('span', { class: 'tag' }, x.direct ? 'напрямую' : 'через сервер')),
       h('td', { class: 'r' }, h('button', { class: 'btn small', title: 'Проверить заново, когда сайт откроют', onclick: () => forget(x.host) }, 'Забыть'))));
     parts.push(more('Что определилось', `напрямую ${v.direct}, через сервер ${v.proxy}`,
