@@ -620,7 +620,9 @@ function buildNotices() {
   }
   if (ST.failover) out.push(notice('warn', `Сервер «${ST.failover.from}» не отвечает — временно работаю через «${ST.failover.to}». Вернусь, когда он оживёт.`));
   for (const c of ST.conflicts || []) out.push(notice('warn', h('span', null, h('b', null, `Запущен ${c.name}. `), c.hint)));
-  if (ST.needsRestart) out.push(notice('info', 'Настройки изменены. Они применятся после переподключения.', h('button', { class: 'btn small', onclick: reconnect }, 'Переподключить')));
+  if (ST.needsRestart) out.push(S.autoApply
+    ? notice('info', 'Настройки изменены — Naivka сейчас переподключится сама.')
+    : notice('info', 'Настройки изменены. Они применятся после переподключения.', h('button', { class: 'btn small', onclick: reconnect }, 'Переподключить')));
   const pi = !ST.running && ST.portIssue;
   if (pi) {
     const who = pi.kind === 'naivka' ? 'другая копия Naivka' : pi.name ? `программа ${pi.name}` : 'другая программа';
@@ -832,6 +834,9 @@ function segmented(options, get, set, label) {
   mark();
   return wrap;
 }
+
+// Подтверждение перед удалением — его можно выключить в настройках («Спрашивать перед удалением»).
+function ask(msg) { return S.confirm === false || confirm(msg); }
 
 function check(key, title, desc, after) {
   return h('label', { class: 'check' },
@@ -2268,7 +2273,7 @@ function editServer(srv) {
     fields, err,
     h('div', { class: 'row mt' },
       !isNew && h('button', { class: 'btn danger', onclick: async () => {
-        if (!confirm(`Удалить сервер «${d.name}»?`)) return;
+        if (!ask(`Удалить сервер «${d.name}»?`)) return;
         S.servers = S.servers.filter(x => x.id !== d.id);
         if (S.selected === d.id) S.selected = 'auto';
         save(0); await saveNow(); dlg.close(); renderServers();
@@ -2528,7 +2533,7 @@ function panelsBox() {
         h('button', { class: 'btn small', onclick: () => openPanel(p) }, 'Открыть'),
         h('button', { class: 'btn small', onclick: () => panelCreds(p) }, 'Логин и пароль'),
         h('button', { class: 'btn small', onclick: async () => {
-          if (!confirm(`Убрать панель ${PANEL_TITLE[p.type]} на ${p.host} из списка? На сервере она останется.`)) return;
+          if (!ask(`Убрать панель ${PANEL_TITLE[p.type]} на ${p.host} из списка? На сервере она останется.`)) return;
           S.panels = S.panels.filter(x => x.id !== p.id); save(0); await saveNow(); renderServers(); renderOwn();
         } }, 'Убрать')))))))),
     h('p', { class: 'hint' }, 'Панель откроется в браузере через защищённый SSH-туннель.'));
@@ -2726,7 +2731,7 @@ async function renderLists() {
       h('td', null, h('select', { onchange: e => { l.action = e.target.value; save(0); } },
         Object.entries(LIST_ACTION).map(([v, t]) => h('option', { value: v, selected: l.action === v }, t)))),
       h('td', { class: 'r' }, h('button', { class: 'btn small', onclick: () => {
-        if (!confirm(`Удалить список «${l.name}»?`)) return;
+        if (!ask(`Удалить список «${l.name}»?`)) return;
         S.ruleLists = S.ruleLists.filter(x => x !== l); save(0); renderLists();
       } }, 'Удалить')));
   })))));
@@ -2832,7 +2837,7 @@ async function renderSmart() {
         ? h('div', { class: 'panel' }, h('table', { class: 'table' }, h('tbody', null, ...rows)))
         : h('p', { class: 'hint' }, 'Пока пусто: сайты появятся здесь, когда вы начнёте их открывать.'),
       h('p', { class: 'hint' }, 'Ваши правила, zapret, заблокированное в России и сервисы, закрытые для России, автоопределение не трогает. Нужно, чтобы сайт всегда шёл определённым путём, — добавьте правило.'),
-      h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: () => { if (confirm('Забыть всё, что определилось? Сайты будут проверены заново.')) forget(''); } }, 'Сбросить всё'))));
+      h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: () => { if (ask('Забыть всё, что определилось? Сайты будут проверены заново.')) forget(''); } }, 'Сбросить всё'))));
   }
   box.replaceChildren(...parts);
 }
@@ -2909,7 +2914,7 @@ function renderRules() {
     visible.length > LIMIT ? h('p', { class: 'hint mt' }, `Показаны первые ${LIMIT} из ${visible.length}. Воспользуйтесь поиском.`) : null,
     S.rules.length ? h('div', { class: 'row end mt' }, h('button', {
       class: 'btn link danger', onclick: () => {
-        if (!confirm(`Удалить все ${count(S.rules.length, 'правило', 'правила', 'правил')}? Перед этим можно сделать экспорт.`)) return;
+        if (!ask(`Удалить все ${count(S.rules.length, 'правило', 'правила', 'правил')}? Перед этим можно сделать экспорт.`)) return;
         S.rules = [];
         save(0);
         renderRules();
@@ -3246,6 +3251,8 @@ function viewSettings() {
     h('h2', null, 'Надёжность'),
     check('killSwitch', 'Защита от утечек', 'Если соединение упадёт, трафик не пойдёт мимо сервера.'),
     check('watchdog', 'Следить за соединением', 'Переподключаться после сбоев и смены сети.'),
+    check('autoApply', 'Применять изменения сразу', 'Если изменению нужно переподключение, Naivka переподключится сама — без кнопки «Переподключить».'),
+    check('confirm', 'Спрашивать перед удалением', 'Подтверждение перед удалением серверов, списков, правил и перед восстановлением копии.'),
     check('failover', 'Переходить на рабочий сервер', 'Если выбранный сервер перестал отвечать — временно работать через другой свой, потом вернуться.'),
     check('sleepReconnect', 'Отключаться перед сном', 'После пробуждения компьютера Naivka подключится снова.'),
     check('notify', 'Уведомления Windows', 'О сбоях, восстановлении связи и смене сервера автовыбором.'),
@@ -3427,7 +3434,7 @@ function restoreBackup() {
     const f = input.files && input.files[0];
     if (!f) return;
     const text = await f.text();
-    if (!confirm('Заменить текущие серверы, правила и настройки содержимым копии?')) return;
+    if (!ask('Заменить текущие серверы, правила и настройки содержимым копии?')) return;
     let password = '', advanced = '';
     for (let attempt = 0; ; attempt++) {
       try {

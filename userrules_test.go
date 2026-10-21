@@ -132,3 +132,16 @@ func TestSmartTwitchFamily(t *testing.T) {
 		t.Fatalf("список: %+v", v.Rules)
 	}
 }
+
+// Переключатели «Применять сразу» и «Спрашивать перед удалением» на ядро не влияют.
+func TestFingerprintIgnoresUIToggles(t *testing.T) {
+	a := DefaultSettings()
+	b := a.clone()
+	b.AutoApply, b.Confirm = !a.AutoApply, !a.Confirm
+	if a.fingerprint() != b.fingerprint() {
+		t.Fatal("AutoApply и Confirm не должны требовать переподключения")
+	}
+	if !a.AutoApply || !a.Confirm {
+		t.Fatal("по умолчанию: применять сразу и спрашивать перед удалением")
+	}
+}

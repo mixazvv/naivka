@@ -544,7 +544,9 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 					a.mon.Event("warn", "zapret не перезапустился: "+firstLine(err.Error()), false)
 				}
 			}
+			return
 		}
+		a.scheduleAutoApply()
 	}()
 	if err := a.applyAutostart(prev, ns); err != nil {
 		return nil, err
