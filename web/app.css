@@ -1530,3 +1530,20 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .set-grid > .set-card { break-inside: avoid; margin: 0 0 16px; display: inline-block; width: 100%; }
 .set-grid > .set-card[hidden] { display: none; }
 
+/* Главная помещается в окно без прокрутки: схема занимает ровно то место, что осталось после заголовка,
+   подсказок, режимов и плиток. Схема ветвей тянется по высоте; пиксельный рисунок с постоянными
+   пропорциями подбирает ширину под свободную высоту. Совсем низкое окно — тогда уже прокрутка. */
+.stage-inner { height: 100%; min-height: 0; padding-top: 20px; padding-bottom: 18px; }
+.lanes-stage { flex: 1 1 0; min-height: 230px; justify-content: flex-start; container-type: size; }
+.lanes-box.branches { height: auto; flex: 1 1 0; min-height: 120px; }
+.lanes-box:not(.branches) { flex: none; align-self: center; width: min(100%, calc(var(--lanes-free, 60cqh) * var(--lanes-ratio, 2.6))); }
+/* Невысокое окно: подсказка под полкой программ прячется, плитки — ниже. */
+@media (max-height: 820px) {
+  .proc-hint { display: none; }
+  .stage-tiles .tile { padding-top: 10px; padding-bottom: 10px; min-height: 0; }
+  .status-title { font-size: 26px; }
+}
+.stage-tiles, .stage-ready { margin-top: 14px; }
+.stage-controls { margin-top: 6px; }
+@media (max-height: 560px) { .stage-inner { height: auto; min-height: 100%; } }
+

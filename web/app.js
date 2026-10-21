@@ -1099,6 +1099,12 @@ function renderLanes() {
   const total = lanes.reduce((a, l) => a + l.speed, 0);
   const n = lanes.length;
   const W = 1000, top = 58, bottom = n > 2 ? 70 + 82 * (n - 1) : 236, H = bottom + 92;
+  // Пропорции рисунка — чтобы CSS подобрал ширину схемы под свободную высоту и главная влезала без прокрутки.
+  box.style.setProperty('--lanes-ratio', (W / H).toFixed(3));
+  // Свободная высота под рисунок: блок схемы минус легенда и полка программ под ней.
+  const lg = $('#lanesLegend'), ps = $('#procShelf');
+  const free = box.clientHeight - (lg ? lg.offsetHeight : 0) - (ps ? ps.offsetHeight : 0) - 16;
+  if (free > 0) box.style.setProperty('--lanes-free', free + 'px');
   const Y0 = (top + bottom) / 2;
   const nodeX = { proxy: 500, tg: 405, zapret: 595, direct: 500 };
   const mc = document.documentElement.dataset.skin === 'blocks';
