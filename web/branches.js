@@ -132,22 +132,29 @@ const Branches = (() => {
     measureHoles();
   }
 
-  // Ветки не проходят сквозь кружки: вокруг каждого кружка (и кнопки подключения) в рисунке
-  // вырезается зазор, и ветка «вырастает» из края кружка. Места кружков меряем по самим элементам.
-  const GAP = 5;
+  // Ветки не проходят сквозь кружки: под каждым кружком (и кнопкой подключения) линия вырезается,
+  // но без зазора — ветка входит в обводку кружка и выходит из неё с другой стороны (с прозрачным
+  // фоном окна зазор был виден как разрыв). Места кружков меряем по самим элементам.
+  const GAP = -1;
   let holes = [];
   function measureHoles() {
     if (!box || !nodesEl) return;
     const sr = box.getBoundingClientRect(), out = [];
-    const add = el => {
+    const add = (el, extra = 0) => {
       const r = el.getBoundingClientRect();
-      if (r.width < 2) return;
-      out.push({ x: r.left - sr.left + r.width / 2, y: r.top - sr.top + r.height / 2, r: r.width / 2 + GAP,
-        square: getComputedStyle(el).borderRadius === '0px' });
+      if (r.width < 2) return false;
+      out.push({ x: r.left - sr.left + r.width / 2, y: r.top - sr.top + r.height / 2, r: r.width / 2 + GAP + extra,
+        square: el instanceof HTMLElement && getComputedStyle(el).borderRadius === '0px' });
+      return true;
     };
     for (const d of nodesEl.querySelectorAll('.br-disc')) add(d);
+    // Кнопка подключения: кольцо нарисовано внутри неё, меньше самого элемента, — меряем по кольцу
+    // (его рамка без толщины линии, поэтому +2 — до середины обводки). В пиксельной теме кольца нет.
     const pw = box.querySelector('.power');
-    if (pw) add(pw);
+    if (pw) {
+      const ring = pw.querySelector('.pw-track.pw-c');
+      if (!ring || !add(ring, 2)) add(pw);
+    }
     holes = out;
   }
   function cutHoles() {

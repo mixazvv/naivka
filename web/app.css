@@ -1516,3 +1516,9 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .wall-fit { display: grid; grid-template-columns: 110px auto; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); justify-content: start; }
 .wall-fit-hint { margin: -4px 0 0 122px; }
 @media (max-width: 560px) { .wall-fit { grid-template-columns: 1fr; } .wall-fit-hint { margin-left: 0; } }
+
+/* Схема ветвей поверх прозрачного фона (Mica или свой фон): кружки и кнопка подключения — сплошные,
+   иначе сквозь них просвечивали фон и обрезанные ветви. */
+:root:is(.mica:not([data-solid]), [data-wall]):not([data-skin]) .br-disc { background: #1C1F23; }
+:root:is(.mica:not([data-solid]), [data-wall]):not([data-skin]) .lanes-box.branches .pw-track { fill: #1C1F23; }
+
