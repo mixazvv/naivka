@@ -28,7 +28,10 @@ const Wall = (() => {
     const tint = document.createElement('div');
     tint.className = 'wall-tint';
     layer.append(back, holder, tint);
-    document.body.prepend(layer);
+    // Фон — только в основной области (справа от меню, под заголовком окна), а не под всем окном.
+    const host = document.querySelector('.stage-wrap') || document.body;
+    host.prepend(layer);
+    if (window.ResizeObserver) new ResizeObserver(() => { if (pixel && src && !animated) drawPixel(); }).observe(layer);
   }
 
   function clear() {
@@ -62,7 +65,8 @@ const Wall = (() => {
   function drawPixel(frame) {
     const img0 = frame || src;
     if (!canvas || !img0) return;
-    const w = Math.max(16, Math.ceil(innerWidth / PX)), h = Math.max(16, Math.ceil(innerHeight / PX));
+    const lw = (layer && layer.clientWidth) || innerWidth, lh = (layer && layer.clientHeight) || innerHeight;
+    const w = Math.max(16, Math.ceil(lw / PX)), h = Math.max(16, Math.ceil(lh / PX));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     const sw = img0.displayWidth || img0.videoWidth || img0.naturalWidth, sh = img0.displayHeight || img0.videoHeight || img0.naturalHeight;
     if (!sw || !sh) return;
@@ -209,8 +213,6 @@ const Wall = (() => {
     const b = back && back.querySelector('video');
     if (document.hidden) { src.pause(); if (b) b.pause(); stopVideoLoop(); } else { playVideo(); videoLoop(); }
   });
-  let rz = 0;
-  addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (pixel && src && src.tagName === 'IMG') drawPixel(); }, 150); });
 
   return { apply, clear, url: () => url, kind: () => kind };
 })();

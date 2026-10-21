@@ -1337,7 +1337,7 @@ body.zapret-only .lanes-box.branches .pw-ring { stroke: var(--warn); }
 body:has(.route-pop) .br-leaf .why { display: none !important; }
 
 /* Выбор темы: плитки с миниатюрой (фон, карточка, акцент). */
-.theme-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 4px 0 6px; }
+.theme-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; margin: 4px 0 6px; }
 .theme-tile { display: grid; gap: 3px; justify-items: start; text-align: left; padding: 8px 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--raised); color: var(--ink); cursor: pointer; font: inherit; min-width: 0; }
 .theme-tile:hover { border-color: var(--faint); }
 .theme-tile[aria-checked="true"] { border-color: var(--tunnel); box-shadow: inset 0 0 0 1px var(--tunnel); }
@@ -1454,7 +1454,7 @@ body:has(.route-pop) .br-leaf .why { display: none !important; }
 /* ---------- Свой фон окна ----------
    Слой под всем интерфейсом: файл (или пиксельный холст) на весь экран «с обрезкой», поверх — затемнение,
    виньетка и, по желанию, оттенок состояния (тот же --glow, что у свечения). Поверхности над ним — стекло. */
-.wall { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #000; pointer-events: none; opacity: 0; transition: opacity .8s ease; }
+.wall { position: absolute; inset: 0; z-index: 0; overflow: hidden; background: #000; pointer-events: none; opacity: 0; transition: opacity .8s ease; }
 .wall.shown { opacity: 1; }
 .wall-media { position: absolute; inset: 0; transform: scale(var(--wall-scale, 1)); transform-origin: center; }
 .wall[data-fit="contain"] .wall-media > :is(img, video) { object-fit: contain; }
@@ -1476,11 +1476,8 @@ body:has(.route-pop) .br-leaf .why { display: none !important; }
 body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"] .wall.react .wall-tint::after { animation: glowPulse 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .wall-media > img { animation: none !important; } .wall { transition: none; } }
 
-/* С фоном: основа окна прозрачная, боковая панель и карточки — матовое стекло, панель раздела — плотнее. */
-:root[data-wall] { --bg: transparent; --nav: transparent; }
-:root[data-wall], :root[data-wall] body { background: #000; }
-:root[data-wall] body { background: transparent; }
-:root[data-wall] .sidebar, :root[data-wall] .titlebar { background: rgba(10, 11, 13, .46); -webkit-backdrop-filter: blur(22px) saturate(1.15); backdrop-filter: blur(22px) saturate(1.15); }
+/* С фоном (он только в основной области): карточки — матовое стекло, панель раздела — плотнее.
+   Меню слева и заголовок окна остаются как в теме. */
 :root[data-wall] :is(.card, .panel, .set-card, .scard, .tile, .notice, .stage-ready, .seg, .pill, .sysline, .leg-chip, .feedback) {
   background-color: color-mix(in srgb, var(--surface) 74%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.1); backdrop-filter: blur(16px) saturate(1.1); }
 :root[data-wall] .drawer { background: rgba(14, 15, 18, .86); -webkit-backdrop-filter: blur(30px) saturate(1.2); backdrop-filter: blur(30px) saturate(1.2); }
@@ -1489,11 +1486,8 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 :root[data-wall][data-skin="blocks"] .set-search { background: rgba(16, 15, 19, .94); }
 :root[data-wall] .ambient { opacity: .6; }
 /* «Пиксели» с фоном: фактура остаётся, но сквозь неё виден фон. */
-:root[data-wall][data-skin="blocks"] body, :root[data-wall][data-skin="blocks"] .titlebar { background: transparent var(--px-noise); }
-:root[data-wall][data-skin="blocks"] .sidebar { background: rgba(12, 12, 14, .62) var(--px-noise); }
 :root[data-wall][data-skin="blocks"] :is(.card, .panel, .set-card, .scard, .tile, .notice, .stage-ready, .theme-tile, .toggle-grid .check) { background-color: rgba(22, 21, 26, .8); }
 :root[data-wall][data-skin="blocks"] .drawer { background: rgba(16, 15, 19, .9) var(--px-noise); }
-:root[data-wall][data-skin="gold"] .sidebar { background: rgba(0, 0, 0, .55); }
 
 /* Блок «Фон окна» в настройках. */
 .wall-box { display: grid; gap: 10px; margin: 14px 0 6px; }
@@ -1526,4 +1520,13 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 /* «Никогда не проси об этом» поверх своего фона: кружки и кнопка тоже сплошные. */
 :root[data-wall][data-skin="gold"] .br-disc { background: #0B0A08; }
 :root[data-wall][data-skin="gold"] .lanes-box.branches .pw-track { fill: #0B0A08; }
+
+/* Основная область прокручивается без полосы справа (колесом и тачпадом — как обычно). */
+.main { scrollbar-width: none; }
+.main::-webkit-scrollbar { display: none; }
+
+/* Настройки — «кладкой»: карточки ложатся в колонки плотно, без пустот под короткими карточками. */
+.set-grid { display: block; columns: 2 380px; column-gap: 16px; }
+.set-grid > .set-card { break-inside: avoid; margin: 0 0 16px; display: inline-block; width: 100%; }
+.set-grid > .set-card[hidden] { display: none; }
 
