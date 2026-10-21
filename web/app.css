@@ -1456,7 +1456,13 @@ body:has(.route-pop) .br-leaf .why { display: none !important; }
    виньетка и, по желанию, оттенок состояния (тот же --glow, что у свечения). Поверхности над ним — стекло. */
 .wall { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #000; pointer-events: none; opacity: 0; transition: opacity .8s ease; }
 .wall.shown { opacity: 1; }
-.wall-media { position: absolute; inset: 0; }
+.wall-media { position: absolute; inset: 0; transform: scale(var(--wall-scale, 1)); transform-origin: center; }
+.wall[data-fit="contain"] .wall-media > :is(img, video) { object-fit: contain; }
+.wall[data-fit="fill"] .wall-media > :is(img, video) { object-fit: fill; }
+.wall-media > canvas.wall-px { transform: scale(calc(1 / var(--wall-scale, 1))); }
+/* Подложка под картинкой «целиком» или уменьшенной: та же картинка «с обрезкой», сильно размыта и затемнена. */
+.wall-back { position: absolute; inset: 0; }
+.wall-back > :is(img, video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(42px) brightness(.55) saturate(1.2); transform: scale(1.15); }
 .wall-media > :is(img, video, canvas) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .wall.blurred .wall-media > :is(img, video) { filter: blur(var(--wall-blur)); transform: scale(1.08); }
 .wall-media > canvas.wall-px { image-rendering: pixelated; }
@@ -1507,3 +1513,6 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .wall-slider input[type=range] { width: 100%; accent-color: var(--tunnel); }
 :root[data-skin="blocks"] :is(.wall-drop, .wall-thumb) { border-radius: 0; clip-path: var(--px-r); }
 :root[data-skin="blocks"] .wall-drop { border: 2px dashed #35333C; }
+.wall-fit { display: grid; grid-template-columns: 110px auto; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); justify-content: start; }
+.wall-fit-hint { margin: -4px 0 0 122px; }
+@media (max-width: 560px) { .wall-fit { grid-template-columns: 1fr; } .wall-fit-hint { margin-left: 0; } }

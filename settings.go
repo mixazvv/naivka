@@ -244,7 +244,7 @@ func DefaultSettings() *Settings {
 		SleepReconnect:  true,
 		Notify:          true,
 		Theme:           "dark",
-		Wall:            WallSettings{Dim: 55, Blur: 0, React: true},
+		Wall:            WallSettings{Dim: 55, Blur: 0, React: true, Fit: "cover", Scale: 100},
 		Accent:          accentDefault,
 		TrayMini:        true,
 		OwnServer:       true,

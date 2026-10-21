@@ -24,6 +24,8 @@ type WallSettings struct {
 	Blur  int    `json:"blur"`  // размытие, 0–30 px
 	React bool   `json:"react"` // подсвечивать по состоянию подключения
 	Pixel bool   `json:"pixel"` // пиксельный фон (в теме «Пиксели» — всегда)
+	Fit   string `json:"fit"`   // cover — заполнить (с обрезкой) | contain — целиком | fill — растянуть
+	Scale int    `json:"scale"` // масштаб, 50–200 %
 	Ver   int64  `json:"ver"`   // меняется при каждой загрузке — окно знает, что файл новый
 }
 
@@ -42,6 +44,13 @@ var wallTypes = map[string]struct{ kind, ext string }{
 func (w *WallSettings) normalize() {
 	w.Dim = clampInt(w.Dim, 0, 90)
 	w.Blur = clampInt(w.Blur, 0, 30)
+	if w.Fit != "contain" && w.Fit != "fill" {
+		w.Fit = "cover"
+	}
+	if w.Scale == 0 {
+		w.Scale = 100 // настройки прежних версий
+	}
+	w.Scale = clampInt(w.Scale, 50, 200)
 	ok := false
 	for _, t := range wallTypes {
 		if t.kind == w.Kind && t.ext == w.Ext {
