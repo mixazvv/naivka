@@ -532,6 +532,18 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 		// zapret и tg-ws-proxy меняют маршруты ядра: применяем сразу, без кнопки «Переподключить».
 		if a.core.Running() && addonsNeedRestart(prev, ns) {
 			a.restartCore()
+			return
+		}
+		// Поменялись только свои правила — без перезапуска ядра (списки в файлах, см. userrules.go).
+		if changed := changedRules(prev.Rules, ns.Rules); len(changed) > 0 && a.core.Running() &&
+			!a.isRestarting() && prev.fingerprintNoRules() == ns.fingerprintNoRules() {
+			a.applyRulesLive(prev, ns, changed)
+			// Сайты «через zapret» zapret читает из своих списков только при запуске — перезапускаем его (это секунда).
+			if zapretRulesChanged(changed) && a.zapret.Running() && !a.zapret.busy() {
+				if err := a.zapret.Start(ns); err != nil {
+					a.mon.Event("warn", "zapret не перезапустился: "+firstLine(err.Error()), false)
+				}
+			}
 		}
 	}()
 	if err := a.applyAutostart(prev, ns); err != nil {
