@@ -59,9 +59,18 @@ func TestWallpaperUploadServeDelete(t *testing.T) {
 }
 
 func TestWallSettingsNormalize(t *testing.T) {
-	w := WallSettings{Kind: "image", Ext: ".exe", Dim: 300, Blur: -5}
+	w := WallSettings{Kind: "image", Ext: ".exe", Dim: 300, Blur: -5, Fit: "zoom", Scale: 999}
 	w.normalize()
-	if w.Kind != "" || w.Ext != "" || w.Dim != 90 || w.Blur != 0 {
+	if w.Kind != "" || w.Ext != "" || w.Dim != 90 || w.Blur != 0 || w.Fit != "cover" || w.Scale != 200 {
+		t.Fatalf("normalize: %+v", w)
+	}
+}
+
+// Настройки прежних версий без масштаба — 100 %, а не минимальные 50 %.
+func TestWallSettingsOldDefaults(t *testing.T) {
+	w := WallSettings{Kind: "image", Ext: ".gif", Dim: 40}
+	w.normalize()
+	if w.Scale != 100 || w.Fit != "cover" || w.Kind != "image" {
 		t.Fatalf("normalize: %+v", w)
 	}
 }

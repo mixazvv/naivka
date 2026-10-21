@@ -3067,6 +3067,11 @@ function themeTiles() {
   return box;
 }
 
+const FIT_HINT = {
+  cover: 'На весь экран, лишнее по краям обрезается.',
+  contain: 'Картинка видна полностью, свободные края — её размытая копия.',
+  fill: 'На весь экран без обрезки — пропорции могут исказиться.',
+};
 // Фон окна: своё фото или видео. Пока файла нет — поле «перетащите или выберите»; есть — миниатюра,
 // ползунки затемнения и размытия (видно сразу, на настоящем фоне) и переключатели.
 function wallBox() {
@@ -3082,14 +3087,14 @@ function wallBox() {
       if (!res.ok) throw new Error(data.error || 'Не удалось загрузить');
       S.wall = data;
       await Wall.apply(S, TOKEN);
-      toast(data.kind === 'video' ? 'Видео поставлено фоном' : 'Фото поставлено фоном');
+      toast(data.kind === 'video' ? 'Видео поставлено фоном' : data.ext === '.gif' ? 'GIF поставлен фоном' : 'Фото поставлено фоном');
     } catch (e) { toast(e.message, true); }
     finally { box.classList.remove('busy'); render(); }
   };
   input.addEventListener('change', () => { upload(input.files[0]); input.value = ''; });
-  const slider = (key, label, max, unit) => {
+  const slider = (key, label, max, unit, min = 0) => {
     const out = h('b', { class: 'num' }, S.wall[key] + unit);
-    const r = h('input', { type: 'range', min: 0, max, step: 1, value: S.wall[key], 'aria-label': label,
+    const r = h('input', { type: 'range', min, max, step: 1, value: S.wall[key], 'aria-label': label,
       oninput: () => { S.wall[key] = +r.value; out.textContent = r.value + unit; Wall.apply(S, TOKEN); },
       onchange: () => save() });
     return h('label', { class: 'wall-slider' }, h('span', null, label), r, out);
@@ -3110,6 +3115,7 @@ function wallBox() {
       box.replaceChildren(h('h3', null, 'Фон окна'), drop, input);
       return;
     }
+    const fitHint = h('p', { class: 'hint wall-fit-hint' }, FIT_HINT[w.fit || 'cover']);
     const thumb = h('div', { class: 'wall-thumb' });
     const u = Wall.url();
     if (u) thumb.append(w.kind === 'video' ? h('video', { src: u, muted: true, autoplay: true, loop: true, playsinline: true }) : h('img', { src: u, alt: '' }));
@@ -3117,7 +3123,8 @@ function wallBox() {
       h('h3', null, 'Фон окна'),
       h('div', { class: 'wall-row' }, thumb,
         h('div', { class: 'wall-side' },
-          h('p', { class: 'hint' }, w.kind === 'video' ? 'Видео без звука, по кругу. В свёрнутом окне — на паузе.' : 'Фото под интерфейсом. Файл хранится только у вас.'),
+          h('p', { class: 'hint' }, w.kind === 'video' ? 'Видео без звука, по кругу. В свёрнутом окне — на паузе.'
+            : w.ext === '.gif' ? 'GIF под интерфейсом. Размер — «Целиком», чтобы гифка была видна полностью.' : 'Фото под интерфейсом. Файл хранится только у вас.'),
           h('div', { class: 'row' },
             h('button', { class: 'btn', onclick: () => input.click() }, 'Заменить'),
             h('button', { class: 'btn', onclick: async () => {
@@ -3125,6 +3132,11 @@ function wallBox() {
               catch (e) { toast(e.message, true); }
               Wall.apply(S, TOKEN); render(); toast('Фон убран');
             } }, 'Убрать')))),
+      h('div', { class: 'wall-fit' }, h('span', null, 'Размер'),
+        segmented([['cover', 'Заполнить'], ['contain', 'Целиком'], ['fill', 'Растянуть']], () => w.fit || 'cover',
+          v => { S.wall.fit = v; save(); Wall.apply(S, TOKEN); fitHint.textContent = FIT_HINT[v]; }, 'Размер фона')),
+      fitHint,
+      slider('scale', 'Масштаб', 200, '%', 50),
       slider('dim', 'Затемнение', 90, '%'),
       slider('blur', 'Размытие', 30, ' px'),
       flag('react', 'Подсвечивать по состоянию', 'Зелёный оттенок — подключено, жёлтый — подключение, красный — ошибка.'),
