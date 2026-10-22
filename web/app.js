@@ -617,7 +617,7 @@ function updateStatusNow() {
   navCounts();
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
-  if (S.mascot === true) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet') }); Pet.update(p, kb * 1024); }
+  if (S.mascot === true) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); } }); Pet.update(p, kb * 1024); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -1767,7 +1767,7 @@ function renderGlobe() {
   if (note) note.textContent = !on ? 'появится после подключения' : STATS && !STATS.geoReady ? 'загружаю базу стран…' : list.length ? count(new Set(list.map(f => f.cc)).size, 'страна', 'страны', 'стран') : 'пока тихо';
   patch('globeLegend', String(on), () => [
     ...[['proxy', 'через сервер'], ['direct', 'напрямую'], ['zapret', 'через zapret']].map(([k, t]) => h('span', null, h('i', { style: `background:${ROUTE_COLOR[k]}` }), t)),
-    h('small', null, 'Крутите мышью, колесо — масштаб, двойной щелчок — к вам. Точка страны — её сайты и выбор пути.')]);
+    h('small', null, 'Линии идут от вас — через ваш сервер или напрямую — в страну, где стоят сайты; стрелки показывают направление. Наведите на страну — её путь подсветится. Щелчок по стране — её сайты и выбор пути. Крутите мышью, колесо — масштаб, двойной щелчок — к вам.')]);
 }
 // Щелчок по стране: один сайт — сразу меню пути, несколько — сначала список сайтов.
 function globePick(flow, rect) {

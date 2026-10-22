@@ -208,19 +208,20 @@ type Settings struct {
 	SleepReconnect  bool             `json:"sleepReconnect"` // отключаться перед сном, подключаться после пробуждения
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
-	Theme           string           `json:"theme"`        // dark | gold («Никогда не проси об этом») | blocks («Пиксели») | custom («Своя»)
-	Custom          CustomTheme      `json:"custom"`       // цвета и шрифт темы «Своя»
-	Mascot          bool             `json:"mascot"`       // талисман внизу меню
-	Achievements    bool             `json:"achievements"` // достижения
-	Achv            map[string]int64 `json:"achv"`         // открытые достижения: id → когда (unix)
-	Accent          string           `json:"accent"`       // акцентный цвет, #RRGGBB
-	Oled            bool             `json:"oled"`         // тёмная тема на чистом чёрном
-	Wall            WallSettings     `json:"wall"`         // свой фон окна (фото или видео)
-	TrayMini        bool             `json:"trayMini"`     // щелчок по значку в трее открывает мини-окно
-	NativeFrame     bool             `json:"nativeFrame"`  // обычная рамка Windows вместо своей строки заголовка
-	OwnServer       bool             `json:"ownServer"`    // показывать раздел «Свой сервер»
-	Lang            string           `json:"lang"`         // язык интерфейса: ru | en
-	Nav             string           `json:"nav"`          // боковое меню: list (список) | wheel (колесо с лепестками)
+	Theme           string           `json:"theme"`             // dark | gold («Никогда не проси об этом») | blocks («Пиксели») | custom («Своя»)
+	Custom          CustomTheme      `json:"custom"`            // цвета и шрифт темы «Своя»
+	Mascot          bool             `json:"mascot"`            // талисман внизу меню
+	PetSpot         []float64        `json:"petSpot,omitempty"` // куда перенесли талисман: доли ширины и высоты окна; пусто — внизу меню
+	Achievements    bool             `json:"achievements"`      // достижения
+	Achv            map[string]int64 `json:"achv"`              // открытые достижения: id → когда (unix)
+	Accent          string           `json:"accent"`            // акцентный цвет, #RRGGBB
+	Oled            bool             `json:"oled"`              // тёмная тема на чистом чёрном
+	Wall            WallSettings     `json:"wall"`              // свой фон окна (фото или видео)
+	TrayMini        bool             `json:"trayMini"`          // щелчок по значку в трее открывает мини-окно
+	NativeFrame     bool             `json:"nativeFrame"`       // обычная рамка Windows вместо своей строки заголовка
+	OwnServer       bool             `json:"ownServer"`         // показывать раздел «Свой сервер»
+	Lang            string           `json:"lang"`              // язык интерфейса: ru | en
+	Nav             string           `json:"nav"`               // боковое меню: list (список) | wheel (колесо с лепестками)
 	Window          *WindowGeom      `json:"window,omitempty"`
 	Zapret          ZapretSettings   `json:"zapret"`
 	Telegram        TelegramSettings `json:"telegram"`
@@ -433,7 +434,7 @@ func (s *Settings) fingerprint() string {
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
 	c.Wall = WallSettings{}
 	c.Custom = CustomTheme{}
-	c.Mascot, c.Achievements, c.Achv = false, false, nil
+	c.Mascot, c.Achievements, c.Achv, c.PetSpot = false, false, nil, nil
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
 		c.Servers[i].Fav = false
@@ -561,6 +562,9 @@ func (s *Settings) normalize() {
 	s.Accent = normalizeAccent(s.Accent)
 	s.Custom.normalize()
 	s.Achv = normalizeAchv(s.Achv)
+	if len(s.PetSpot) != 2 || !(s.PetSpot[0] >= 0 && s.PetSpot[0] <= 1 && s.PetSpot[1] >= 0 && s.PetSpot[1] <= 1) {
+		s.PetSpot = nil
+	}
 	if s.Lang != "en" {
 		s.Lang = "ru"
 	}
