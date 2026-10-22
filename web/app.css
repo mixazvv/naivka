@@ -1637,31 +1637,48 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .globe-anchor { position: fixed; pointer-events: none; }
 
 /* ---------- талисман (pet.js) ---------- */
-.pet { position: relative; width: 64px; height: 64px; margin: 0 0 -4px 6px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; --pet-step: .6s; }
+.pet { position: relative; width: 72px; height: 72px; margin: 0 0 -6px 4px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; --pet-step: .6s; }
 .pet svg { width: 100%; height: 100%; overflow: visible; }
-.pet-shadow { fill: rgba(0, 0, 0, .35); transform-origin: 32px 55px; }
-.pet-body, .pet-ear { fill: var(--tunnel); }
-.pet-tail { fill: none; stroke: var(--tunnel); stroke-width: 4; stroke-linecap: round; transform-origin: 47px 44px; }
-.pet-belly { fill: color-mix(in srgb, var(--on-accent) 16%, var(--tunnel)); }
-.pet-white { fill: #fff; }
-.pet-pupil { fill: #14161A; transition: transform .12s ease-out; }
-.pet-lid, .pet-mouth { fill: none; stroke: var(--on-accent); stroke-width: 1.6; stroke-linecap: round; }
-.pet-mouth-o { fill: var(--on-accent); display: none; }
-.pet-cheek { fill: #FF8FA3; opacity: .55; }
-.pet-feet { stroke: var(--on-accent); stroke-width: 2.4; stroke-linecap: round; opacity: .5; }
+.pet-shadow { fill: rgba(0, 0, 0, .35); transform-origin: 32px 58px; }
+.pet-body, .pet-face, .pet-ear { fill: url(#petFurG); }
+.pet-body, .pet-face { stroke: rgba(70, 74, 82, .35); stroke-width: .6; }
+.pet-chest, .pet-muzzle, .pet-paw { fill: #D9DCE0; }
+.pet-paw { stroke: rgba(70, 74, 82, .3); stroke-width: .5; }
+.pet-toes { stroke: rgba(70, 74, 82, .45); stroke-width: .5; stroke-linecap: round; }
+.pet-ear-in { fill: #E7B5B4; opacity: .9; }
+.pet-tuft { stroke: #EEF0F2; stroke-width: .7; stroke-linecap: round; opacity: .9; }
+.pet-stripe { stroke: #6F757F; stroke-width: 1.3; stroke-linecap: round; opacity: .75; }
+.pet-tail { transform-origin: 43px 51px; }
+.pet-tail-fur { fill: none; stroke: #959BA4; stroke-width: 6.5; stroke-linecap: round; }
+.pet-tail-ring { fill: none; stroke: #737983; stroke-width: 6.5; stroke-dasharray: 2.2 3.6; opacity: .55; }
+.pet-collar { fill: none; stroke: var(--tunnel); stroke-width: 2.2; stroke-linecap: round; }
+.pet-tag { fill: var(--tunnel); stroke: rgba(0, 0, 0, .25); stroke-width: .4; }
+.pet-head { transform-origin: 32px 40px; transform: rotate(-7deg); transition: transform .5s ease; }
+.pet-white { fill: #F4EDE0; }
+.pet-iris { fill: url(#petIrisG); }
+.pet-pupil, .pet-glint { transition: transform .12s ease-out; }
+.pet-pupil { fill: #17130E; transition: transform .12s ease-out, rx .3s; }
+.pet-glint { fill: #fff; }
+.pet-lid { fill: none; stroke: #4B5059; stroke-width: 1.2; stroke-linecap: round; }
+.pet-nose { fill: #D98C93; }
+.pet-mouth { fill: none; stroke: #5B5F66; stroke-width: .8; stroke-linecap: round; }
+.pet-mouth-o { fill: #5B3A3E; display: none; }
+.pet-whisker { stroke: rgba(255, 255, 255, .7); stroke-width: .45; stroke-linecap: round; }
+.pet-cheek { fill: #F2A3AE; opacity: .3; }
 .pet-lid { display: none; }
 .pet-pixel { display: none; }
-.px-body { fill: var(--tunnel); } .px-eye { fill: #14161A; } .px-belly { fill: color-mix(in srgb, var(--on-accent) 16%, var(--tunnel)); }
+.px-body { fill: #9AA0A8; } .px-stripe { fill: #6F757F; } .px-pink { fill: #E7B5B4; } .px-eye { fill: #C8913A; } .px-belly { fill: #D9DCE0; }
 .pet-fx > * { opacity: 0; transition: opacity .3s; }
 .pet-zzz text { font: 700 8px/1 var(--font); fill: var(--muted); }
 .pet-sweat { fill: #7CC8FF; }
 .pet-hearts path { fill: #FF6B8B; }
 .pet-spark path { fill: var(--warn); }
 .pet-dust { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
-.pet-bob, .pet-jump { transform-origin: 32px 54px; }
+.pet-bob, .pet-jump { transform-origin: 32px 58px; }
 
 /* Спит: глаза закрыты, дышит, над головой «z». */
 .pet[data-mood="off"] .pet-eyes, .pet[data-mood="off"] .pet-mouth { display: none; }
+.pet[data-mood="off"] .pet-head { transform: rotate(-16deg) translateY(2px); }
 .pet[data-mood="off"] .pet-lid { display: block; }
 .pet[data-mood="off"] .pet-zzz { opacity: 1; }
 .pet[data-mood="off"] .pet-zzz text { animation: petZ 3s ease-in-out infinite; }
@@ -1677,7 +1694,7 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 @keyframes petLook { 0%, 100% { transform: translateX(-1.5px); } 50% { transform: translateX(1.5px); } }
 
 /* Подключено: моргает и машет хвостом. */
-.pet[data-mood="on"] .pet-eyes { animation: petBlink 4.5s infinite; transform-origin: 32px 33px; }
+.pet[data-mood="on"] .pet-eyes { animation: petBlink 4.5s infinite; transform-origin: 32px 27px; }
 .pet[data-mood="on"] .pet-tail, .pet[data-mood="run"] .pet-tail { animation: petWag 1.1s ease-in-out infinite; }
 @keyframes petBlink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
 @keyframes petWag { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg); } }
@@ -1696,7 +1713,10 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .pet[data-mood="err"] .pet-sweat { opacity: 1; }
 .pet[data-mood="err"] .pet-mouth { display: none; }
 .pet[data-mood="err"] .pet-mouth-o { display: block; }
-.pet[data-mood="err"] .pet-pupil { r: 1.4; }
+.pet[data-mood="err"] .pet-pupil { rx: 2.2; ry: 2.4; }
+.pet[data-mood="err"] .pet-head { transform: rotate(0deg); }
+.pet[data-mood="err"] .pet-ear { transform: scaleY(.85); transform-origin: 32px 24px; }
+.pet[data-mood="run"] .pet-head, .pet[data-mood="wait"] .pet-head { transform: rotate(0deg); }
 @keyframes petShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px) rotate(-2deg); } 75% { transform: translateX(1px) rotate(2deg); } }
 
 /* Радость (связь вернулась, достижение), погладили, потыкали. */
@@ -1711,7 +1731,7 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 @keyframes petPurr { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
 @keyframes petHop { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-12px); } }
 
-.pet-bubble { position: absolute; left: 62px; bottom: 34px; z-index: 5; max-width: 150px; padding: 6px 10px; border-radius: 12px 12px 12px 3px; background: var(--raised); border: 1px solid var(--line);
+.pet-bubble { position: absolute; left: 70px; bottom: 34px; z-index: 5; max-width: 150px; padding: 6px 10px; border-radius: 12px 12px 12px 3px; background: var(--raised); border: 1px solid var(--line);
   color: var(--ink); font-size: 12px; line-height: 1.35; box-shadow: var(--shadow); animation: petBubble .25s cubic-bezier(.3, 1.4, .5, 1); pointer-events: none; }
 @keyframes petBubble { from { transform: scale(.6) translateY(6px); opacity: 0; } }
 
@@ -1721,10 +1741,8 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 :root[data-skin="blocks"] .pet[data-mood="off"] .px-eye { fill: var(--tunnel); }
 :root[data-skin="blocks"] .pet-bubble { border-radius: 0; }
 /* «Никогда не проси об этом»: строгий силуэт — чёрный с золотым контуром. */
-:root[data-skin="gold"] .pet-body, :root[data-skin="gold"] .pet-ear { fill: #0B0A08; stroke: var(--tunnel); stroke-width: 1.4; }
-:root[data-skin="gold"] .pet-belly, :root[data-skin="gold"] .pet-cheek { display: none; }
-:root[data-skin="gold"] .pet-lid, :root[data-skin="gold"] .pet-mouth { stroke: var(--tunnel); }
-:root[data-skin="gold"] .pet-white { fill: var(--tunnel); }
+/* «Никогда не проси об этом»: тот же кот, глаза и ошейник золотые. */
+:root[data-skin="gold"] .pet-cheek { display: none; }
 @media (prefers-reduced-motion: reduce) { .pet * { animation: none !important; } }
 
 /* ---------- достижения ---------- */
@@ -1759,3 +1777,4 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 :root[data-skin="blocks"] .achv, :root[data-skin="blocks"] .achv-pop, :root[data-skin="blocks"] .achv-medal { border-radius: 0; }
 :root[data-skin="gold"] .achv, :root[data-skin="gold"] .achv-pop { border-radius: 0; }
 @media (prefers-reduced-motion: reduce) { .achv-pop, .achv-pop * { animation: none !important; } }
+.pet-iris { transition: transform .12s ease-out; }

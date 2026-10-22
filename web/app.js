@@ -3851,7 +3851,7 @@ function viewSettings() {
     h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
     accentPicker(),
     h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme)),
-    check('mascot', 'Талисман', 'Зверёк внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить.', updateStatus),
+    check('mascot', 'Талисман', 'Серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить.', updateStatus),
     check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'),
     h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
       segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),
