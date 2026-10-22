@@ -1542,6 +1542,15 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
   .stage-inner { max-width: 1600px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; column-gap: 26px;
     grid-template-rows: auto auto minmax(230px, 1fr) auto auto auto auto; }
   .stage-inner > * { grid-column: 1; }
+  /* Каждый блок — в своей строке: скрытые подсказки или плитки не сдвигают схему в чужую строку
+     (иначе схема сжималась, а растягивались режимы с пустотами между ними). */
+  .stage-inner > .stage-head { grid-row: 1; }
+  .stage-inner > .stage-notices { grid-row: 2; }
+  .stage-inner > .lanes-stage { grid-row: 3; }
+  .stage-inner > .stage-controls { grid-row: 4; }
+  .stage-inner > .stage-help { grid-row: 5; }
+  .stage-inner > .stage-tiles { grid-row: 6; }
+  .stage-inner > .stage-ready { grid-row: 7; }
   .stage-inner > .live-col { grid-column: 2; grid-row: 1 / -1; display: flex; }
   #procShelf { display: none; }
 }
