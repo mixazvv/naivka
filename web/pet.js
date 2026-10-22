@@ -1,6 +1,7 @@
-// Талисман внизу меню — пиксельный серый котёнок (web/cat.png, и cat-sleep.png — тот же с закрытыми глазами).
+// Талисман внизу меню — пиксельный серый котёнок (лист кадров web/cat-sheet.png).
 // Живёт состоянием подключения: отключено — спит; подключается — оглядывается; идёт трафик — подпрыгивает
-// (чем быстрее, тем бодрее); сбой — пугается; связь вернулась — радуется. Моргает, его можно погладить
+// (чем быстрее, тем бодрее) и машет хвостом; сбой — пугается, хвост трубой; связь вернулась — радуется.
+// Сам по себе моргает, машет хвостом и дёргает ухом; его можно погладить
 // (провести мышью несколько раз) и потыкать. Выключается в «Настройках» → «Внешний вид».
 const Pet = (() => {
   'use strict';
@@ -17,25 +18,49 @@ const Pet = (() => {
     return e;
   };
 
-  // Спрайт 53×74 рисуется один к одному (на экранах с масштабом — крупными чёткими пикселями).
-  const SW = 53, SH = 74;
-  let sprite = null, blinkTimer = 0;
-  const frame = closed => { if (sprite) sprite.setAttribute('href', closed ? 'cat-sleep.png' : 'cat.png'); };
+  // Лист кадров web/cat-sheet.png: 8 кадров по 53×74 — [обычный, хвост вверх, хвост вверх и вбок, ухо дёрнулось],
+  // каждый с открытыми и закрытыми глазами. Рисуется один к одному: на экранах с масштабом — чёткими пикселями.
+  const SW = 53, SH = 74, POSE = { base: 0, tail1: 1, tail2: 2, ear: 3 };
+  let lastStep = '', sprite = null, closed = false, pose = 'base', animTimer = 0, blinkTimer = 0, runTimer = 0;
+  function draw() { if (sprite) sprite.setAttribute('x', 6 - (POSE[pose] * 2 + (closed ? 1 : 0)) * SW); }
+  const frame = c => { closed = c; draw(); };
+  const setPose = p => { pose = p; draw(); };
   function body() {
-    sprite = el('image', { class: 'pet-sprite', href: 'cat.png', x: 6, y: 6, width: SW, height: SH, preserveAspectRatio: 'none' });
-    return sprite;
+    sprite = el('image', { class: 'pet-sprite', href: 'cat-sheet.png', x: 6, y: 6, width: SW * 8, height: SH, preserveAspectRatio: 'none' });
+    return el('g', { 'clip-path': 'url(#petClip)' }, el('clipPath', { id: 'petClip' }, el('rect', { x: 6, y: 6, width: SW, height: SH })), sprite);
   }
-  // Моргание: раз в 3–6 секунд на 0,15 с, пока кот не спит и не мурчит.
-  function blinkLoop() {
+  // Последовательность поз с паузой ms между кадрами; новая прерывает прежнюю.
+  function play(seq, ms) {
+    clearTimeout(animTimer);
+    let i = 0;
+    const step = () => { if (!root) return; setPose(seq[i]); if (++i < seq.length) animTimer = setTimeout(step, ms); };
+    step();
+  }
+  const wag = (ms = 140) => play(['tail1', 'tail2', 'tail1', 'base', 'tail1', 'tail2', 'tail1', 'base'], ms);
+  const twitch = () => play(['ear', 'base', 'ear', 'base'], 110);
+  // Сам по себе: иногда машет хвостом или дёргает ухом (во сне — реже и медленнее).
+  function idleLoop() {
     clearTimeout(blinkTimer);
     blinkTimer = setTimeout(() => {
       if (!root) return;
-      if ((state === 'on' || state === 'run' || state === 'wait') && !root.classList.contains('purr')) {
-        frame(true);
-        setTimeout(() => { if (root && state !== 'off' && !root.classList.contains('purr')) frame(false); }, 150);
+      if (!REDUCE.matches && state !== 'run' && state !== 'err') {
+        const r = Math.random();
+        if (state === 'off') { if (r < 0.35) wag(260); else if (r < 0.6) twitch(); }
+        else if (r < 0.45) wag();
+        else if (r < 0.7) twitch();
+        else if (!root.classList.contains('purr')) { frame(true); setTimeout(() => { if (root && state !== 'off' && !root.classList.contains('purr')) frame(false); }, 150); }
       }
-      blinkLoop();
-    }, 3000 + Math.random() * 3000);
+      idleLoop();
+    }, state === 'off' ? 6000 + Math.random() * 8000 : 2500 + Math.random() * 3500);
+  }
+  // Бежит: хвост машет без остановки в такт шагам.
+  function runLoop() {
+    clearInterval(runTimer);
+    if (state !== 'run' || REDUCE.matches) return;
+    let i = 0;
+    const seq = ['tail1', 'tail2', 'tail1', 'base'];
+    const ms = Math.max(90, parseFloat(getComputedStyle(root).getPropertyValue('--pet-step')) * 1000 / 4 || 150);
+    runTimer = setInterval(() => { if (!root || state !== 'run') { clearInterval(runTimer); setPose('base'); return; } setPose(seq[i++ % seq.length]); }, ms);
   }
 
   function extras() {
@@ -66,12 +91,12 @@ const Pet = (() => {
     container.prepend(root);
     root.addEventListener('click', poke);
     root.addEventListener('pointermove', pet);
-    blinkLoop();
+    idleLoop();
   }
 
   function unmount() {
     if (!root) return;
-    clearTimeout(blinkTimer);
+    clearTimeout(blinkTimer); clearTimeout(animTimer); clearInterval(runTimer);
     root.remove();
     root = svg = bubble = null; state = prev = '';
   }
@@ -85,6 +110,7 @@ const Pet = (() => {
         strokes++; strokeAt = now;
         if (strokes >= 6) {
           strokes = 0; flash('purr', 1800); talk('Мррр…'); if (onPurr) onPurr();
+          if (state !== 'run' && state !== 'err') wag(220);
           frame(true); setTimeout(() => { if (state !== 'off') frame(false); }, 1800);
         }
       }
@@ -94,6 +120,7 @@ const Pet = (() => {
 
   function poke() {
     flash('hop', 650);
+    if (state !== 'run' && state !== 'err') twitch();
     talk(say(state) || '…');
   }
 
@@ -124,10 +151,17 @@ const Pet = (() => {
       joyTimer = setTimeout(() => root && root.classList.remove('joy'), 2400);
       if (prev === 'err') talk('Ура, связь вернулась!');
     }
-    if (s !== state) { prev = state; state = s; root.dataset.mood = s; frame(s === 'off'); }
+    if (s !== state) {
+      prev = state; state = s; root.dataset.mood = s; frame(s === 'off');
+      clearTimeout(animTimer);
+      // Испуг — хвост трубой; бег — машет; иначе обычная поза.
+      setPose(s === 'err' ? 'tail2' : 'base');
+      runLoop();
+    }
     // Чем быстрее трафик, тем чаще шаги: от 0,7 до 0,22 с на шаг.
     const kb = Math.max(0, bps) / 1024;
-    root.style.setProperty('--pet-step', (0.7 - Math.min(0.48, Math.log10(1 + kb) * 0.13)).toFixed(2) + 's');
+    const step = (0.7 - Math.min(0.48, Math.log10(1 + kb) * 0.13)).toFixed(2);
+    if (step !== lastStep) { lastStep = step; root.style.setProperty('--pet-step', step + 's'); if (state === 'run') runLoop(); }
   }
 
   return { mount, unmount, update, talk, cheer: (t) => { flash('hop', 650); if (root) { root.classList.add('joy'); setTimeout(() => root && root.classList.remove('joy'), 2400); } talk(t, 3600); } };
