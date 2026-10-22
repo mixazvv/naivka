@@ -503,6 +503,12 @@ fi
 rm -f "$NEW_CONFIG"
 # sing-box склеивает все json из папки — чужие отключаем.
 find "$CONF_DIR" -maxdepth 1 -name '*.json' ! -name 'config.json' -exec mv {} {}.disabled \;
+# Друзья (вкладка «Свой сервер» → «Друзья»): новый конфиг их не знает — возвращаем.
+FRIENDS_BIN="/usr/local/sbin/naivka-friends" FRIENDS_LIST="/etc/naivka-friends/friends.json"
+[[ "$TEST" == 1 ]] && FRIENDS_BIN="$CONF_DIR/naivka-friends" FRIENDS_LIST="$CONF_DIR/friends/friends.json"
+if [[ -x "$FRIENDS_BIN" && -s "$FRIENDS_LIST" ]]; then
+  ACTION=apply NO_SINGBOX_RESTART=1 CONF_DIR="$CONF_DIR" NAIVKA_TEST="$TEST" "$FRIENDS_BIN" || warn "Друзей вернуть не удалось — откройте «Друзья» в Naivka."
+fi
 
 # ---------- служба, файрвол, BBR ----------
 if [[ "$TEST" != 1 ]]; then

@@ -43,6 +43,7 @@ type App struct {
 	lists     *listCache
 	traffic   *trafficStore
 	installer *serverInstaller
+	friends   friendsSessions // SSH к своим серверам для «Друзей» (friends.go)
 
 	restarter  serialRunner  // перезапуски ядра — по одному
 	life       lifeState     // включение и выключение — по одному, и чего хочет пользователь

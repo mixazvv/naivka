@@ -219,6 +219,7 @@ const BTN_ICONS = {
   qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2',
   edit: 'M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4',
   chevron: 'M9 6l6 6-6 6',
+  close: 'M6 6l12 12M18 6L6 18',
 };
 function btnIcon(name) {
   return s('svg', { viewBox: '0 0 24 24', class: 'bi', 'aria-hidden': 'true' }, s('path', { d: BTN_ICONS[name] }));

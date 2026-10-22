@@ -115,10 +115,10 @@ func TestUserRuleSetsWithSingbox(t *testing.T) {
 func TestSmartTwitchFamily(t *testing.T) {
 	for host, want := range map[string]string{
 		"video-edge-c2a1b4.fra05.abs.hls.ttvnw.net": ".ttvnw.net",
-		"usher.ttvnw.net":                           ".ttvnw.net",
-		"www.twitch.tv":                             ".twitch.tv",
-		"d2nvs31859zcd8.cloudfront.net":             "d2nvs31859zcd8.cloudfront.net",
-		"example.com":                               "example.com",
+		"usher.ttvnw.net":               ".ttvnw.net",
+		"www.twitch.tv":                 ".twitch.tv",
+		"d2nvs31859zcd8.cloudfront.net": "d2nvs31859zcd8.cloudfront.net",
+		"example.com":                   "example.com",
 	} {
 		if got := smartKey(host); got != want {
 			t.Errorf("smartKey(%s) = %s, а нужно %s", host, got, want)
@@ -143,5 +143,22 @@ func TestFingerprintIgnoresUIToggles(t *testing.T) {
 	}
 	if !a.AutoApply || !a.Confirm {
 		t.Fatal("по умолчанию: применять сразу и спрашивать перед удалением")
+	}
+}
+
+// Тема «Своя»: цвета приводятся к #RRGGBB, мусор заменяется значениями по умолчанию.
+func TestCustomThemeNormalize(t *testing.T) {
+	s := DefaultSettings()
+	s.Theme = "custom"
+	s.Custom = CustomTheme{Bg: "#0a1420", Panel: "red", Ink: "", Direct: "#ABCDEF", Font: "comic"}
+	s.normalize()
+	if s.Theme != "custom" || s.Custom.Bg != "#0A1420" || s.Custom.Panel != customDefault.Panel || s.Custom.Ink != customDefault.Ink || s.Custom.Direct != "#ABCDEF" || s.Custom.Font != "" {
+		t.Fatalf("%s %+v", s.Theme, s.Custom)
+	}
+	a := DefaultSettings()
+	b := a.clone()
+	b.Custom.Bg, b.OwnHosts = "#000000", []OwnHost{{ID: "x", Host: "h"}}
+	if a.fingerprint() != b.fingerprint() {
+		t.Fatal("тема и свои серверы не должны требовать переподключения")
 	}
 }
