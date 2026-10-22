@@ -1625,6 +1625,12 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .pet { position: relative; width: 78px; height: 102px; margin: 0 0 -8px 2px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; --pet-step: .6s;
   transform: translateX(var(--pet-x, 0px)); }
 .pet svg { width: 100%; height: 100%; overflow: visible; }
+.pet { touch-action: none; }
+/* Унесённый из меню: висит над окном. В руках — раскачивается вслед за мышью. */
+.pet.free { position: fixed; z-index: 60; margin: 0; transform: none; }
+.pet.held { cursor: grabbing; }
+.pet.held svg { transform: rotate(var(--pet-tilt, 0deg)); transform-origin: 50% 12%; transition: transform .08s linear; }
+.pet.held .pet-shadow { opacity: 0; }
 .pet-shadow { fill: rgba(0, 0, 0, .35); transform-origin: 32px 80px; }
 .pet-jump { transform-origin: 32px 80px; }
 .pet-fx > * { opacity: 0; transition: opacity .3s; }
@@ -1662,6 +1668,7 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .pet-bubble { position: absolute; left: 74px; bottom: 60px; z-index: 5; width: max-content; max-width: 150px; padding: 6px 10px; border-radius: 12px 12px 12px 3px; background: var(--raised); border: 1px solid var(--line);
   color: var(--ink); font-size: 12px; line-height: 1.35; box-shadow: var(--shadow); animation: petBubble .25s cubic-bezier(.3, 1.4, .5, 1); pointer-events: none; }
 .pet.bubble-left .pet-bubble { left: auto; right: 70px; border-radius: 12px 12px 3px 12px; }
+.pet.bubble-down .pet-bubble { bottom: auto; top: 96px; }
 @keyframes petBubble { from { transform: scale(.6) translateY(6px); opacity: 0; } }
 :root[data-skin="blocks"] .pet-bubble { border-radius: 0; }
 @media (prefers-reduced-motion: reduce) { .pet * { animation: none !important; } }

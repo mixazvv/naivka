@@ -16,6 +16,7 @@ const Globe = (() => {
   let land = null;
   let opts = { onPick: null, onSpin: null };
   let last = 0, parts = new Map(); // частицы по ключу дуги
+  let hot = null; // наведённая страна: её маршрут ярче, остальные приглушены
 
   function decodeLand() {
     if (land) return land;
@@ -162,6 +163,8 @@ const Globe = (() => {
   function hover(e) {
     const n = nodeAt(e);
     cv.classList.toggle('pick', !!n);
+    const k = n ? n.flow.route + ':' + n.flow.cc : null;
+    if (k !== hot) { hot = k; kick(); }
     if (!n) { hideTip(); return; }
     tip.hidden = false;
     tip.replaceChildren();
@@ -173,7 +176,7 @@ const Globe = (() => {
     tip.style.left = Math.min(W - 220, n.x + 14) + 'px';
     tip.style.top = Math.max(6, n.y - 10) + 'px';
   }
-  function hideTip() { if (tip) tip.hidden = true; }
+  function hideTip() { if (tip) tip.hidden = true; if (hot) { hot = null; kick(); } }
 
   function focusOn(ll) { if (!ll) return; view.tlon = ll[1]; view.tlat = Math.max(-60, Math.min(60, ll[0])); kick(); }
   // К вам: центр между вами и сервером, масштаб — чтобы все точки поместились, но не мельчили.
@@ -245,6 +248,19 @@ const Globe = (() => {
     return v.replace(/rgba?\(([^)]+)\)/, (_, x) => `rgba(${x.split(',').slice(0, 3).join(',')}, ${a})`);
   }
 
+  // Стрелка-шеврон на 60% дуги, по направлению движения.
+  function arrow(pts, w, col, a, pixel) {
+    const i = Math.round((pts.length - 1) * 0.6), q1 = rot(pts[i - 1]), q2 = rot(pts[i + 1]);
+    if (!visible(q1) || !visible(q2)) return;
+    const [x1, y1] = scr(q1), [x2, y2] = scr(q2), [x, y] = scr(rot(pts[i]));
+    const ang = Math.atan2(y2 - y1, x2 - x1), s = 4 + w * 1.4;
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(ang);
+    ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, w); ctx.lineCap = pixel ? 'butt' : 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(-s, -s * 0.8); ctx.lineTo(0, 0); ctx.lineTo(-s, s * 0.8); ctx.stroke();
+    ctx.restore();
+  }
+
   function draw(now, dt) {
     const cs = colors();
     R = Math.min(W, H) * 0.42 * view.zoom;
@@ -287,10 +303,13 @@ const Globe = (() => {
       }
     }
     const seen = new Set();
+    // Наведена страна — её дуга (и плечо «вы → сервер», если она через сервер) ярче, остальные бледнее.
+    const lit = a => !hot || a.key === hot || (a.key === 'me-srv' && hot.startsWith('proxy:'));
     for (const a of arcs) {
       seen.add(a.key);
       const w = a.speed > 0 ? 1.2 + Math.min(3.2, Math.log10(1 + a.speed / 1024) * 0.9) : 1;
-      ctx.strokeStyle = a.col; ctx.lineWidth = w; ctx.globalAlpha = a.dim ? 0.35 : 0.85;
+      const fade = lit(a) ? 1 : 0.18;
+      ctx.strokeStyle = a.col; ctx.lineWidth = lit(a) && hot ? w + 1 : w; ctx.globalAlpha = (a.dim ? 0.35 : 0.85) * fade;
       ctx.lineCap = cs.pixel ? 'butt' : 'round';
       if (a.dim) ctx.setLineDash([4, 5]); else ctx.setLineDash([]);
       ctx.beginPath();
@@ -304,6 +323,8 @@ const Globe = (() => {
       }
       ctx.stroke();
       ctx.setLineDash([]);
+      // Стрелка направления на середине дуги: куда идёт трафик.
+      arrow(a.pts, w, a.col, (a.dim ? 0.5 : 0.95) * fade, cs.pixel);
       // Частицы: чем быстрее, тем их больше и тем быстрее бегут.
       let ps = parts.get(a.key);
       if (!ps) { ps = []; parts.set(a.key, ps); }
@@ -311,7 +332,7 @@ const Globe = (() => {
       while (ps.length < want) ps.push(Math.random());
       ps.length = want;
       const v = 0.18 + Math.min(0.5, Math.log10(1 + a.speed / 1024) * 0.12);
-      ctx.fillStyle = a.col; ctx.globalAlpha = 1;
+      ctx.fillStyle = a.col; ctx.globalAlpha = fade;
       for (let i = 0; i < ps.length; i++) {
         ps[i] = (ps[i] + v * dt) % 1;
         const p = a.pts[Math.min(a.pts.length - 1, Math.round(ps[i] * (a.pts.length - 1)))], q = rot(p);
@@ -333,7 +354,32 @@ const Globe = (() => {
       ctx.fill();
       ctx.strokeStyle = cs.bg; ctx.lineWidth = 2; ctx.stroke();
     }
-    const pin = (ll, col, label, big) => {
+    // Подписи стран: название и главные сайты. Сначала самые быстрые; налезающие подписи пропускаем
+    // (их видно по наведению).
+    const font = getComputedStyle(document.body).fontFamily;
+    const taken = [];
+    const free = (x, y, w, h) => !taken.some(r => x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + h > r.y);
+    const pinBox = ll => { if (!ll) return; const q = rot(vec(...ll)); if (q[2] <= 0) return; const [x, y] = scr(q); taken.push({ x: x - 8, y: y - 22, w: 170, h: 30 }); };
+    pinBox(data.me && data.me.ll); pinBox(data.srv && data.srv.ll);
+    for (const n of [...nodes].sort((a, b) => b.flow.speed - a.flow.speed)) {
+      const f = n.flow, mine = hot === f.route + ':' + f.cc;
+      if (hot && !mine) continue;
+      const names = f.sites.slice(0, 2).map(x => x.label).join(', ') + (f.sites.length > 2 ? ' +' + (f.sites.length - 2) : '');
+      ctx.font = `600 12px ${font}`;
+      const w1 = ctx.measureText(f.name).width;
+      ctx.font = `500 11px ${font}`;
+      const w2 = names ? ctx.measureText(names).width : 0;
+      const bw = Math.max(w1, w2) + 4, bh = names ? 28 : 15;
+      let x = n.x + n.r + 6, y = n.y - (names ? 16 : 8);
+      if (x + bw > W - 4) x = n.x - n.r - 6 - bw;
+      if (!mine && !free(x, y, bw, bh)) continue;
+      taken.push({ x, y, w: bw, h: bh });
+      ctx.textBaseline = 'top'; ctx.lineJoin = 'round';
+      ctx.font = `600 12px ${font}`; ctx.lineWidth = 4; ctx.strokeStyle = cs.bg; ctx.strokeText(f.name, x, y); ctx.fillStyle = cs.ink; ctx.fillText(f.name, x, y);
+      if (names) { ctx.font = `500 11px ${font}`; ctx.strokeText(names, x, y + 14); ctx.fillStyle = n.col; ctx.fillText(names, x, y + 14); }
+      ctx.textBaseline = 'alphabetic';
+    }
+    const pin = (ll, col, label, big, sub) => {
       if (!ll) return;
       const q = rot(vec(...ll));
       if (q[2] <= 0) return;
@@ -347,8 +393,12 @@ const Globe = (() => {
       ctx.font = `600 12px ${getComputedStyle(document.body).fontFamily}`;
       ctx.lineWidth = 4; ctx.strokeStyle = cs.bg; ctx.strokeText(label, x + 9, y - 8);
       ctx.fillStyle = cs.ink; ctx.fillText(label, x + 9, y - 8);
+      if (sub) {
+        ctx.font = `500 11px ${getComputedStyle(document.body).fontFamily}`;
+        ctx.strokeText(sub, x + 9, y + 6); ctx.fillStyle = col; ctx.fillText(sub, x + 9, y + 6);
+      }
     };
-    if (data.srv) pin(data.srv.ll, data.on ? cs.proxy : cs.land, data.srv.label);
+    if (data.srv) pin(data.srv.ll, data.on ? cs.proxy : cs.land, data.srv.label, false, data.on ? 'ваш сервер' : 'сервер — после подключения');
     if (data.me) pin(data.me.ll, cs.me, data.me.label, true);
   }
 

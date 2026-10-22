@@ -122,3 +122,18 @@ func TestPanelURLSafety(t *testing.T) {
 		t.Fatalf("%+v", s.Panels)
 	}
 }
+
+// Место талисмана: только две доли окна от 0 до 1, иначе — дома, внизу меню.
+func TestPetSpotNormalize(t *testing.T) {
+	for _, c := range []struct {
+		in []float64
+		ok bool
+	}{{[]float64{0.5, 0.7}, true}, {[]float64{0, 1}, true}, {[]float64{1.5, 0.2}, false}, {[]float64{0.2}, false}, {[]float64{-0.1, 0.5}, false}} {
+		s := DefaultSettings()
+		s.PetSpot = c.in
+		s.normalize()
+		if (s.PetSpot != nil) != c.ok {
+			t.Errorf("%v: %v", c.in, s.PetSpot)
+		}
+	}
+}
