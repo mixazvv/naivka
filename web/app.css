@@ -1621,3 +1621,141 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 :root[data-custom][data-wall]:not([data-skin]) .lanes-box.branches .pw-track { fill: var(--surface); }
 :root[data-custom="light"] .wall-tint {
   background: radial-gradient(120% 90% at 50% 45%, transparent 35%, color-mix(in srgb, var(--bg) 45%, transparent)), color-mix(in srgb, var(--bg) calc(var(--wall-dim, .55) * 100%), transparent); }
+
+/* Глобус трафика */
+.globe-box { position: relative; height: clamp(320px, 46vh, 520px); margin: 4px -6px 0; touch-action: none; }
+.globe-cv { display: block; cursor: grab; }
+.globe-cv.grab { cursor: grabbing; }
+.globe-cv.pick { cursor: pointer; }
+.globe-tip { position: absolute; z-index: 2; pointer-events: none; display: flex; flex-direction: column; gap: 2px; max-width: 220px; padding: 8px 10px; border-radius: 10px;
+  background: var(--raised); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 12.5px; }
+.globe-tip b { font-size: 13px; }
+.globe-tip small { color: var(--muted); font-size: 11.5px; }
+.globe-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.globe-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.globe-legend small { flex-basis: 100%; color: var(--faint); }
+.globe-anchor { position: fixed; pointer-events: none; }
+
+/* ---------- талисман (pet.js) ---------- */
+.pet { position: relative; width: 64px; height: 64px; margin: 0 0 -4px 6px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; --pet-step: .6s; }
+.pet svg { width: 100%; height: 100%; overflow: visible; }
+.pet-shadow { fill: rgba(0, 0, 0, .35); transform-origin: 32px 55px; }
+.pet-body, .pet-ear { fill: var(--tunnel); }
+.pet-tail { fill: none; stroke: var(--tunnel); stroke-width: 4; stroke-linecap: round; transform-origin: 47px 44px; }
+.pet-belly { fill: color-mix(in srgb, var(--on-accent) 16%, var(--tunnel)); }
+.pet-white { fill: #fff; }
+.pet-pupil { fill: #14161A; transition: transform .12s ease-out; }
+.pet-lid, .pet-mouth { fill: none; stroke: var(--on-accent); stroke-width: 1.6; stroke-linecap: round; }
+.pet-mouth-o { fill: var(--on-accent); display: none; }
+.pet-cheek { fill: #FF8FA3; opacity: .55; }
+.pet-feet { stroke: var(--on-accent); stroke-width: 2.4; stroke-linecap: round; opacity: .5; }
+.pet-lid { display: none; }
+.pet-pixel { display: none; }
+.px-body { fill: var(--tunnel); } .px-eye { fill: #14161A; } .px-belly { fill: color-mix(in srgb, var(--on-accent) 16%, var(--tunnel)); }
+.pet-fx > * { opacity: 0; transition: opacity .3s; }
+.pet-zzz text { font: 700 8px/1 var(--font); fill: var(--muted); }
+.pet-sweat { fill: #7CC8FF; }
+.pet-hearts path { fill: #FF6B8B; }
+.pet-spark path { fill: var(--warn); }
+.pet-dust { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+.pet-bob, .pet-jump { transform-origin: 32px 54px; }
+
+/* Спит: глаза закрыты, дышит, над головой «z». */
+.pet[data-mood="off"] .pet-eyes, .pet[data-mood="off"] .pet-mouth { display: none; }
+.pet[data-mood="off"] .pet-lid { display: block; }
+.pet[data-mood="off"] .pet-zzz { opacity: 1; }
+.pet[data-mood="off"] .pet-zzz text { animation: petZ 3s ease-in-out infinite; }
+.pet[data-mood="off"] .pet-zzz text:nth-child(2) { animation-delay: .6s; } .pet[data-mood="off"] .pet-zzz text:nth-child(3) { animation-delay: 1.2s; }
+.pet[data-mood="off"] .pet-bob { animation: petBreath 3.2s ease-in-out infinite; }
+.pet[data-mood="off"] svg { filter: saturate(.45) brightness(.85); }
+@keyframes petZ { 0%, 100% { opacity: 0; transform: translateY(3px); } 40%, 60% { opacity: 1; transform: none; } }
+@keyframes petBreath { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.03, .97); } }
+
+/* Подключается: оглядывается. */
+.pet[data-mood="wait"] .pet-eyes { animation: petLook 1.6s ease-in-out infinite; }
+.pet[data-mood="wait"] .pet-bob { animation: petBreath 1.2s ease-in-out infinite; }
+@keyframes petLook { 0%, 100% { transform: translateX(-1.5px); } 50% { transform: translateX(1.5px); } }
+
+/* Подключено: моргает и машет хвостом. */
+.pet[data-mood="on"] .pet-eyes { animation: petBlink 4.5s infinite; transform-origin: 32px 33px; }
+.pet[data-mood="on"] .pet-tail, .pet[data-mood="run"] .pet-tail { animation: petWag 1.1s ease-in-out infinite; }
+@keyframes petBlink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+@keyframes petWag { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg); } }
+
+/* Трафик: бежит — подпрыгивает с частотой по скорости, позади пыль. */
+.pet[data-mood="run"] .pet-bob { animation: petRun var(--pet-step) ease-in-out infinite; }
+.pet[data-mood="run"] .pet-shadow { animation: petShadow var(--pet-step) ease-in-out infinite; }
+.pet[data-mood="run"] .pet-dust { opacity: .7; animation: petDust var(--pet-step) linear infinite; }
+.pet[data-mood="run"] .pet-tail { animation-duration: calc(var(--pet-step) * 1.4); }
+@keyframes petRun { 0%, 100% { transform: translateY(0) scale(1.03, .97); } 50% { transform: translateY(-5px) scale(.98, 1.03); } }
+@keyframes petShadow { 0%, 100% { transform: scale(1); } 50% { transform: scale(.75); opacity: .6; } }
+@keyframes petDust { from { transform: translateX(0); opacity: .7; } to { transform: translateX(-6px); opacity: 0; } }
+
+/* Сбой: испуг — дрожит, глаза круглые, капелька пота. */
+.pet[data-mood="err"] .pet-bob { animation: petShake .35s linear infinite; }
+.pet[data-mood="err"] .pet-sweat { opacity: 1; }
+.pet[data-mood="err"] .pet-mouth { display: none; }
+.pet[data-mood="err"] .pet-mouth-o { display: block; }
+.pet[data-mood="err"] .pet-pupil { r: 1.4; }
+@keyframes petShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px) rotate(-2deg); } 75% { transform: translateX(1px) rotate(2deg); } }
+
+/* Радость (связь вернулась, достижение), погладили, потыкали. */
+.pet.joy .pet-spark, .pet.purr .pet-hearts { opacity: 1; }
+.pet.joy .pet-spark { animation: petSpark 1.2s ease-in-out infinite; transform-origin: 32px 32px; }
+.pet.purr .pet-hearts { animation: petHearts 1.8s ease-out; }
+.pet.purr .pet-eyes { display: none; } .pet.purr .pet-lid { display: block; }
+.pet.purr .pet-bob { animation: petPurr .3s ease-in-out infinite; }
+.pet.hop .pet-jump, .pet.joy .pet-jump { animation: petHop .65s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes petSpark { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.15) rotate(8deg); } }
+@keyframes petHearts { from { transform: translateY(4px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
+@keyframes petPurr { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+@keyframes petHop { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-12px); } }
+
+.pet-bubble { position: absolute; left: 62px; bottom: 34px; z-index: 5; max-width: 150px; padding: 6px 10px; border-radius: 12px 12px 12px 3px; background: var(--raised); border: 1px solid var(--line);
+  color: var(--ink); font-size: 12px; line-height: 1.35; box-shadow: var(--shadow); animation: petBubble .25s cubic-bezier(.3, 1.4, .5, 1); pointer-events: none; }
+@keyframes petBubble { from { transform: scale(.6) translateY(6px); opacity: 0; } }
+
+/* «Пиксели»: пиксельный зверёк, глаза — квадраты. */
+:root[data-skin="blocks"] .pet-round { display: none; }
+:root[data-skin="blocks"] .pet-pixel { display: inline; }
+:root[data-skin="blocks"] .pet[data-mood="off"] .px-eye { fill: var(--tunnel); }
+:root[data-skin="blocks"] .pet-bubble { border-radius: 0; }
+/* «Никогда не проси об этом»: строгий силуэт — чёрный с золотым контуром. */
+:root[data-skin="gold"] .pet-body, :root[data-skin="gold"] .pet-ear { fill: #0B0A08; stroke: var(--tunnel); stroke-width: 1.4; }
+:root[data-skin="gold"] .pet-belly, :root[data-skin="gold"] .pet-cheek { display: none; }
+:root[data-skin="gold"] .pet-lid, :root[data-skin="gold"] .pet-mouth { stroke: var(--tunnel); }
+:root[data-skin="gold"] .pet-white { fill: var(--tunnel); }
+@media (prefers-reduced-motion: reduce) { .pet * { animation: none !important; } }
+
+/* ---------- достижения ---------- */
+.achv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.achv { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
+.achv-medal { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); border: 2px dashed var(--line); }
+.achv-ic { width: 24px; height: 24px; fill: none; stroke: var(--faint); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.achv.got .achv-medal { border: 2px solid var(--tunnel); background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--tunnel) 45%, transparent), color-mix(in srgb, var(--tunnel) 12%, transparent) 70%);
+  box-shadow: 0 0 18px -4px color-mix(in srgb, var(--tunnel) 60%, transparent); }
+.achv.got .achv-ic { stroke: var(--ink); }
+.achv-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.achv-text b { font-size: 14px; }
+.achv-text span { color: var(--muted); font-size: 12.5px; }
+.achv-text small { color: var(--faint); font-size: 11.5px; }
+.achv:not(.got) .achv-text b { color: var(--muted); }
+.achv-bar { height: 5px; margin-top: 4px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.achv-bar i { display: block; height: 100%; background: var(--tunnel); border-radius: 3px; }
+.achv-pop { position: fixed; right: 22px; bottom: 22px; z-index: 90; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; width: 320px; padding: 12px 14px;
+  border-radius: 16px; background: var(--raised); border: 1px solid color-mix(in srgb, var(--tunnel) 50%, var(--line)); box-shadow: var(--shadow); cursor: pointer;
+  animation: achvIn .55s cubic-bezier(.3, 1.4, .5, 1); }
+.achv-pop.out { animation: achvOut .4s ease-in forwards; }
+.achv-pop .achv-medal { border: 2px solid var(--tunnel); background: color-mix(in srgb, var(--tunnel) 22%, transparent); animation: achvMedal 1.2s .2s cubic-bezier(.3, 1.4, .5, 1); position: relative; overflow: hidden; }
+.achv-pop .achv-medal::after { content: ""; position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .55) 50%, transparent 60%); animation: achvShine 1.4s .5s ease-in-out; transform: translateX(-120%); }
+.achv-pop .achv-ic { stroke: var(--ink); }
+.achv-pop small { color: var(--tunnel); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.achv-pop b { display: block; font-size: 15px; }
+.achv-pop span { color: var(--muted); font-size: 12.5px; }
+@keyframes achvIn { from { transform: translateY(30px) scale(.9); opacity: 0; } }
+@keyframes achvOut { to { transform: translateY(20px); opacity: 0; } }
+@keyframes achvMedal { 0% { transform: scale(.3) rotate(-30deg); } 60% { transform: scale(1.15) rotate(8deg); } 100% { transform: none; } }
+@keyframes achvShine { to { transform: translateX(120%); } }
+:root[data-skin="blocks"] .achv, :root[data-skin="blocks"] .achv-pop, :root[data-skin="blocks"] .achv-medal { border-radius: 0; }
+:root[data-skin="gold"] .achv, :root[data-skin="gold"] .achv-pop { border-radius: 0; }
+@media (prefers-reduced-motion: reduce) { .achv-pop, .achv-pop * { animation: none !important; } }

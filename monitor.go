@@ -38,6 +38,7 @@ type TopItem struct {
 	Speed float64 `json:"speed"` // байт/с за последнюю секунду
 	Total int64   `json:"total"`
 	Conns int     `json:"conns"`
+	CC    string  `json:"cc,omitempty"` // страна сайта (для глобуса), если известна
 }
 
 type DelayPoint struct {
@@ -307,7 +308,7 @@ func (m *Monitor) sample(cl *Clash, s *Settings) {
 		key := host + "|" + proc + "|" + route
 		it := agg[key]
 		if it == nil {
-			it = &TopItem{Host: host, Proc: proc, Route: route}
+			it = &TopItem{Host: host, Proc: proc, Route: route, CC: m.a.ipcc.CountryFor(cl, c.Metadata.Host, c.Metadata.DestIP)}
 			agg[key] = it
 		}
 		it.Speed += float64(dd + du)
@@ -573,6 +574,7 @@ type StatsView struct {
 	UserHits map[string]int          `json:"userHits"`
 	Delays   map[string][]DelayPoint `json:"delays"`
 	Health   string                  `json:"health"`
+	GeoReady bool                    `json:"geoReady"` // база стран для глобуса открыта
 }
 
 func (m *Monitor) Stats(nSamples int) StatsView {
@@ -600,7 +602,7 @@ func (m *Monitor) Stats(nSamples int) StatsView {
 	return StatsView{
 		Session: m.session, Samples: append([]Sample{}, smp...), Totals: m.totals,
 		Top: append([]TopItem{}, m.top...), Events: append([]Event{}, ev...),
-		RuleHits: cp(m.ruleHits), UserHits: cp(m.userHits), Delays: dl, Health: m.health,
+		RuleHits: cp(m.ruleHits), UserHits: cp(m.userHits), Delays: dl, Health: m.health, GeoReady: m.a.ipcc.Ready(),
 	}
 }
 

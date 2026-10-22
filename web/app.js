@@ -617,6 +617,9 @@ function updateStatusNow() {
   navCounts();
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
+  if (S.mascot !== false) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet') }); Pet.update(p, kb * 1024); }
+  else Pet.unmount();
+  checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
   const tbs = $('#tbStatus');
   if (tbs) tbs.textContent = TITLES[p] + (p === 'on' ? ' · ' + cs.name : '');
@@ -1415,6 +1418,7 @@ function branchDrop(key, b) {
   for (const d of doms) S.rules.push({ kind: 'domain', value: d, action: b });
   save(0);
   toast(`${e.label} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. ${ruleNote(b)}`);
+  unlockAchv('route');
   return true;
 }
 // Сайты с трафиком — понятные сервисы: адреса одного сервиса сводятся в одну группу; незнакомые сайты
@@ -1529,6 +1533,7 @@ function setProcRoute(exe, k) {
   if (k !== 'auto') S.rules.push({ kind: 'process', value: exe, action: k });
   save(0);
   toast(k === 'auto' ? `${name} — снова как решит Naivka. ${ruleNote('')}` : `Вся программа ${name} — ${ROUTE_SAY[k]}. ${ruleNote(k)}`);
+  if (k !== 'auto') unlockAchv('route');
   renderProcShelf(true);
 }
 function renderProcShelf(force) {
@@ -1618,6 +1623,181 @@ function renderLive() {
     el.querySelector('.live-speed').textContent = v >= 1024 ? fmtSpeed(v) : '';
   }
 }
+// ---------- талисман и достижения ----------
+function petSay(mood) {
+  const sp = lastSpeeds(), cs = currentServer();
+  if (mood === 'off') return 'Сплю… Нажмите кнопку питания — проснусь.';
+  if (mood === 'wait') return 'Подключаюсь, секунду…';
+  if (mood === 'err') return 'Ой, связь пропала. Уже чиню!';
+  if (mood === 'run') return `Качаем: ${fmtSpeed(sp.pd + sp.pu)}`;
+  const lines = [`Всё работает через ${cs.name || 'сервер'}.`, 'Тихо и спокойно.', 'Погладьте меня — проведите мышью туда-сюда.', 'Сайты видят адрес сервера, а не ваш.'];
+  return lines[Math.floor(Date.now() / 7000) % lines.length];
+}
+
+// Значки: id, название, условие, путь значка (24×24). check возвращает true или прогресс [сколько, из скольки].
+const GB = 1024 ** 3;
+const ACHV = [
+  ['connect', 'Первый шаг', 'Подключиться в первый раз.', 'M12 3v8M7.5 6.5a7 7 0 1 0 9 0', c => c.on],
+  ['gb1', 'Первый гигабайт', '1 ГБ через сервер.', 'M4 17l5-5 4 4 7-8M15 8h5v5', c => [c.proxy, GB]],
+  ['gb100', 'Сотня', '100 ГБ через сервер.', 'M5 4h14v6a7 7 0 0 1-14 0zM9 20h6M12 17v3', c => [c.proxy, 100 * GB]],
+  ['saver', 'Экономист', '10 ГБ напрямую и через zapret — сервер не тратился.', 'M12 3v18M17 7.5c0-2-2-3-5-3s-5 1.2-5 3.3c0 4.7 10 2.2 10 7 0 2.2-2.2 3.4-5 3.4s-5-1.2-5-3.2', c => [c.direct, 10 * GB]],
+  ['streak7', 'Неделя в строю', '7 дней подряд с трафиком.', 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5', c => [c.streak, 7]],
+  ['rocket', 'Ракета', 'Скорость больше 10 МБ/с.', 'M12 2c4 3 5 8 3 13H9C7 10 8 5 12 2zM9 15l-3 4h4M15 15l3 4h-4M12 8.5v.01', c => [c.speed, 10 * 1024 * 1024]],
+  ['travel', 'Путешественник', 'Трафик в 10 стран за один сеанс.', 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18', c => [c.countries, 10]],
+  ['night', 'Ночная сова', 'В сети между 3 и 5 часами утра.', 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z', c => c.night],
+  ['route', 'Регулировщик', 'Отправить сайт или программу другим путём.', 'M6 3v18M6 7h9l3 3-3 3H6', null],
+  ['zapret', 'Без сервера', 'Включить zapret.', 'M13 2L4 14h7l-1 8 9-12h-7z', c => c.zapret],
+  ['own', 'Свой сервер', 'Поставить свой сервер через Naivka.', 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01', c => c.own],
+  ['friend', 'Не жадина', 'Пригласить друга на свой сервер.', 'M8 11a3.5 3.5 0 1 0 0-7a3.5 3.5 0 0 0 0 7zM2 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 8h6M19 5v6', null],
+  ['style', 'Стилист', 'Своя тема или свой фон окна.', 'M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8zM7.5 11h.01M10 7h.01M15 7h.01', c => c.style],
+  ['globe', 'Картограф', 'Покрутить глобус трафика.', 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c3 3 3 15 0 18', null],
+  ['pet', 'Лучший друг', 'Погладить талисмана.', 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z', null],
+];
+let achvTraffic = null, achvTrafficAt = 0, sessionCountries = new Set(), bestSpeed = 0, achvQueue = [], achvShowing = false, achvBoot = true;
+async function refreshAchvTraffic() {
+  try { achvTraffic = await api('/api/traffic'); achvTrafficAt = Date.now(); } catch (_) { return; }
+  checkAchv();
+  if (view === 'diag' && diagTab === 'achv') renderAchv();
+}
+function achvCtx() {
+  const life = (achvTraffic && achvTraffic.lifetime) || {};
+  const sum = k => ((life[k] || [0, 0])[0] + (life[k] || [0, 0])[1]);
+  const on = phase() === 'on', sp = lastSpeeds(), hr = new Date().getHours();
+  if (on) { bestSpeed = Math.max(bestSpeed, sp.pd + sp.pu); for (const t of (STATS && STATS.top) || []) if (t.cc) sessionCountries.add(t.cc); }
+  return {
+    on, proxy: sum('proxy'), direct: sum('direct') + sum('zapret'), streak: (achvTraffic && achvTraffic.streak) || 0, speed: bestSpeed,
+    countries: sessionCountries.size, night: on && sp.pd + sp.pu > 1024 && hr >= 3 && hr < 5, zapret: !!zapretOn(),
+    own: !!((S.ownHosts || []).length || (S.panels || []).length), style: S.theme === 'custom' || !!(S.wall && S.wall.kind),
+  };
+}
+const achvDone = (r) => r === true || (Array.isArray(r) && r[0] >= r[1]);
+function checkAchv() {
+  if (!S || !ST || S.achievements === false) return;
+  if (Date.now() - achvTrafficAt > 120000) { achvTrafficAt = Date.now(); refreshAchvTraffic(); return; }
+  if (!achvTraffic) return; // без истории трафика часть условий не посчитать — ждём её
+  const c = achvCtx();
+  const fresh = [];
+  for (const [id, , , , test] of ACHV) if (test && !(S.achv || {})[id] && achvDone(test(c))) fresh.push(id);
+  if (!fresh.length) { achvBoot = false; return; }
+  S.achv = { ...(S.achv || {}) };
+  const now = Math.floor(Date.now() / 1000);
+  for (const id of fresh) S.achv[id] = now;
+  save();
+  // После обновления Naivka многое уже выполнено — одна сводка вместо очереди из десятка окошек.
+  if (achvBoot && fresh.length > 2) achvToast(null, fresh.length); else fresh.forEach(id => achvToast(id));
+  achvBoot = false;
+  if (view === 'diag' && diagTab === 'achv') renderAchv();
+}
+function unlockAchv(id) {
+  if (!S || S.achievements === false || (S.achv || {})[id]) return;
+  S.achv = { ...(S.achv || {}), [id]: Math.floor(Date.now() / 1000) };
+  save();
+  achvToast(id);
+}
+function achvIcon(d, cls = '') {
+  return s('svg', { viewBox: '0 0 24 24', class: 'achv-ic ' + cls, 'aria-hidden': 'true' }, s('path', { d }));
+}
+function achvToast(id, many) {
+  achvQueue.push([id, many]);
+  if (achvShowing) return;
+  const next = () => {
+    const it = achvQueue.shift();
+    if (!it) { achvShowing = false; return; }
+    achvShowing = true;
+    const a = it[0] && ACHV.find(x => x[0] === it[0]);
+    const el = h('div', { class: 'achv-pop', role: 'status' },
+      h('div', { class: 'achv-medal' }, achvIcon(a ? a[3] : 'M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8z')),
+      h('div', null, h('small', null, 'Достижение'), h('b', null, a ? a[1] : `Открыто достижений: ${it[1]}`), h('span', null, a ? a[2] : 'Загляните в «Сводку» → «Достижения».')));
+    el.addEventListener('click', () => { el.remove(); openDiag('achv'); });
+    document.body.append(el);
+    if (S.mascot !== false) Pet.cheer(a ? `Ура! «${a[1]}»` : 'Сколько всего открыто!');
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); next(); }, 400); }, 4200);
+  };
+  next();
+}
+function renderAchv() {
+  const box = $('#achvBox');
+  if (!box) return;
+  const c = achvCtx(), got = S.achv || {};
+  const n = ACHV.filter(a => got[a[0]]).length;
+  box.replaceChildren(
+    h('p', { class: 'sub' }, `Открыто ${n} из ${ACHV.length}. Значки только для вас — Naivka никуда их не отправляет.`),
+    h('div', { class: 'achv-grid' }, ACHV.map(([id, title, desc, icon, test]) => {
+      const at = got[id];
+      const r = !at && test ? test(c) : null;
+      const prog = Array.isArray(r) ? Math.min(1, r[0] / r[1]) : 0;
+      return h('div', { class: 'achv' + (at ? ' got' : '') },
+        h('div', { class: 'achv-medal' }, achvIcon(icon)),
+        h('div', { class: 'achv-text' }, h('b', null, title), h('span', null, desc),
+          at ? h('small', null, 'открыто ' + new Date(at * 1000).toLocaleDateString(LOCALE))
+            : prog > 0 ? h('div', { class: 'achv-bar', title: Math.round(prog * 100) + '%' }, h('i', { style: `width:${(prog * 100).toFixed(1)}%` })) : h('small', null, 'ещё не открыто')));
+    })));
+}
+
+// ---------- глобус трафика («Сводка» → «Сейчас») ----------
+const REGION = (() => { try { return new Intl.DisplayNames([LOCALE], { type: 'region' }); } catch (_) { return null; } })();
+const countryName = cc => (REGION && REGION.of(cc)) || cc;
+function renderGlobe() {
+  const box = $('#globeBox');
+  if (!box) { Globe.unmount(); return; }
+  Globe.mount(box, { onPick: globePick, onSpin: () => unlockAchv('globe') });
+  const on = phase() === 'on';
+  const ends = mapEnds();
+  // Страны сайтов: по каждому пути отдельно (через сервер / напрямую / zapret), сайты — сервисами.
+  const flows = new Map();
+  if (on) for (const t of (STATS && STATS.top) || []) {
+    if (!t.cc || !COUNTRY_POS[t.cc] || t.route === 'telegram') continue;
+    const route = t.route === 'direct' || t.route === 'zapret' ? t.route : 'proxy';
+    const k = route + ':' + t.cc;
+    const f = flows.get(k) || { cc: t.cc, route, ll: COUNTRY_POS[t.cc], name: countryName(t.cc), speed: 0, sites: new Map() };
+    f.speed += t.speed || 0;
+    if (t.host && !/^[\d.:[\]]+$/.test(t.host)) {
+      const base = baseDomain(t.host), sv = serviceOf(base), key = sv ? sv.name : base;
+      const x = f.sites.get(key) || { key, label: sv ? sv.name : displayDomain(base), domains: [], procs: [], routes: {}, speed: 0, total: 0 };
+      if (!x.domains.includes(base)) x.domains.push(base);
+      x.routes[route] = (x.routes[route] || 0) + (t.speed || 0) + 1;
+      x.speed += t.speed || 0; x.total += t.total || 0;
+      f.sites.set(key, x);
+    }
+    flows.set(k, f);
+  }
+  const list = [...flows.values()].map(f => ({ ...f, sites: [...f.sites.values()].sort((a, b) => b.speed - a.speed).map(x => ({ ...x, say: ROUTE_SAY[f.route] })) }))
+    .sort((a, b) => b.speed - a.speed).slice(0, 24);
+  Globe.update({ me: ends.me, srv: ends.srv, flows: list, on });
+  const note = $('#globeNote');
+  if (note) note.textContent = !on ? 'появится после подключения' : STATS && !STATS.geoReady ? 'загружаю базу стран…' : list.length ? count(new Set(list.map(f => f.cc)).size, 'страна', 'страны', 'стран') : 'пока тихо';
+  patch('globeLegend', String(on), () => [
+    ...[['proxy', 'через сервер'], ['direct', 'напрямую'], ['zapret', 'через zapret']].map(([k, t]) => h('span', null, h('i', { style: `background:${ROUTE_COLOR[k]}` }), t)),
+    h('small', null, 'Крутите мышью, колесо — масштаб, двойной щелчок — к вам. Точка страны — её сайты и выбор пути.')]);
+}
+// Щелчок по стране: один сайт — сразу меню пути, несколько — сначала список сайтов.
+function globePick(flow, rect) {
+  let a = $('#globeAnchor');
+  if (!a) { a = h('span', { id: 'globeAnchor', class: 'globe-anchor', 'aria-hidden': 'true' }); document.body.append(a); }
+  Object.assign(a.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
+  const pickSite = (x, anchor) => {
+    branchLeaves[x.key] = x;
+    const rule = siteRule(x);
+    sitePick({ key: x.key, label: x.label, current: rule ? rule.action : 'auto' }, anchor);
+  };
+  if (flow.sites.length === 1) { pickSite(flow.sites[0], a); return; }
+  closeRoutePop();
+  const pop = h('div', { class: 'route-pop', role: 'menu', 'aria-label': flow.name },
+    h('b', null, flow.name), h('small', null, `${ROUTE_SAY[flow.route]} · выберите сайт`),
+    ...flow.sites.slice(0, 8).map(x => h('button', { role: 'menuitem', onclick: () => {
+      const r = pop.getBoundingClientRect();
+      Object.assign(a.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: '0px' });
+      pickSite(x, a);
+    } }, h('i', { style: `background:${ROUTE_COLOR[flow.route]}` }), x.label, h('span', { class: 'num', style: 'margin-left:auto;color:var(--muted);font-size:12px' }, x.speed >= 1024 ? fmtSpeed(x.speed) : ''))));
+  document.body.append(pop);
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let x = Math.min(Math.max(8, rect.left), innerWidth - pw - 8), y = rect.bottom + 6;
+  if (y + ph > innerHeight - 8) y = Math.max(8, rect.top - ph - 6);
+  pop.style.left = x + 'px'; pop.style.top = y + 'px';
+  routePop = pop;
+  pop.querySelector('button').focus();
+}
+
 // Каким путём группа идёт сейчас (по самому быстрому трафику).
 const groupRoute = g => Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][0];
 function liveRow({ key, label, icon, route, rule, sub, pick, drop }) {
@@ -1767,6 +1947,7 @@ function renderEvents() {
 function renderOverviewLive() { guard(renderOverviewLiveNow, 'renderOverviewLive'); }
 function renderOverviewLiveNow() {
   renderLive();
+  renderGlobe();
   renderTiles();
   renderMap();
   renderLanes();
@@ -1888,7 +2069,10 @@ function viewDiag() {
             h('div', { class: 'facts', id: 'facts' })),
           h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'События')), h('div', { class: 'events', id: 'events' }))),
         h('section', { class: 'card ipcard mt', id: 'ipCard' }),
-        h('div', { class: 'card mapcard mt' }, h('div', { class: 'map-box', id: 'heroMap' })));
+        h('section', { class: 'card globecard mt' },
+          h('div', { class: 'card-head' }, h('h3', null, 'Куда идёт трафик'), h('small', { id: 'globeNote' })),
+          h('div', { class: 'globe-box', id: 'globeBox' }),
+          h('div', { class: 'globe-legend', id: 'globeLegend' })));
       MAP.key = '';
       renderOverviewLive();
       renderIP();
@@ -1912,6 +2096,10 @@ function viewDiag() {
     } else if (diagTab === 'traffic') {
       body.replaceChildren(viewTraffic());
       refreshTraffic();
+    } else if (diagTab === 'achv') {
+      body.replaceChildren(h('div', { id: 'achvBox' }));
+      renderAchv();
+      refreshAchvTraffic();
     } else {
       const box = h('pre', { class: 'log', id: 'logBox' }, logBuf.map(logLine));
       body.replaceChildren(
@@ -1928,7 +2116,8 @@ function viewDiag() {
       refreshLogs();
     }
   };
-  const tabs = segmented([['now', 'Сейчас'], ['conns', 'Соединения'], ['traffic', 'Трафик'], ['check', 'Проверить сайт'], ['speed', 'Скорость'], ['logs', 'Журнал']], () => diagTab, v => {
+  const tabs = segmented([['now', 'Сейчас'], ['conns', 'Соединения'], ['traffic', 'Трафик'], ['check', 'Проверить сайт'], ['speed', 'Скорость'], ['logs', 'Журнал'],
+    ...(S.achievements !== false ? [['achv', 'Достижения']] : [])], () => diagTab, v => {
     diagTab = v; sessionStorage.setItem('naivka-diag', v); render();
   }, 'Раздел диагностики');
   render();
@@ -2809,7 +2998,7 @@ function inviteDialog(o) {
     if (!list) { err.textContent = (FRIENDS[o.id] || {}).err || ''; return; }
     d.close();
     const f = list.find(x => !before.has(x.id));
-    if (f) friendLinks(o, f, true);
+    if (f) { friendLinks(o, f, true); unlockAchv('friend'); }
   };
   go.addEventListener('click', submit);
   name.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
@@ -3662,6 +3851,8 @@ function viewSettings() {
     h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
     accentPicker(),
     h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme)),
+    check('mascot', 'Талисман', 'Зверёк внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить.', updateStatus),
+    check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'),
     h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
       segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),
     h('h2', null, 'Разделы'),

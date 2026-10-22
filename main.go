@@ -42,6 +42,7 @@ type App struct {
 	xray      *Xray
 	lists     *listCache
 	traffic   *trafficStore
+	ipcc      *ipCountry // страна сайта по IP для глобуса (ipcountry.go)
 	installer *serverInstaller
 	friends   friendsSessions // SSH к своим серверам для «Друзей» (friends.go)
 
@@ -139,6 +140,7 @@ func main() {
 	a.xray = newXray(a)
 	a.lists = newListCache(a.dir)
 	a.traffic = newTrafficStore(a.dir)
+	a.ipcc = newIPCountry(a.dir)
 	a.installer = &serverInstaller{}
 	a.core.OnStop = a.xray.Stop
 	a.core.ExtraEnv = a.fillEnv
