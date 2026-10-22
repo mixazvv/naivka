@@ -93,6 +93,18 @@ type Panel struct {
 	Added   int64  `json:"added"`
 }
 
+// OwnHost — свой сервер, на который протоколы ставила Naivka: по нему управляются друзья.
+// Пароль SSH не хранится — только адрес и отпечаток ключа, подтверждённый человеком.
+type OwnHost struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Host    string `json:"host"`
+	SSHPort int    `json:"sshPort"`
+	SSHUser string `json:"sshUser"`
+	HostKey string `json:"hostKey"`
+	Added   int64  `json:"added"`
+}
+
 // serverTypes — протоколы, которые Naivka умеет. udp — может ли передавать UDP (голос, игры).
 var serverTypes = map[string]struct{ udp bool }{
 	"naive": {false}, "vless": {true}, "hysteria2": {true}, "tuic": {true},
@@ -182,6 +194,7 @@ type Settings struct {
 	Rules          []Rule     `json:"rules"`
 	RuleLists      []RuleList `json:"ruleLists"`      // внешние списки по ссылке
 	Panels         []Panel    `json:"panels"`         // веб-панели, поставленные через «Свой сервер»
+	OwnHosts       []OwnHost  `json:"ownHosts"`       // свои серверы (для друзей), см. friends.go
 	ExtraRules     string     `json:"extraRules"`     // JSON-массив правил route.rules
 	ExtraOutbounds string     `json:"extraOutbounds"` // JSON-массив outbounds
 	Override       string     `json:"override"`       // JSON-объект, накладывается на итоговый конфиг
@@ -195,7 +208,8 @@ type Settings struct {
 	SleepReconnect  bool             `json:"sleepReconnect"` // отключаться перед сном, подключаться после пробуждения
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
-	Theme           string           `json:"theme"`       // dark | gold («Никогда не проси об этом») | blocks («Пиксели»)
+	Theme           string           `json:"theme"`       // dark | gold («Никогда не проси об этом») | blocks («Пиксели») | custom («Своя»)
+	Custom          CustomTheme      `json:"custom"`      // цвета и шрифт темы «Своя»
 	Accent          string           `json:"accent"`      // акцентный цвет, #RRGGBB
 	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
 	Wall            WallSettings     `json:"wall"`        // свой фон окна (фото или видео)
@@ -248,6 +262,7 @@ func DefaultSettings() *Settings {
 		SleepReconnect:  true,
 		Notify:          true,
 		Theme:           "dark",
+		Custom:          customDefault,
 		Wall:            WallSettings{Dim: 55, Blur: 0, React: true, Fit: "cover", Scale: 100},
 		Accent:          accentDefault,
 		TrayMini:        true,
@@ -289,6 +304,37 @@ func normalizeAccent(v string) string {
 		return v
 	}
 	return accentDefault
+}
+
+// CustomTheme — тема «Своя»: основные цвета; остальные оттенки выводятся из них в web/app.js.
+// Акцент («через сервер») — общий S.Accent.
+type CustomTheme struct {
+	Bg     string `json:"bg"`     // фон окна
+	Panel  string `json:"panel"`  // карточки и панели
+	Ink    string `json:"ink"`    // текст
+	Direct string `json:"direct"` // ветка «напрямую»
+	Font   string `json:"font"`   // "" | segoe | bahn | mono | serif
+}
+
+var customDefault = CustomTheme{Bg: "#101215", Panel: "#191C20", Ink: "#ECEEF0", Direct: "#5BB4EE"}
+
+func (c *CustomTheme) normalize() {
+	fix := func(v *string, def string) {
+		x := strings.ToUpper(strings.TrimSpace(*v))
+		if !accentHex.MatchString(x) {
+			x = def
+		}
+		*v = x
+	}
+	fix(&c.Bg, customDefault.Bg)
+	fix(&c.Panel, customDefault.Panel)
+	fix(&c.Ink, customDefault.Ink)
+	fix(&c.Direct, customDefault.Direct)
+	switch c.Font {
+	case "", "segoe", "bahn", "mono", "serif":
+	default:
+		c.Font = ""
+	}
 }
 
 func newID() string {
@@ -361,6 +407,7 @@ func (s *Settings) fingerprint() string {
 	c.Window = nil
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
 	c.Wall = WallSettings{}
+	c.Custom = CustomTheme{}
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
 		c.Servers[i].Fav = false
@@ -372,6 +419,7 @@ func (s *Settings) fingerprint() string {
 	c.UpdateCheck = false
 	c.TrafficLimitGB, c.TrafficResetDay = 0, 0
 	c.Panels = nil
+	c.OwnHosts = nil
 	// На ядро влияют только «включён» и «напрямую»; стратегия и фильтры — дело самого zapret.
 	c.Zapret = ZapretSettings{Enabled: s.Zapret.Enabled, RouteDirect: s.Zapret.RouteDirect}
 	c.Telegram = TelegramSettings{Enabled: s.Telegram.Enabled, ViaServer: s.Telegram.ViaServer}
@@ -423,6 +471,9 @@ func (s *Settings) normalize() {
 	if s.Panels == nil {
 		s.Panels = []Panel{}
 	}
+	if s.OwnHosts == nil {
+		s.OwnHosts = []OwnHost{}
+	}
 	for i := range s.RuleLists {
 		s.RuleLists[i].normalize()
 	}
@@ -470,11 +521,12 @@ func (s *Settings) normalize() {
 	}
 	// Светлой темы и темы «как в Windows» больше нет: остаётся тёмная.
 	switch s.Theme {
-	case "dark", "gold", "blocks":
+	case "dark", "gold", "blocks", "custom":
 	default:
 		s.Theme = "dark"
 	}
 	s.Accent = normalizeAccent(s.Accent)
+	s.Custom.normalize()
 	if s.Lang != "en" {
 		s.Lang = "ru"
 	}

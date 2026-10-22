@@ -20,3 +20,6 @@ func (a *App) serverInstallRoutes(api func(method, path string, f apiFunc)) {
 		api("POST", p, func(*http.Request) (any, error) { return nil, err })
 	}
 }
+
+// На Windows 7 установки сервера и друзей нет.
+type friendsSessions struct{}

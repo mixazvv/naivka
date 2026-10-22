@@ -1547,3 +1547,77 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .stage-controls { margin-top: 6px; }
 @media (max-height: 560px) { .stage-inner { height: auto; min-height: 100%; } }
 
+
+/* Друзья на своём сервере */
+.friends { display: flex; flex-direction: column; gap: 12px; }
+.friends-card { display: flex; flex-direction: column; gap: 12px; }
+.friends-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.friends-card .panel { margin: 0; }
+.friends-card .empty { margin: 0; }
+.friend-state { font-weight: 600; }
+.friend-state.ok { color: var(--tunnel); }
+.friend-state.paused { color: var(--warn); }
+.friend-state.expired { color: var(--danger); }
+
+/* Широкое окно: справа от схемы — колонка «Сейчас» (что качается и каким путём). Полка программ под
+   схемой тогда не нужна: те же программы — в колонке. */
+.live-col { display: none; }
+@media (min-width: 1480px) {
+  .stage-inner { max-width: 1600px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; column-gap: 26px;
+    grid-template-rows: auto auto minmax(230px, 1fr) auto auto auto auto; }
+  .stage-inner > * { grid-column: 1; }
+  .stage-inner > .live-col { grid-column: 2; grid-row: 1 / -1; display: flex; }
+  #procShelf { display: none; }
+}
+.live-col { flex-direction: column; gap: 4px; min-height: 0; overflow: auto; scrollbar-width: none; padding: 16px 12px; border-radius: 16px;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: blur(14px); }
+.live-col::-webkit-scrollbar { display: none; }
+.live-head { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 8px; }
+.live-head b { font: 500 18px/1.2 var(--display); }
+.live-head small, .live-hint, .live-empty { color: var(--muted); font-size: 12.5px; }
+.live-empty { margin: 6px; line-height: 1.5; }
+.live-hint { margin: auto 6px 0; padding-top: 10px; }
+.live-sec { margin: 10px 6px 2px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.live-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border-radius: 10px;
+  border: 1px solid transparent; background: none; color: var(--ink); font: inherit; text-align: left; cursor: grab; touch-action: none; transition: background .15s, border-color .15s, opacity .2s; }
+.live-row:hover, .live-row:focus-visible { background: var(--raised); border-color: color-mix(in srgb, var(--c) 40%, var(--line)); }
+.live-row.lifted { opacity: .35; }
+.live-row .svc { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 16%, transparent); }
+.live-row .svc svg { width: 15px; height: 15px; fill: none; stroke: var(--c); stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+.live-name { display: flex; flex-direction: column; min-width: 0; }
+.live-name b { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-name small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--c); margin-right: 6px; vertical-align: 1px; }
+.live-speed { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+:root.mica:not([data-solid]) .route-pop { background: rgba(30, 33, 37, .97); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
+
+/* Тема «Своя»: плитка с её цветами и редактор под плитками. */
+.theme-tile[data-theme="custom"] .theme-prev i:nth-child(1) { background: var(--p1); }
+.theme-tile[data-theme="custom"] .theme-prev i:nth-child(2) { background: var(--p2); }
+.theme-tile[data-theme="custom"] .theme-prev i:nth-child(3) { background: var(--p3); }
+.custom-editor:empty { display: none; }
+.custom-editor { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 6px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); }
+.custom-presets { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.custom-preset { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer; }
+.custom-preset:hover { border-color: var(--muted); }
+.custom-preset i { width: 22px; height: 22px; border-radius: 50%; background: conic-gradient(var(--a) 0% 25%, var(--b) 25% 50%, var(--c) 50% 75%, var(--d) 75% 100%); box-shadow: inset 0 0 0 1px rgba(127, 127, 127, .35); }
+.custom-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.custom-color { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); cursor: pointer; }
+.custom-color input[type=color] { width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; cursor: pointer; }
+.custom-color input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+.custom-color input[type=color]::-webkit-color-swatch { border: 0; border-radius: 6px; }
+.custom-color span { display: flex; flex-direction: column; min-width: 0; }
+.custom-color b { font-size: 13px; }
+.custom-color small { color: var(--muted); font-size: 11.5px; }
+.custom-color input[type=text] { width: 82px; font-family: "Cascadia Code", Consolas, monospace; font-size: 12.5px; text-transform: uppercase; }
+.custom-color select { max-width: 130px; }
+.custom-font-ic { display: grid !important; place-items: center; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); font: 600 14px/1 var(--display); }
+.custom-notes:empty { display: none; }
+/* Светлая своя тема: тени и подложки, рассчитанные на тёмный фон, мягче. */
+:root[data-custom="light"] { --shadow: 0 18px 40px rgba(40, 32, 20, .18); }
+:root[data-custom] .oled-check { display: none; }
+/* Своя тема поверх фото: узлы схемы — цвета её панелей, а светлая тема осветляет фото, а не затемняет. */
+:root[data-custom][data-wall]:not([data-skin]) .br-disc { background: var(--surface); }
+:root[data-custom][data-wall]:not([data-skin]) .lanes-box.branches .pw-track { fill: var(--surface); }
+:root[data-custom="light"] .wall-tint {
+  background: radial-gradient(120% 90% at 50% 45%, transparent 35%, color-mix(in srgb, var(--bg) 45%, transparent)), color-mix(in srgb, var(--bg) calc(var(--wall-dim, .55) * 100%), transparent); }

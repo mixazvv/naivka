@@ -98,7 +98,7 @@ func TestAddInstalledServersReplaces(t *testing.T) {
 
 // Скрипт для сервера встроен в Naivka и проходит проверку синтаксиса bash.
 func TestInstallScriptEmbedded(t *testing.T) {
-	for name, sc := range map[string]string{"install-server.sh": installScript, "install-panel.sh": panelScript} {
+	for name, sc := range map[string]string{"install-server.sh": installScript, "install-panel.sh": panelScript, "friends.sh": friendsScript} {
 		if !strings.Contains(sc, "NAIVKA-") {
 			t.Fatalf("%s не встроен", name)
 		}
@@ -106,6 +106,36 @@ func TestInstallScriptEmbedded(t *testing.T) {
 		cmd.Stdin = strings.NewReader(sc)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Errorf("%s: bash -n: %v %s", name, err, out)
+		}
+	}
+}
+
+func TestParseFriendsLine(t *testing.T) {
+	enc := func(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+	list, err := parseFriendsLine(enc(`{"friends":[
+		{"id":"0123abcd","name":"Петя","until":0,"links":["hysteria2://p@203.0.113.10:443/?sni=x.example.com#P","javascript:alert(1)"]},
+		{"id":"../../x","name":"bad"}]}`))
+	if err != nil || len(list) != 1 || list[0].Name != "Петя" || len(list[0].Links) != 1 {
+		t.Fatalf("%+v %v", list, err)
+	}
+	if _, err := parseFriendsLine("!!!"); err == nil {
+		t.Error("мусор принят")
+	}
+}
+
+func TestFriendsReqCheck(t *testing.T) {
+	ok := []friendsReq{{Action: "list"}, {Action: "add", Name: " Петя "}, {Action: "add", Name: "Аня", Days: 30},
+		{Action: "remove", FID: "0123abcd"}, {Action: "renew", FID: "0123abcd", Days: 0}}
+	for _, r := range ok {
+		if err := r.check(); err != nil {
+			t.Errorf("%+v: %v", r, err)
+		}
+	}
+	bad := []friendsReq{{Action: "rm -rf"}, {Action: "add"}, {Action: "add", Name: strings.Repeat("я", 41)},
+		{Action: "add", Name: "a\nb"}, {Action: "add", Name: "a", Days: -1}, {Action: "remove", FID: "x;reboot"}, {Action: "pause"}}
+	for _, r := range bad {
+		if r.check() == nil {
+			t.Errorf("принято: %+v", r)
 		}
 	}
 }

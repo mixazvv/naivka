@@ -307,13 +307,28 @@ func (a *App) startServerInstall(req serverInstallReq) error {
 
 // scriptResult — что скрипт сообщил строками NAIVKA-…: в журнал они не попадают (там ключи и пароли).
 type scriptResult struct {
-	links  []string
-	panels []string // base64 JSON
+	links   []string
+	panels  []string // base64 JSON
+	friends []string // base64 JSON
+}
+
+// scriptOpts — необязательное для runScriptOpts.
+type scriptOpts struct {
+	persist string            // путь на сервере: скрипт сначала кладётся туда (нужен потом таймеру), потом запускается
+	logf    func(line string) // куда писать вывод; по умолчанию — журнал установки
 }
 
 // runScript выполняет встроенный скрипт на сервере, передавая его через stdin.
 func (a *App) runScript(cl *ssh.Client, user, script string, env map[string]string, order []string) (scriptResult, error) {
+	return a.runScriptOpts(cl, user, script, env, order, scriptOpts{})
+}
+
+func (a *App) runScriptOpts(cl *ssh.Client, user, script string, env map[string]string, order []string, opt scriptOpts) (scriptResult, error) {
 	si := a.installer
+	logf := opt.logf
+	if logf == nil {
+		logf = func(l string) { si.logf("%s", l) }
+	}
 	var res scriptResult
 	sess, err := cl.NewSession()
 	if err != nil {
@@ -327,6 +342,10 @@ func (a *App) runScript(cl *ssh.Client, user, script string, env map[string]stri
 		}
 	}
 	cmd := "env " + strings.Join(parts, " ") + " bash -s"
+	if opt.persist != "" {
+		p := shellQuote(opt.persist)
+		cmd = "env " + strings.Join(parts, " ") + " bash -c " + shellQuote(`set -e; f="$(mktemp)"; cat > "$f"; install -m 700 "$f" `+p+`; rm -f "$f"; exec `+p)
+	}
 	if user != "root" {
 		cmd = "sudo -n " + cmd // sudo с паролем по SSH без терминала не спросить — нужен NOPASSWD
 	}
@@ -351,7 +370,11 @@ func (a *App) runScript(cl *ssh.Client, user, script string, env map[string]stri
 				res.panels = append(res.panels, strings.TrimSpace(l))
 				continue
 			}
-			si.logf("%s", line)
+			if l, ok := strings.CutPrefix(line, "NAIVKA-FRIENDS "); ok {
+				res.friends = append(res.friends, strings.TrimSpace(l))
+				continue
+			}
+			logf(line)
 		}
 	}()
 	if err := sess.Start(cmd); err != nil {
@@ -418,6 +441,10 @@ func (a *App) runServerInstall(req serverInstallReq) ([]string, string, error) {
 		}
 		if added, err = a.addInstalledServers(servers); err != nil {
 			return nil, "", err
+		}
+		// Запоминаем сервер: через него потом заводятся друзья («Свой сервер» → «Друзья»).
+		if _, err := a.addOwnHost(OwnHost{Name: req.Name, Host: req.Host, SSHPort: req.Port, SSHUser: req.User, HostKey: req.Fingerprint}); err != nil {
+			si.logf("Не удалось запомнить сервер для друзей: %v", err)
 		}
 	}
 
@@ -687,6 +714,7 @@ func (a *App) serverInstallRoutes(api func(method, path string, f apiFunc)) {
 		return a.installer.view(), nil
 	})
 	api("GET", "/api/server/install", func(*http.Request) (any, error) { return a.installer.view(), nil })
+	a.friendsRoutes(api)
 	api("GET", "/api/server/script", func(r *http.Request) (any, error) {
 		if r.URL.Query().Get("panel") == "1" {
 			return map[string]string{"script": panelScript}, nil

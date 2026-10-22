@@ -201,9 +201,11 @@ function applyTheme() {
   root.dataset.nav = S && S.nav === 'wheel' ? 'wheel' : 'list';
   if (gold || blocks) root.dataset.skin = gold ? 'gold' : 'blocks'; else delete root.dataset.skin;
   applyAccent(S && S.accent);
-  if (S && S.oled && !root.dataset.skin) root.dataset.oled = ''; else delete root.dataset.oled;
-  // Сплошной фон: в OLED и тематических стилях полупрозрачный Mica не нужен.
-  if (root.dataset.skin || root.dataset.oled !== undefined) root.dataset.solid = ''; else delete root.dataset.solid;
+  const custom = !!S && S.theme === 'custom';
+  applyCustom(custom ? S.custom : null);
+  if (S && S.oled && !root.dataset.skin && !custom) root.dataset.oled = ''; else delete root.dataset.oled;
+  // Сплошной фон: в OLED, тематических стилях и своей теме полупрозрачный Mica не нужен.
+  if (root.dataset.skin || root.dataset.oled !== undefined || custom) root.dataset.solid = ''; else delete root.dataset.solid;
   if (root.dataset.skin === 'blocks' && root.dataset.prevSkin !== 'blocks' && $('#main') && $('#main').firstChild) setTimeout(() => chunkReveal($('#main'), 'var(--fog)'), 30);
   root.dataset.prevSkin = root.dataset.skin || '';
   Wall.apply(S, TOKEN);
@@ -274,6 +276,83 @@ function applyAccent(v) {
   if (root.dataset.skin || hex === ACCENT_DEFAULT) ACCENT_VARS.forEach(k => root.style.removeProperty(k));
   else for (const [k, val] of Object.entries(accentVars(hex))) root.style.setProperty(k, val);
   syncLogo();
+}
+
+// ---------- тема «Своя» ----------
+// Человек задаёт пять вещей: фон, панели, текст, «напрямую» и шрифт («через сервер» — это акцент).
+// Остальные оттенки (рамки, приглушённый текст, подложки) выводятся из них в OKLab — так они
+// остаются согласованными при любом выборе.
+const CUSTOM_DEFAULT = { bg: '#101215', panel: '#191C20', ink: '#ECEEF0', direct: '#5BB4EE', font: '' };
+const CUSTOM_VARS = ['--bg', '--nav', '--layer', '--surface', '--raised', '--line', '--ink', '--on-ink', '--muted', '--faint', '--direct', '--direct-soft', '--chart-direct', '--font', '--display', 'color-scheme'];
+const CUSTOM_FONTS = {
+  '': ['Как в Naivka', null, null],
+  segoe: ['Segoe UI', '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif', '"Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif'],
+  bahn: ['Bahnschrift', 'Bahnschrift, "Segoe UI", sans-serif', 'Bahnschrift, "Segoe UI", sans-serif'],
+  mono: ['Моноширинный', '"Cascadia Code", Consolas, "Courier New", monospace', '"Cascadia Code", Consolas, "Courier New", monospace'],
+  serif: ['С засечками', 'Georgia, "Times New Roman", serif', 'Georgia, "Times New Roman", serif'],
+};
+// Заготовки — чтобы не начинать с пустого места.
+const CUSTOM_PRESETS = [
+  ['Графит', { bg: '#101215', panel: '#191C20', ink: '#ECEEF0', direct: '#5BB4EE', font: '' }, '#B6E35A'],
+  ['Океан', { bg: '#0A1420', panel: '#11202F', ink: '#E4EEF7', direct: '#4FD1C5', font: 'segoe' }, '#7AA2FF'],
+  ['Сирень', { bg: '#15111C', panel: '#1F1929', ink: '#EEE8F5', direct: '#62B6F0', font: 'bahn' }, '#C79BFF'],
+  ['Терминал', { bg: '#050805', panel: '#0C120C', ink: '#B8F5B0', direct: '#5BC0EB', font: 'mono' }, '#39FF6A'],
+  ['Бумага', { bg: '#F3EFE6', panel: '#FFFDF8', ink: '#24211C', direct: '#1F6FB2', font: 'serif' }, '#C2410C'],
+];
+function labHex(lab) {
+  return '#' + oklabLin(lab).map(v => Math.round(Math.min(1, Math.max(0, fromLin(Math.min(1, Math.max(0, v))))) * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+function mixHex(a, b, t) { const x = hexLab(a), y = hexLab(b); return labHex(x.map((v, i) => v + (y[i] - v) * t)); }
+function shiftL(hex, d) { const [L, a, b] = hexLab(hex); return labHex([Math.min(1, Math.max(0, L + d)), a, b]); }
+function customVars(c) {
+  const bg = parseHex(c.bg) || CUSTOM_DEFAULT.bg, panel = parseHex(c.panel) || CUSTOM_DEFAULT.panel;
+  const ink = parseHex(c.ink) || CUSTOM_DEFAULT.ink, direct = parseHex(c.direct) || CUSTOM_DEFAULT.direct;
+  const light = lum(bg) > 0.4;
+  const [r, g, b] = hexRgb(direct).map(v => Math.round(v * 255));
+  const font = CUSTOM_FONTS[c.font] || CUSTOM_FONTS[''];
+  const v = {
+    '--bg': bg, '--nav': shiftL(bg, light ? -0.02 : -0.012), '--layer': bg, '--on-ink': bg,
+    '--surface': panel, '--raised': shiftL(panel, light ? -0.035 : 0.035), '--line': mixHex(panel, ink, light ? 0.16 : 0.1),
+    '--ink': ink, '--muted': mixHex(ink, bg, 0.4), '--faint': mixHex(ink, bg, 0.62),
+    '--direct': direct, '--direct-soft': `rgba(${r}, ${g}, ${b}, .15)`, '--chart-direct': direct, 'color-scheme': light ? 'light' : 'dark',
+  };
+  if (font[1]) { v['--font'] = font[1]; v['--display'] = font[2]; }
+  return v;
+}
+function applyCustom(c) {
+  const root = document.documentElement;
+  CUSTOM_VARS.forEach(k => root.style.removeProperty(k));
+  if (!c) { delete root.dataset.custom; return; }
+  root.dataset.custom = lum(parseHex(c.bg) || CUSTOM_DEFAULT.bg) > 0.4 ? 'light' : 'dark';
+  for (const [k, val] of Object.entries(customVars(c))) root.style.setProperty(k, val);
+}
+// customNotes — чем выбор может мешать читать: мало контраста, «напрямую» сливается с фоном или акцентом.
+function customNotes(c, accent) {
+  const out = [];
+  if (contrast(c.ink, c.bg) < 4.5) out.push('Текст плохо читается на фоне — сделайте его светлее или фон темнее.');
+  else if (contrast(c.ink, c.panel) < 4.5) out.push('Текст плохо читается на панелях.');
+  if (contrast(c.direct, c.bg) < 3) out.push('Цвет «напрямую» почти сливается с фоном.');
+  const acc = parseHex(accent) || ACCENT_DEFAULT;
+  if (contrast(acc, c.bg) < 3) out.push('Акцент («через сервер») почти сливается с фоном.');
+  if (deltaE(acc, c.direct) < 15) out.push('«Через сервер» и «напрямую» похожи — на схеме их будет трудно различить.');
+  else if (Math.min(...CVD.map(m => deltaE(acc, c.direct, m))) < 8) out.push('Людям с нарушением цветового зрения «через сервер» и «напрямую» будет трудно различить.');
+  return out;
+}
+// Код темы: её можно отправить другу строкой и вставить у себя.
+const THEME_CODE = 'NAIVKA-THEME:';
+function themeCode() {
+  const c = S.custom, json = JSON.stringify({ v: 1, bg: c.bg, panel: c.panel, ink: c.ink, direct: c.direct, font: c.font || '', accent: S.accent });
+  return THEME_CODE + btoa(String.fromCharCode(...new TextEncoder().encode(json)));
+}
+function parseThemeCode(text) {
+  const t = String(text || '').trim();
+  if (!t.startsWith(THEME_CODE)) throw new Error('Это не код темы Naivka');
+  let o;
+  try { o = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t.slice(THEME_CODE.length)), ch => ch.charCodeAt(0)))); } catch (_) { throw new Error('Код темы повреждён'); }
+  const c = {};
+  for (const k of ['bg', 'panel', 'ink', 'direct']) { c[k] = parseHex(o[k]); if (!c[k]) throw new Error('В коде темы неверный цвет'); }
+  c.font = Object.hasOwn(CUSTOM_FONTS, o.font) ? o.font : '';
+  return { custom: c, accent: parseHex(o.accent) };
 }
 
 // Значок в трее и у окна — того же цвета, что логотип на странице (с учётом стиля и своего акцента).
@@ -793,7 +872,7 @@ function refreshView(v = view) {
   if (v === 'own') renderOwn();
   if (v === 'rules') { renderRules(); renderLists(); renderSmart(); }
   if (v === 'bypass') refreshAddons();
-  if (v === 'settings') { buildToc(); shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); }
+  if (v === 'settings') { buildToc(); shareBox(); renderCustomEditor(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
 }
 
@@ -973,7 +1052,9 @@ function viewOverview() {
       h('button', { class: 'tile', type: 'button', id: 'tileIp', onclick: () => openDiag('now'), title: 'Как вас видят сайты и карта' }),
       h('button', { class: 'tile', type: 'button', id: 'tileSession', onclick: () => openDiag('traffic'), title: 'История трафика' })),
     // Вместо плиток с нулями, пока не подключено: что будет при подключении и как подключиться.
-    h('div', { class: 'stage-ready', id: 'stageReady' }));
+    h('div', { class: 'stage-ready', id: 'stageReady' }),
+    // Широкое окно: справа живая колонка — что сейчас качается и каким путём (CSS прячет её в узком).
+    h('aside', { class: 'live-col', id: 'liveCol', 'aria-label': 'Сейчас' }));
 }
 
 function renderReady() {
@@ -1336,6 +1417,27 @@ function branchDrop(key, b) {
   toast(`${e.label} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. ${ruleNote(b)}`);
   return true;
 }
+// Сайты с трафиком — понятные сервисы: адреса одного сервиса сводятся в одну группу; незнакомые сайты
+// с заметным трафиком — по основному домену; счётчики и фоновая мелочь не показываются.
+// Нужны схеме веток (листья) и колонке «Сейчас» на широкой главной.
+function siteGroups() {
+  const groups = new Map();
+  for (const t of (STATS && STATS.top) || []) {
+    if (!t.host || /^[\d.:[\]]+$/.test(t.host) || t.route === 'telegram') continue;
+    const base = baseDomain(t.host), sv = serviceOf(base);
+    // Мелочь (до 20 КБ/с и 2 МБ за сеанс) — фоновые запросы и телеметрия: на схеме только шум.
+    if (BACKGROUND.test(base) || (t.speed < 20 * 1024 && t.total < 2 * 1024 * 1024)) continue;
+    const key = sv ? sv.name : base;
+    const g = groups.get(key) || { key, label: sv ? sv.name : displayDomain(base), domains: [], procs: [], routes: {}, speed: 0, total: 0 };
+    if (!g.domains.includes(base)) g.domains.push(base);
+    const pn = procName((t.proc || '').split(/[\\/]/).pop()); if (pn && !g.procs.includes(pn)) g.procs.push(pn);
+    const rb = t.route === 'direct' || t.route === 'zapret' ? t.route : 'proxy';
+    g.routes[rb] = (g.routes[rb] || 0) + t.speed + 1;
+    g.speed += t.speed || 0; g.total += t.total || 0;
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
 function renderBranches(lanes) {
   const lb = $('#lanesBox');
   if (!lb) return {};
@@ -1345,25 +1447,8 @@ function renderBranches(lanes) {
     smartAt = Date.now();
     api('/api/smart').then(v => { smartMap = {}; for (const x of v.recent || []) smartMap[x.host] = x.direct; }).catch(() => {});
   }
-  // Листья — понятные сервисы: адреса одного сервиса сводятся в один лист; незнакомые сайты
-  // с заметным трафиком — по основному домену; счётчики и фоновая мелочь не показываются.
-  const groups = new Map();
-  let bg = 0;
-  for (const t of (STATS && STATS.top) || []) {
-    if (!t.host || /^[\d.:[\]]+$/.test(t.host) || t.route === 'telegram') continue;
-    const base = baseDomain(t.host), sv = serviceOf(base);
-    // Мелочь (до 20 КБ/с и 2 МБ за сеанс) — фоновые запросы и телеметрия: на схеме только шум.
-    if (BACKGROUND.test(base) || (t.speed < 20 * 1024 && t.total < 2 * 1024 * 1024)) { bg++; continue; }
-    const key = sv ? sv.name : base;
-    const g = groups.get(key) || { key, label: sv ? sv.name : displayDomain(base), domains: [], procs: [], routes: {} };
-    if (!g.domains.includes(base)) g.domains.push(base);
-    const pn = procName(t.proc); if (pn && !g.procs.includes(pn)) g.procs.push(pn);
-    const rb = t.route === 'direct' || t.route === 'zapret' ? t.route : 'proxy';
-    g.routes[rb] = (g.routes[rb] || 0) + t.speed + 1;
-    groups.set(key, g);
-  }
   branchLeaves = {};
-  const top = [...groups.values()].map(g => {
+  const top = siteGroups().map(g => {
     branchLeaves[g.key] = g;
     const route = Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][0];
     return { key: g.key, label: g.label, route, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'] };
@@ -1480,6 +1565,84 @@ function procChip(x) {
     ghost.remove(); ghost = null; el.classList.remove('lifted');
     const k = Branches.endHover();
     if (k && k !== (rule && rule.action)) setProcRoute(x.exe, k);
+  };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  return el;
+}
+
+// ---------- колонка «Сейчас» (широкая главная) ----------
+const ROUTE_COLOR = { proxy: 'var(--tunnel)', direct: 'var(--direct)', zapret: 'var(--warn)', block: 'var(--danger)' };
+function siteRule(g) {
+  const sv = SERVICES.find(x => x.name === g.key);
+  const doms = sv ? sv.domains : g.domains;
+  return S.rules.find(r => r.kind === 'domain' && doms.includes(r.value.toLowerCase()));
+}
+addEventListener('resize', () => { if (view === 'overview') guard(renderLive, 'renderLive'); });
+function renderLive() {
+  const box = $('#liveCol');
+  if (!box || !S) return;
+  if (getComputedStyle(box).display === 'none') { box.dataset.sig = ''; return; } // узкое окно — колонки нет
+  const on = phase() === 'on';
+  const sites = on ? siteGroups().sort((a, b) => b.speed - a.speed).slice(0, 12) : [];
+  const procs = on && !zapretOnly() ? procList() : [];
+  // Перерисовываем по смыслу, а скорость обновляем в уже стоящих строках — без мигания и сброса перетаскивания.
+  const sig = JSON.stringify([on, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action])]);
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    box.replaceChildren(
+      h('div', { class: 'live-head' }, h('b', null, 'Сейчас'), h('small', null, on ? 'что качается и каким путём' : 'появится после подключения')),
+      !on ? h('p', { class: 'live-empty' }, 'Подключитесь — здесь будут сайты и программы с трафиком. Любой можно нажать или перетащить на ветку схемы, чтобы он шёл другим путём.')
+        : !sites.length && !procs.length ? h('p', { class: 'live-empty' }, 'Пока тихо: ничего заметного не качается.')
+          : null,
+      sites.length ? h('div', { class: 'live-sec' }, 'Сайты') : null,
+      ...sites.map(g => liveRow({
+        key: 'site:' + g.key, label: g.label, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'], route: groupRoute(g), rule: siteRule(g),
+        sub: g.procs.slice(0, 2).join(', '),
+        pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto' }, el),
+        drop: k => { if (branchDrop(g.key, k)) Branches.moveLeaf(g.key, k); },
+      })),
+      procs.length ? h('div', { class: 'live-sec' }, 'Программы целиком') : null,
+      ...procs.map(x => {
+        const name = procName(x.exe.toLowerCase()) || x.exe, rule = procRule(x.exe);
+        return liveRow({
+          key: 'proc:' + x.exe, label: name, icon: SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'], route: rule ? rule.action : '', rule,
+          pick: el => routePicker(el, { title: name, sub: 'Вся программа целиком', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
+          drop: k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); },
+        });
+      }),
+      on && (sites.length || procs.length) ? h('p', { class: 'live-hint' }, 'Нажмите или перетащите на ветку — пойдёт этим путём.') : null);
+  }
+  const speeds = new Map([...sites.map(g => ['site:' + g.key, g.speed]), ...procs.map(x => ['proc:' + x.exe, x.speed])]);
+  for (const el of box.querySelectorAll('.live-row')) {
+    const v = speeds.get(el.dataset.key) || 0;
+    el.querySelector('.live-speed').textContent = v >= 1024 ? fmtSpeed(v) : '';
+  }
+}
+// Каким путём группа идёт сейчас (по самому быстрому трафику).
+const groupRoute = g => Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][0];
+function liveRow({ key, label, icon, route, rule, sub, pick, drop }) {
+  const say = rule ? ROUTE_SAY[rule.action] || 'блокируется' : route ? ROUTE_SAY[route] : 'как решит Naivka';
+  const el = h('button', { class: 'live-row', type: 'button', 'data-key': key, style: `--c:${ROUTE_COLOR[rule ? rule.action : route] || 'var(--faint)'}`,
+    'aria-label': `${label}: ${say}. Нажмите, чтобы выбрать путь` },
+    h('span', { class: 'svc' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: icon }))),
+    h('span', { class: 'live-name' }, h('b', null, label), h('small', null, h('i', { class: 'live-dot' }), say + (rule ? ' · правило' : '') + (sub ? ' · ' + sub : ''))),
+    h('span', { class: 'live-speed num' }));
+  // Как у программ на полке: короткое нажатие — меню, перетаскивание — на ветку схемы.
+  let sx, sy, ghost = null, id = null;
+  el.addEventListener('pointerdown', e => { if (e.button !== 0) return; id = e.pointerId; el.setPointerCapture(id); sx = e.clientX; sy = e.clientY; });
+  el.addEventListener('pointermove', e => {
+    if (e.pointerId !== id) return;
+    if (!ghost && Math.hypot(e.clientX - sx, e.clientY - sy) < 6) return;
+    if (!ghost) { ghost = h('div', { class: 'proc-chip proc-ghost' }, label); document.body.append(ghost); el.classList.add('lifted'); }
+    ghost.style.left = (e.clientX - 20) + 'px'; ghost.style.top = (e.clientY - 14) + 'px';
+    Branches.hoverAt(e.clientX, e.clientY);
+  });
+  const end = e => {
+    if (e.pointerId !== id) return; id = null;
+    if (!ghost) { pick(el); return; }
+    ghost.remove(); ghost = null; el.classList.remove('lifted');
+    const k = Branches.endHover();
+    if (k) drop(k);
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
   return el;
@@ -1603,6 +1766,7 @@ function renderEvents() {
 
 function renderOverviewLive() { guard(renderOverviewLiveNow, 'renderOverviewLive'); }
 function renderOverviewLiveNow() {
+  renderLive();
   renderTiles();
   renderMap();
   renderLanes();
@@ -2507,6 +2671,9 @@ function viewOwn() {
       h('div', { class: 'row mt' },
         h('button', { class: 'btn primary', disabled: !can, onclick: () => installServerDialog() }, 'Начать установку'),
         h('span', { class: 'hint' }, can ? 'Перед началом Naivka покажет, что именно сделает на сервере, и попросит подтвердить.' : 'Недоступно в этой сборке (Windows 7).'))),
+    h('h2', null, 'Друзья'),
+    h('p', { class: 'sub' }, 'Отдельный вход на ваш сервер для каждого: друга можно приостановить, продлить или убрать, не трогая остальных и себя.'),
+    h('div', { id: 'friendsBox' }),
     h('h2', null, 'Панели'),
     h('div', { id: 'panelsBox' }),
     h('div', { class: 'row mt' },
@@ -2518,8 +2685,197 @@ function viewOwn() {
 }
 
 function renderOwn() {
+  if (ST && ST.install) patch('friendsBox', JSON.stringify([S.ownHosts || [], FRIENDS]), friendsBox);
   patch('panelsBox', JSON.stringify(S.panels || []), () => (S.panels || []).length ? panelsBox()
     : h('div', { class: 'empty' }, 'Панелей пока нет. Её можно поставить вместе с протоколами — отметьте панель в окне установки.'));
+}
+
+// ---------- друзья ----------
+// Список друзей живёт на сервере; здесь — последний полученный (до перезапуска Naivka).
+const FRIENDS = {}; // id своего сервера → { list, err, busy }
+const FRIEND_DAYS = [[7, 'неделя'], [30, 'месяц'], [90, '3 месяца'], [365, 'год'], [0, 'бессрочно']];
+const friendLeft = f => {
+  if (f.paused) return ['paused', 'на паузе'];
+  if (f.expired) return ['expired', 'срок истёк'];
+  if (!f.until) return ['ok', 'бессрочно'];
+  const days = Math.ceil((f.until * 1000 - Date.now()) / 864e5);
+  return ['ok', days <= 1 ? 'до завтра' : `ещё ${count(days, 'день', 'дня', 'дней')}`];
+};
+
+function friendsBox() {
+  const hosts = S.ownHosts || [];
+  const addOld = h('button', { class: 'btn small', onclick: () => ownHostDialog() }, 'Указать сервер, поставленный раньше');
+  if (!hosts.length) return h('div', { class: 'empty' },
+    h('p', null, 'Друзей можно завести на сервере, на который протоколы ставила Naivka. Поставьте их кнопкой выше — сервер появится здесь сам.'), addOld);
+  return h('div', { class: 'friends' }, hosts.map(hostCard), h('div', { class: 'row mt' }, addOld));
+}
+
+function hostCard(o) {
+  const st = FRIENDS[o.id];
+  const head = h('div', { class: 'friends-head' },
+    h('div', { class: 'grow' }, h('div', { class: 'cell-main' }, o.name || o.host), h('div', { class: 'cell-sub' }, `${o.host} · SSH ${o.sshUser}@${o.sshPort}`)),
+    st && st.list ? h('button', { class: 'btn small primary', onclick: () => inviteDialog(o) }, 'Пригласить друга') : null,
+    h('button', { class: 'btn small', disabled: st && st.busy, onclick: () => friendsCall(o, { action: 'list' }) }, st && st.list ? 'Обновить' : 'Открыть список'),
+    h('button', { class: 'tool', title: 'Убрать сервер из списка', 'aria-label': 'Убрать сервер из списка', onclick: async () => {
+      if (!ask(`Убрать ${o.name || o.host} из списка? Друзья на сервере останутся и продолжат работать.`)) return;
+      api('/api/friends/close', { host: o.id }).catch(() => {});
+      delete FRIENDS[o.id];
+      S.ownHosts = S.ownHosts.filter(x => x.id !== o.id); save(0); await saveNow(); renderOwn();
+    } }, btnIcon('close')));
+  let body = null;
+  if (st && st.busy && !st.list) body = h('p', { class: 'hint' }, 'Подключаюсь к серверу…');
+  else if (st && st.err) body = h('div', { class: 'err-text' }, st.err);
+  else if (st && st.list && !st.list.length) body = h('div', { class: 'empty' }, 'Друзей пока нет. Нажмите «Пригласить друга» — Naivka создаст ему отдельный вход и покажет ссылки и QR-код.');
+  else if (st && st.list) body = h('div', { class: 'panel' }, h('table', { class: 'table' }, h('tbody', null, st.list.map(f => {
+    const [kind, left] = friendLeft(f);
+    return h('tr', null,
+      h('td', null, h('div', { class: 'cell-main' }, f.name), h('div', { class: 'cell-sub' }, h('span', { class: 'friend-state ' + kind }, left),
+        f.until && !f.paused ? ' · до ' + new Date(f.until * 1000).toLocaleDateString('ru-RU') : '')),
+      h('td', { class: 'r' }, h('div', { class: 'row end', style: 'flex-wrap:nowrap' },
+        h('button', { class: 'btn small', disabled: !f.links.length, onclick: () => friendLinks(o, f) }, 'Ссылки'),
+        f.paused
+          ? h('button', { class: 'btn small', disabled: st.busy, onclick: () => friendsCall(o, { action: 'resume', fid: f.id }, `${f.name}: доступ снова открыт`) }, 'Возобновить')
+          : h('button', { class: 'btn small', disabled: st.busy, onclick: () => friendsCall(o, { action: 'pause', fid: f.id }, `${f.name}: доступ приостановлен`) }, 'Пауза'),
+        h('button', { class: 'btn small', disabled: st.busy, onclick: () => renewDialog(o, f) }, 'Продлить'),
+        h('button', { class: 'btn small', disabled: st.busy, onclick: () => {
+          if (!ask(`Удалить вход ${f.name}? Его ссылки перестанут работать сразу.`)) return;
+          friendsCall(o, { action: 'remove', fid: f.id }, `${f.name}: вход удалён`);
+        } }, 'Удалить'))));
+  }))));
+  return h('div', { class: 'card friends-card' }, head, body);
+}
+
+// friendsCall — команда серверу; без открытого соединения сначала спросит пароль или ключ SSH.
+async function friendsCall(o, req, done, creds) {
+  const st = FRIENDS[o.id] || (FRIENDS[o.id] = {});
+  st.busy = true; st.err = ''; renderOwn();
+  try {
+    const r = await api('/api/friends', { host: o.id, ...req, ...(creds || {}) });
+    if (r.needAuth) { st.busy = false; renderOwn(); return sshAuthDialog(o, c => friendsCall(o, req, done, c)); }
+    st.list = r.friends; st.busy = false; renderOwn();
+    if (done) toast(done);
+    return r.friends;
+  } catch (e) {
+    st.busy = false;
+    if (creds) { renderOwn(); throw e; } // ошибку покажет окно с паролем
+    st.err = e.message; renderOwn(); toast(e.message, true);
+  }
+}
+
+function sshAuthDialog(o, run) {
+  return new Promise(resolve => {
+    const pass = h('input', { type: 'password', placeholder: 'Пароль SSH', autocomplete: 'current-password' });
+    const key = h('textarea', { placeholder: 'или закрытый ключ SSH', spellcheck: 'false', style: 'min-height:70px' });
+    const phrase = h('input', { type: 'password', placeholder: 'пароль ключа (если есть)' });
+    const err = h('div', { class: 'err-text' });
+    const go = h('button', { class: 'btn primary' }, 'Подключиться');
+    const d = openDialog(h('h2', null, `Вход на ${o.name || o.host}`),
+      h('p', { class: 'hint' }, `Naivka подключится к ${o.host} по SSH. Пароль не сохраняется; соединение закроется через 20 минут без действий.`),
+      pass, h('details', { class: 'more' }, h('summary', null, h('span', null, 'Вход по ключу')), h('div', { class: 'more-body' }, key, phrase)), err,
+      h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Отмена'), go));
+    d.addEventListener('close', () => resolve(null));
+    const submit = async () => {
+      err.textContent = ''; go.disabled = true; go.textContent = 'Подключаюсь…';
+      try { const r = await run({ password: pass.value, key: key.value, passphrase: phrase.value }); d.close(); resolve(r); }
+      catch (e) { err.textContent = e.message; go.disabled = false; go.textContent = 'Подключиться'; }
+    };
+    go.addEventListener('click', submit);
+    pass.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+    pass.focus();
+  });
+}
+
+function daysSelect(def) {
+  return h('select', null, FRIEND_DAYS.map(([v, t]) => h('option', { value: v, selected: v === def }, t)));
+}
+
+function inviteDialog(o) {
+  const name = h('input', { type: 'text', placeholder: 'Например, Петя', maxlength: 40, spellcheck: 'false' });
+  const days = daysSelect(30);
+  const err = h('div', { class: 'err-text' });
+  const go = h('button', { class: 'btn primary' }, 'Создать вход');
+  const d = openDialog(h('h2', null, 'Пригласить друга'),
+    h('p', { class: 'hint' }, `На ${o.name || o.host} появится отдельный вход со своими ключами. Через него идёт трафик друга — по вашему серверу и вашему трафику у хостера.`),
+    h('div', { class: 'grid2' },
+      h('label', { class: 'field' }, h('span', null, 'Имя'), name),
+      h('label', { class: 'field' }, h('span', null, 'Срок'), days, h('small', { class: 'hint' }, 'Когда срок выйдет, сервер сам закроет вход. Продлить можно в любой момент.'))),
+    err, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Отмена'), go));
+  const submit = async () => {
+    if (!name.value.trim()) { err.textContent = 'Введите имя'; name.focus(); return; }
+    err.textContent = ''; go.disabled = true; go.textContent = 'Создаю…';
+    const before = new Set(((FRIENDS[o.id] || {}).list || []).map(f => f.id));
+    const list = await friendsCall(o, { action: 'add', name: name.value.trim(), days: parseInt(days.value, 10) });
+    go.disabled = false; go.textContent = 'Создать вход';
+    if (!list) { err.textContent = (FRIENDS[o.id] || {}).err || ''; return; }
+    d.close();
+    const f = list.find(x => !before.has(x.id));
+    if (f) friendLinks(o, f, true);
+  };
+  go.addEventListener('click', submit);
+  name.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  name.focus();
+}
+
+function renewDialog(o, f) {
+  const days = daysSelect(30);
+  const d = openDialog(h('h2', null, `Продлить: ${f.name}`),
+    h('p', { class: 'hint' }, 'Срок считается с сегодняшнего дня. Если вход был на паузе — он снова откроется.'),
+    h('label', { class: 'field' }, h('span', null, 'Новый срок'), days),
+    h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Отмена'),
+      h('button', { class: 'btn primary', onclick: () => { d.close(); friendsCall(o, { action: 'renew', fid: f.id, days: parseInt(days.value, 10) }, `${f.name}: срок обновлён`); } }, 'Продлить')));
+}
+
+const linkProto = l => l.startsWith('vless:') ? 'Reality' : l.startsWith('hysteria2:') ? 'Hysteria2' : l.startsWith('naive') ? 'NaiveProxy' : l.split(':')[0];
+
+function friendLinks(o, f, fresh) {
+  let cur = 0;
+  const qr = h('div', { class: 'qr-box' }), text = h('div', { class: 'link-box' });
+  const tabs = h('div', { class: 'seg' });
+  const show = () => {
+    qr.replaceChildren(qrSvg(f.links[cur])); text.textContent = f.links[cur];
+    tabs.replaceChildren(...f.links.map((l, i) => h('button', { 'aria-pressed': String(i === cur), onclick: () => { cur = i; show(); } }, linkProto(l))));
+  };
+  const copy = async v => { try { await navigator.clipboard.writeText(v); toast('Скопировано'); } catch (_) { toast('Не удалось скопировать', true); } };
+  const d = openDialog(h('h2', null, fresh ? `Готово: вход «${f.name}»` : `Ссылки: ${f.name}`),
+    h('p', { class: 'hint' }, 'Отправьте другу все ссылки — он вставит их в Naivka («Серверы» → «Вставить ссылки») или отсканирует QR-код в Hiddify, v2rayNG, sing-box на телефоне. Ссылки — это ключи: не публикуйте их.'),
+    f.links.length > 1 ? tabs : null, qr, text,
+    h('div', { class: 'row end mt' },
+      h('button', { class: 'btn', onclick: () => copy(f.links[cur]) }, 'Скопировать эту'),
+      h('button', { class: 'btn', onclick: () => copy(f.links.join('\n')) }, 'Скопировать все'),
+      h('button', { class: 'btn primary', autofocus: true, onclick: () => d.close() }, 'Готово')));
+  show();
+}
+
+// Сервер, поставленный до версии, которая запоминает свои серверы: адрес + подтверждённый ключ.
+function ownHostDialog() {
+  const f = { host: '', port: 22, user: 'root', name: '' };
+  let fp = '';
+  const err = h('div', { class: 'err-text' }), fpBox = h('div');
+  const addBtn = h('button', { class: 'btn primary', disabled: true }, 'Добавить');
+  const inp = (key, label, type) => h('label', { class: 'field' }, h('span', null, label),
+    h('input', { type: type || 'text', value: f[key], spellcheck: 'false', autocomplete: 'off', oninput: e => { f[key] = e.target.value; if (key !== 'name') { fp = ''; fpBox.replaceChildren(); addBtn.disabled = true; } } }));
+  const check = async () => {
+    err.textContent = ''; fpBox.replaceChildren(h('p', { class: 'hint' }, 'Получаю ключ сервера…'));
+    try {
+      const r = await api('/api/server/hostkey', { host: f.host, port: parseInt(f.port, 10) || 22 });
+      fp = r.fingerprint;
+      const agree = h('input', { type: 'checkbox', onchange: e => { addBtn.disabled = !e.target.checked; } });
+      fpBox.replaceChildren(h('div', { class: 'card mt' }, h('p', null, 'Отпечаток ключа сервера (', r.type, '):'), h('code', { class: 'fp' }, fp),
+        h('p', { class: 'hint' }, 'Сверьте его с выводом на сервере: ', h('code', null, 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'), '. Не совпадает — не продолжайте.'),
+        h('label', { class: 'check' }, agree, h('span', null, h('b', null, 'Отпечаток совпадает — это мой сервер')))));
+    } catch (e) { fpBox.replaceChildren(); err.textContent = e.message; }
+  };
+  addBtn.addEventListener('click', async () => {
+    try {
+      const r = await api('/api/ownhost', { host: f.host, port: parseInt(f.port, 10) || 22, user: f.user, name: f.name, fingerprint: fp });
+      S = r.settings; d.close(); renderOwn(); toast('Сервер добавлен');
+    } catch (e) { err.textContent = e.message; }
+  });
+  const d = openDialog(h('h2', null, 'Сервер, поставленный раньше'),
+    h('p', { class: 'hint' }, 'Подойдёт сервер, на который протоколы ставила Naivka (вкладка «Свой сервер»). Пароль SSH здесь не нужен — его спросят при открытии списка друзей.'),
+    h('div', { class: 'grid2' }, inp('host', 'IP или домен сервера'), inp('port', 'Порт SSH', 'number'), inp('user', 'Пользователь'), inp('name', 'Название (необязательно)')),
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: check }, 'Проверить ключ сервера')), fpBox, err,
+    h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Отмена'), addBtn));
 }
 
 function panelsBox() {
@@ -3070,17 +3426,84 @@ function buildCoreBox() {
 }
 
 // Темы — плитками с маленьким видом каждой: длинное название не переносится внутри переключателя.
-const THEMES = [['dark', 'Обычная', 'Спокойная, с вашим акцентом'], ['gold', 'Никогда не проси об этом', 'Чёрное с золотом'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт']];
+const THEMES = [['dark', 'Обычная', 'Спокойная, с вашим акцентом'], ['gold', 'Никогда не проси об этом', 'Чёрное с золотом'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт'], ['custom', 'Своя', 'Ваши цвета и шрифт']];
 function themeTiles() {
   const box = h('div', { class: 'theme-tiles', role: 'radiogroup', 'aria-label': 'Тема' });
   const paint = () => box.querySelectorAll('.theme-tile').forEach(b => b.setAttribute('aria-checked', b.dataset.theme === (S.theme || 'dark') ? 'true' : 'false'));
   for (const [k, name, sub] of THEMES) {
-    box.append(h('button', { class: 'theme-tile', type: 'button', role: 'radio', 'data-theme': k, onclick: () => { S.theme = k; save(); applyTheme(); paint(); } },
-      h('span', { class: 'theme-prev', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
+    const prev = h('span', { class: 'theme-prev', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
+    if (k === 'custom') paintCustomPrev(prev);
+    box.append(h('button', { class: 'theme-tile', type: 'button', role: 'radio', 'data-theme': k, onclick: () => { S.theme = k; save(); applyTheme(); paint(); renderCustomEditor(); } },
+      prev,
       h('b', null, name), h('small', null, sub)));
   }
   paint();
   return box;
+}
+
+function paintCustomPrev(el) {
+  const c = S.custom || CUSTOM_DEFAULT;
+  el.style.background = c.bg;
+  el.style.setProperty('--p1', c.ink); el.style.setProperty('--p2', c.panel); el.style.setProperty('--p3', parseHex(S.accent) || ACCENT_DEFAULT);
+}
+
+// Редактор темы «Своя»: виден, пока она выбрана. Меняется сразу, сохраняется, когда цвет выбран.
+function customEditor() { return h('div', { id: 'customEditor', class: 'custom-editor' }); }
+function renderCustomEditor() {
+  const box = $('#customEditor');
+  if (!box) return;
+  if (S.theme !== 'custom') { box.replaceChildren(); return; }
+  S.custom = { ...CUSTOM_DEFAULT, ...(S.custom || {}) };
+  const notes = h('div', { class: 'custom-notes' });
+  const refresh = () => {
+    applyTheme();
+    notes.replaceChildren(...customNotes(S.custom, S.accent).map(t => h('p', { class: 'hint warn-text' }, t)));
+    const prev = document.querySelector('.theme-tile[data-theme="custom"] .theme-prev');
+    if (prev) paintCustomPrev(prev);
+  };
+  const color = (key, label, hint) => {
+    const pick = h('input', { type: 'color', value: S.custom[key].toLowerCase(), 'aria-label': label });
+    const text = h('input', { type: 'text', value: S.custom[key], maxlength: 7, spellcheck: 'false', 'aria-label': label + ' (HEX)' });
+    const set = v => { const x = parseHex(v); if (!x) return false; S.custom[key] = x; pick.value = x.toLowerCase(); text.value = x; refresh(); return true; };
+    pick.addEventListener('input', () => set(pick.value));
+    pick.addEventListener('change', () => save());
+    text.addEventListener('change', () => { if (set(text.value)) save(); else text.value = S.custom[key]; });
+    return h('label', { class: 'custom-color' }, pick, h('span', null, h('b', null, label), h('small', null, hint)), text);
+  };
+  const font = h('select', { 'aria-label': 'Шрифт', onchange: e => { S.custom.font = e.target.value; refresh(); save(); } },
+    Object.entries(CUSTOM_FONTS).map(([k, [name]]) => h('option', { value: k, selected: (S.custom.font || '') === k }, name)));
+  const presets = h('div', { class: 'custom-presets' }, h('span', { class: 'hint' }, 'Начать с:'),
+    CUSTOM_PRESETS.map(([name, c, acc]) => h('button', { class: 'custom-preset', type: 'button', style: `--a:${c.bg};--b:${c.panel};--c:${acc};--d:${c.direct};--e:${c.ink}`,
+      onclick: () => { S.custom = { ...c }; S.accent = acc; applyTheme(); save(); renderCustomEditor(); renderAccentPicker(); toast(`Тема «${name}» — меняйте под себя`); } },
+      h('i'), name)));
+  const share = async () => { try { await navigator.clipboard.writeText(themeCode()); toast('Код темы скопирован — отправьте его другу'); } catch (_) { toast('Не удалось скопировать', true); } };
+  const paste = () => {
+    const ta = h('textarea', { placeholder: THEME_CODE + '…', spellcheck: 'false', style: 'min-height:80px' });
+    const err = h('div', { class: 'err-text' });
+    const d = openDialog(h('h2', null, 'Вставить код темы'), h('p', { class: 'hint' }, 'Код темы — строка, которую даёт кнопка «Поделиться» в чужой Naivka. В нём только цвета и шрифт.'), ta, err,
+      h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Отмена'), h('button', { class: 'btn primary', onclick: () => {
+        try {
+          const r = parseThemeCode(ta.value);
+          S.custom = r.custom; if (r.accent) S.accent = r.accent; S.theme = 'custom';
+          applyTheme(); save(); renderCustomEditor(); renderAccentPicker(); d.close(); toast('Тема применена');
+        } catch (e) { err.textContent = e.message; }
+      } }, 'Применить')));
+    ta.focus();
+  };
+  box.replaceChildren(
+    h('h3', null, 'Своя тема'),
+    presets,
+    h('div', { class: 'custom-grid' },
+      color('bg', 'Фон', 'окно и меню'),
+      color('panel', 'Панели', 'карточки и списки'),
+      color('ink', 'Текст', 'остальные оттенки — из него'),
+      color('direct', '«Напрямую»', 'ветка и графики'),
+      h('label', { class: 'custom-color' }, h('span', { class: 'custom-font-ic', 'aria-hidden': 'true' }, 'Aa'), h('span', null, h('b', null, 'Шрифт'), h('small', null, 'системные шрифты Windows')), font)),
+    h('p', { class: 'hint' }, '«Через сервер» — это акцент ниже. Фото или видео фоном работают и со своей темой.'),
+    notes,
+    h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: share }, 'Поделиться кодом'), h('button', { class: 'btn small', onclick: paste }, 'Вставить код'),
+      h('button', { class: 'btn small', onclick: () => { S.custom = { ...CUSTOM_DEFAULT }; applyTheme(); save(); renderCustomEditor(); } }, 'Сбросить')));
+  refresh();
 }
 
 const FIT_HINT = {
@@ -3179,7 +3602,7 @@ function accentPicker() {
     sw.querySelectorAll('.swatch').forEach(b => b.setAttribute('aria-checked', b.dataset.hex === hex ? 'true' : 'false'));
     notes.replaceChildren(...accentNotes(hex).map(t => h('p', { class: 'hint warn-text' }, t)));
   };
-  const commit = hex => { S.accent = hex; save(); show(hex); };
+  const commit = hex => { S.accent = hex; save(); show(hex); if (S.theme === 'custom') renderCustomEditor(); };
   for (const [hex, name] of ACCENT_PRESETS) {
     const b = h('button', { class: 'swatch', type: 'button', role: 'radio', 'data-hex': hex, title: `${name} ${hex}`, 'aria-label': `${name} ${hex}`, onclick: () => commit(hex) });
     b.style.background = hex;
@@ -3201,6 +3624,12 @@ function accentPicker() {
       h('button', { class: 'btn small', type: 'button', onclick: () => commit(ACCENT_DEFAULT) }, 'Сбросить')),
     h('p', { class: 'hint' }, 'Этим цветом показан трафик через сервер.'),
     notes);
+}
+
+// Акцент сменился не из самого выбора цвета (заготовка или код темы) — перерисовать выбор.
+function renderAccentPicker() {
+  const old = document.querySelector('.accent-box');
+  if (old) old.replaceWith(accentPicker());
 }
 
 function viewSettings() {
@@ -3227,6 +3656,7 @@ function viewSettings() {
 
     h('h2', null, 'Внешний вид'),
     themeTiles(),
+    customEditor(),
     wallBox(),
     h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
     h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
