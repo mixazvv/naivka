@@ -30,7 +30,10 @@ const Pet = (() => {
   const FRAMES = ['sit_1', 'sit_2', 'sit_3', 'sit_4', 'sleep_1', 'sleep_2', 'sleep_3', 'liedown_1', 'liedown_2',
     'yawn_1', 'yawn_2', 'look_1', 'look_2', 'run_1', 'run_2', 'run_3', 'run_4', 'scared_1',
     'scared_2', 'jump_1', 'jump_2', 'jump_3', 'purr_1', 'purr_2', 'poke_1', 'wash_1', 'wash_2',
-    'wash_3', 'stretch_1', 'stretch_2', 'stretch_3', 'sad_1', 'walk_1', 'walk_2', 'walk_3', 'walk_4'];
+    'wash_3', 'stretch_1', 'stretch_2', 'stretch_3', 'sad_1', 'walk_1', 'walk_2', 'walk_3', 'walk_4',
+    'ball_1', 'ball_2', 'ball_3', 'ball_4', 'tail_1', 'tail_2', 'tail_3', 'tail_4', 'belly_1', 'belly_2', 'meow_1', 'meow_2',
+    'scratch_1', 'scratch_2', 'scratch_3', 'stalk_1', 'stalk_2', 'reach_1', 'reach_2', 'loaf_1', 'loaf_2', 'sleep_4', 'sleep_5',
+    'sleepback_1', 'sneeze_1', 'sneeze_2', 'tilt_1', 'hang_1', 'hang_2', 'back_1', 'back_2', 'press_1', 'press_2', 'sulk_1', 'land_1'];
   const COLS = 9, K = 64 / 120, CW = 64, CH = 130 * K, TOP = 80 - 130 * K;
   let sprite = null;
   function show(name) {
@@ -71,9 +74,17 @@ const Pet = (() => {
   }
 
   // ---------- состояния ----------
-  const sleepSeq = () => Math.random() < 0.15 ? ['sleep_1', 'sleep_2', ['sleep_3', 500], 'sleep_1'] : ['sleep_1', 'sleep_2'];
+  // Сон: дышит, иногда дёргает ухом и переворачивается на другой бок; ночью может раскинуться на спине.
+  let side = 0;
+  const sleepSeq = () => {
+    const r = Math.random(), night = (h => h >= 23 || h < 6)(new Date().getHours());
+    if (r < 0.06) { side = 1 - side; return ['sleep_3', side ? 'sleep_4' : 'sleep_1']; }
+    if (night && r < 0.1) return [['sleepback_1', 4000]];
+    if (side) return ['sleep_4', 'sleep_5'];
+    return r < 0.2 ? ['sleep_1', 'sleep_2', ['sleep_3', 500], 'sleep_1'] : ['sleep_1', 'sleep_2'];
+  };
   const runMs = () => Math.max(70, Math.min(170, parseFloat(getComputedStyle(root).getPropertyValue('--pet-step')) * 1000 / 3 || 150));
-  const inAir = () => !!(held || falling);
+  const inAir = () => !!(held || falling || hanging);
 
   // enter включает анимацию состояния s. Из сна кот сначала встаёт и зевает, в сон — сначала ложится.
   function enter(s, from) {
@@ -121,23 +132,19 @@ const Pet = (() => {
         const night = (h => h >= 23 || h < 6)(new Date().getHours());
         if ((state === 'on' || state === 'sad') && !napping && performance.now() - lastInput > (night ? 60e3 : 180e3)) {
           napping = true;
-          play(['liedown_1', 'liedown_2'], 400, back);
+          play([['loaf_1', 2500], ['loaf_2', 3000], ['liedown_2', 400]], 0, back);
         } else if (napping) {
           // спит дальше
         } else if (performance.now() - lastMeow > 240e3 && r < 0.25 && bubble && bubble.hidden) {
           lastMeow = performance.now();
           talk(['Мяу', 'Мрр?', 'Мяу!', '…', say(state)].filter(Boolean)[Math.floor(Math.random() * 5)] || 'Мяу', 1800);
+          play([['meow_1', 200], ['meow_2', 500], ['meow_1', 200]], 0, back);
         } else if (state === 'on' && free && r < 0.18) {
           hop();
         } else if (state === 'on' && night && r < 0.3) {
           play([['yawn_1', 250], ['yawn_2', 900], ['yawn_1', 250]], 0, back);
         } else if (state === 'on') {
-          if (r < 0.22) play(['sit_2', 'sit_3', 'sit_4', 'sit_1'], 520, back);
-          else if (r < 0.42) play(['wash_1', 'wash_2', 'wash_3', 'wash_2', 'wash_3', 'wash_1'], 330, back);
-          else if (r < 0.56) play([['stretch_1', 450], ['stretch_2', 1000], ['stretch_3', 450]], 0, back);
-          else if (r < 0.68) play([['yawn_1', 250], ['yawn_2', 750], ['yawn_1', 250]], 0, back);
-          else if (r < 0.8) play(['look_1', 'look_2', 'look_1'], 750, back);
-          else stroll();
+          idleAction(r);
         } else if (state === 'sad' && r < 0.3) {
           play(['look_1', 'sad_1'], 900, back);
         }
@@ -146,9 +153,30 @@ const Pet = (() => {
     }, 4000 + Math.random() * 6000);
   }
 
+  // Дела в простое: каждое со своим весом (чем больше, тем чаще).
+  const ACTIONS = [
+    [12, () => play(['sit_2', 'sit_3', 'sit_4', 'sit_1'], 520, back)],
+    [10, () => play(['wash_1', 'wash_2', 'wash_3', 'wash_2', 'wash_3', 'wash_1'], 330, back)],
+    [7, () => play([['stretch_1', 450], ['stretch_2', 1000], ['stretch_3', 450]], 0, back)],
+    [6, () => play([['yawn_1', 250], ['yawn_2', 750], ['yawn_1', 250]], 0, back)],
+    [6, () => play(['look_1', 'look_2', 'look_1'], 750, back)],
+    [10, () => play([['ball_1', 600], ['ball_2', 250], ['ball_3', 400], ['ball_2', 250], ['ball_3', 400], ['ball_4', 700], ['ball_1', 400]], 0, back)],
+    [5, () => play(['tail_1', 'tail_2', 'tail_3', 'tail_4', 'tail_1', 'tail_2', 'tail_3', 'tail_4', ['tail_4', 500]], 140, back)],
+    [6, () => play(['scratch_1', 'scratch_2', 'scratch_3', 'scratch_2', 'scratch_3', 'scratch_2', 'scratch_1'], 210, back)],
+    [8, () => play([['loaf_1', 3500], ['loaf_2', 2500], ['loaf_1', 1500]], 0, back)],
+    [5, () => play(['back_1', 'back_2', 'back_1', 'back_2', ['back_1', 1200]], 600, back)],
+    [3, () => play([['sneeze_1', 600], ['sneeze_2', 250], ['tilt_1', 700]], 0, back)],
+    [12, () => stroll()],
+  ];
+  function idleAction(r) {
+    let sum = ACTIONS.reduce((a, x) => a + x[0], 0) * r;
+    for (const [w, f] of ACTIONS) { if ((sum -= w) < 0) { f(); return; } }
+    ACTIONS[0][1]();
+  }
+
   // ---------- курсор, дрёма, испуг ----------
   let lastInput = performance.now(), lastMeow = performance.now(), napping = false, watching = false, watchTimer = 0;
-  let lastPounce = 0, ptr = null;
+  let lastPounce = 0, ptr = null, lastPurr = 0;
   // Любое движение мышью или нажатие клавиши будит дремлющего кота.
   function wake() {
     if (!napping) return;
@@ -181,7 +209,9 @@ const Pet = (() => {
     }
     // Иначе просто смотрит на курсор.
     watching = true;
-    show(dx > 0 ? 'look_1' : 'look_2');
+    // Курсор прямо над головой — тянется лапой.
+    if (dy < -50 && Math.abs(dx) < 60) show(dist < 130 ? 'reach_2' : 'reach_1');
+    else show(dx > 0 ? 'look_1' : 'look_2');
     clearTimeout(watchTimer);
     watchTimer = setTimeout(() => { watching = false; if (root && !busy && !strolling && !inAir()) back(); }, 1400);
   }
@@ -202,10 +232,11 @@ const Pet = (() => {
     const to = Math.max(lo, Math.min(hi, targetX - w / 2));
     watching = false; clearTimeout(watchTimer);
     setFlip(to < cur);
-    flash('pounce', 700);
+    setTimeout(() => flash('pounce', 700), 720);
     // Присел — прыжок — приземлился; по горизонтали летит за 0,45 с.
-    play([['stretch_1', 220], ['jump_1', 150], ['jump_2', 150], ['jump_3', 150], ['sit_1', 80]], 0, () => { setFlip(false); back(); });
-    const from = cur, t0 = performance.now() + 220;
+    // Крадётся, виляя попой, — прыжок — приземлился на лапы.
+    play([['stalk_1', 180], ['stalk_2', 180], ['stalk_1', 180], ['stalk_2', 180], ['jump_1', 150], ['jump_2', 150], ['jump_3', 150], ['land_1', 300]], 0, () => { setFlip(false); back(); });
+    const from = cur, t0 = performance.now() + 720;
     const step = now => {
       if (!root) return;
       const k = Math.max(0, Math.min(1, (now - t0) / 450));
@@ -305,7 +336,7 @@ const Pet = (() => {
   }
 
   // ---------- полёт ----------
-  let falling = false, fallRaf = 0, vx = 0, vy = 0;
+  let falling = false, fallRaf = 0, vx = 0, vy = 0, sulky = false, hanging = false;
   function stopFall() { cancelAnimationFrame(fallRaf); falling = false; }
   function fall() {
     if (!free || held) return;
@@ -345,8 +376,10 @@ const Pet = (() => {
     if (onMove) onMove([+(fx / Math.max(1, innerWidth)).toFixed(4), +(fy / Math.max(1, innerHeight)).toFixed(4)]);
     if (REDUCE.matches) { back(); return; }
     // С высоты — приземляется с прыжка и немного пугается, с небольшой — просто садится.
-    if (speed > 900) { flash('hop', 650); play(['jump_3', ['scared_1', 300], 'sit_1'], 160, back); }
-    else play(['jump_3'], 160, back);
+    // Швырнули или долго держали — обиделся.
+    if (sulky) { sulky = false; play([['land_1', 300], ['sulk_1', 3200]], 0, back); setTimeout(() => talk('Хмф!', 1600), 300); return; }
+    if (speed > 900) { flash('hop', 650); play([['land_1', 300], ['scared_1', 300], 'sit_1'], 160, back); }
+    else play([['land_1', 260]], 0, back);
   }
 
   // ---------- руки: перенос мышью ----------
@@ -396,6 +429,7 @@ const Pet = (() => {
     const hr = home && home.getBoundingClientRect();
     if (hr && e.clientX >= hr.left && e.clientX <= hr.right && e.clientY >= hr.top - 40 && e.clientY <= hr.bottom) { goHome(); return; }
     vx = Math.max(-1500, Math.min(1500, h.vx)); vy = Math.max(-900, Math.min(900, h.vy));
+    sulky = Math.abs(vx) > 900 || Math.abs(vy) > 700 || performance.now() - h.since > 6000;
     support = null;
     fall();
   }
@@ -450,7 +484,13 @@ const Pet = (() => {
     if (fx > innerWidth - w || fy > innerHeight - h) {
       fx = Math.max(0, Math.min(innerWidth - w, fx)); fy = Math.max(0, Math.min(innerHeight - h, fy)); place();
     }
-    if (!supported()) { vx = vy = 0; fall(); }
+    // Опора пропала — секунду висит, цепляясь лапами, потом падает.
+    if (!supported()) {
+      vx = vy = 0;
+      if (REDUCE.matches || feet() > innerHeight - 40) { fall(); return; }
+      stopStroll(); hanging = true;
+      play(['hang_1', 'hang_2', 'hang_1', 'hang_2'], 200, () => { hanging = false; fall(); });
+    }
   }
 
   function extras() {
@@ -534,7 +574,11 @@ const Pet = (() => {
         strokes = 0; flash('purr', 2000); talk('Мррр…'); if (onPurr) onPurr();
         if (state !== 'run' && state !== 'err' && !inAir()) {
           stopStroll();
-          play(state === 'off' ? ['sleep_3', 'sleep_1', 'sleep_3', 'sleep_1'] : ['purr_1', 'purr_2', 'purr_1', 'purr_2', 'purr_1'], 400, back);
+          // Гладят второй раз подряд — переворачивается на спину.
+          const again = now - lastPurr < 12000;
+          lastPurr = now;
+          play(state === 'off' ? ['sleep_3', 'sleep_1', 'sleep_3', 'sleep_1']
+            : again ? [['belly_1', 600], ['belly_2', 700], ['belly_1', 600], ['belly_2', 700], ['belly_1', 400]] : ['purr_1', 'purr_2', 'purr_1', 'purr_2', 'purr_1'], 400, back);
         }
       }
     }
@@ -548,7 +592,8 @@ const Pet = (() => {
     if (state !== 'run' && state !== 'err') {
       stopStroll();
       if (state === 'off') play([['sleep_3', 600]], 0, back);
-      else { flash('hop', 650); play([['poke_1', 700]], 0, back); }
+      else if (Math.random() < 0.5) { flash('hop', 650); play([['poke_1', 700]], 0, back); }
+      else play([['tilt_1', 900]], 0, back);
     }
     talk(say(state) || '…');
   }
@@ -602,5 +647,13 @@ const Pet = (() => {
     if (revived && prev !== 'wait') { joy(); talk('Ура, связь вернулась!'); }
   }
 
-  return { mount, unmount, update, talk, startle, home: () => { if (root && free) goHome(); }, cheer: (t) => { flash('hop', 650); joy(); talk(t, 3600); } };
+  // Нажали «Подключить» — нажимает лапой вместе с вами.
+  function pressBtn() {
+    if (!root || REDUCE.matches || inAir() || state === 'off' || state === 'run') return;
+    if (napping) { wake(); return; }
+    stopStroll();
+    play([['press_1', 250], ['press_2', 450], ['press_1', 200]], 0, back);
+  }
+
+  return { mount, unmount, update, talk, startle, press: pressBtn, home: () => { if (root && free) goHome(); }, cheer: (t) => { flash('hop', 650); joy(); talk(t, 3600); } };
 })();
