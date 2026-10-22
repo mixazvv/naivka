@@ -3,7 +3,9 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"io"
 	"net/http"
@@ -71,11 +73,19 @@ func TestSelfUpdateFetch(t *testing.T) {
 	archive := zbuf.Bytes()
 	sum := sha256.Sum256(archive)
 	sums := hex.EncodeToString(sum[:]) + "  Naivka-v9.9.9-windows.zip\n"
+	// Свой тестовый ключ вместо ключа релизов.
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	oldKey := updatePubKey
+	updatePubKey = base64.StdEncoding.EncodeToString(pub)
+	defer func() { updatePubKey = oldKey }()
+	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, []byte(sums)))
 	tamper := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/releases/download/v9.9.9/SHA256SUMS.txt"):
 			io.WriteString(w, sums)
+		case strings.HasSuffix(r.URL.Path, "/releases/download/v9.9.9/SHA256SUMS.txt.sig"):
+			io.WriteString(w, sig+"\n")
 		case strings.HasSuffix(r.URL.Path, "/releases/download/v9.9.9/Naivka-v9.9.9-windows.zip"):
 			if tamper {
 				w.Write(append([]byte{}, archive[:len(archive)-1]...))
@@ -115,5 +125,16 @@ func TestSelfUpdateFetch(t *testing.T) {
 	tamper = true
 	if _, _, err := u.fetch("v9.9.9", "Naivka.exe"); err == nil || !strings.Contains(err.Error(), "контрольной суммой") {
 		t.Fatalf("tampered archive accepted: %v", err)
+	}
+	// Подменены и архив, и суммы, но подписать их нечем — обновление не принимается.
+	tamper = false
+	sum2 := sha256.Sum256([]byte("evil"))
+	sums = hex.EncodeToString(sum2[:]) + "  Naivka-v9.9.9-windows.zip\n"
+	if _, _, err := u.fetch("v9.9.9", "Naivka.exe"); err == nil || !strings.Contains(err.Error(), "подпись") {
+		t.Fatalf("unsigned sums accepted: %v", err)
+	}
+	sig = ""
+	if _, _, err := u.fetch("v9.9.9", "Naivka.exe"); err == nil {
+		t.Fatal("update without signature accepted")
 	}
 }

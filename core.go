@@ -592,10 +592,8 @@ func (c *Core) download() (string, error) {
 	}); err != nil {
 		return "", err
 	}
-	if ok, err := verifyAsset(strings.TrimPrefix(singboxRepo, "https://github.com/"), tag, name, tmp.Name()); err != nil {
+	if err := verifyAsset(strings.TrimPrefix(singboxRepo, "https://github.com/"), tag, name, tmp.Name()); err != nil {
 		return "", err
-	} else if !ok {
-		c.logs.Add("[naivka] GitHub не сообщил контрольную сумму ядра, архив получен только по HTTPS")
 	}
 
 	if err := os.MkdirAll(c.coreDir(), 0o755); err != nil {

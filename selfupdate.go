@@ -182,6 +182,13 @@ func (u *selfUpdater) fetch(tag, exeName string) (exe []byte, debug []byte, err 
 	if err != nil {
 		return nil, nil, fmt.Errorf("не скачались контрольные суммы: %v", err)
 	}
+	sig, err := downloadBytes(base+"SHA256SUMS.txt.sig", 4<<10, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("не скачалась подпись обновления: %v", err)
+	}
+	if err := verifySums(sums, sig); err != nil {
+		return nil, nil, err
+	}
 	archive, err := downloadBytes(base+asset, 300<<20, u.progress)
 	if err != nil {
 		return nil, nil, fmt.Errorf("не скачался архив: %v", err)

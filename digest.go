@@ -50,22 +50,34 @@ func assetDigest(repo, tag, name string) (string, error) {
 	return "", nil
 }
 
+// digestRetry — пауза перед повтором запроса к API GitHub (в тестах короче).
+var digestRetry = 2 * time.Second
+
 // verifyAsset сверяет скачанный файл с хешем, который GitHub хранит для этого файла релиза.
-// Хеш не совпал — ошибка, файл ставить нельзя. GitHub хеша не дал (старый релиз, API недоступно
-// или исчерпан лимит запросов) — verified == false: файл получен только по HTTPS, без сверки.
-func verifyAsset(repo, tag, name, path string) (verified bool, err error) {
-	want, err := assetDigest(repo, tag, name)
+// Хеш не совпал или GitHub его не дал (API недоступно, исчерпан лимит запросов, старый релиз) —
+// ошибка: непроверенный файл не ставится. Сбой API повторяется ещё два раза.
+func verifyAsset(repo, tag, name, path string) error {
+	var want string
+	var err error
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * digestRetry)
+		}
+		if want, err = assetDigest(repo, tag, name); err == nil {
+			break
+		}
+	}
 	if err != nil || want == "" {
-		return false, nil
+		return fmt.Errorf("%s: не удалось проверить файл по контрольной сумме GitHub — установка отменена, попробуйте позже", name)
 	}
 	got, err := fileSHA256(path)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if got != want {
-		return false, fmt.Errorf("%s: контрольная сумма не совпала с той, что хранит GitHub, — файл повреждён или подменён, установка отменена", name)
+		return fmt.Errorf("%s: контрольная сумма не совпала с той, что хранит GitHub, — файл повреждён или подменён, установка отменена", name)
 	}
-	return true, nil
+	return nil
 }
 
 // fileSHA256 — хеш скачанного файла для сверки с тем, что сообщил GitHub.
