@@ -22,6 +22,11 @@ func sealSettings(s *Settings) *Settings {
 			c.Share.Password = enc
 		}
 	}
+	if c.Telegram.Secret != "" && !strings.HasPrefix(c.Telegram.Secret, secretPrefix) {
+		if enc, err := protectSecret(c.Telegram.Secret); err == nil {
+			c.Telegram.Secret = enc
+		}
+	}
 	for i := range c.Panels {
 		// Секретный путь и логин панели — такая же тайна, как пароль: по ним панель находят и подбирают.
 		for _, p := range []*string{&c.Panels[i].Pass, &c.Panels[i].Path, &c.Panels[i].User} {
@@ -51,6 +56,13 @@ func openSettings(s *Settings) []string {
 			s.Share.Password = plain
 		} else {
 			s.Share.Password = "" // сгенерируется новый
+		}
+	}
+	if strings.HasPrefix(s.Telegram.Secret, secretPrefix) {
+		if plain, err := unprotectSecret(s.Telegram.Secret); err == nil {
+			s.Telegram.Secret = plain
+		} else {
+			s.Telegram.Secret = "" // сгенерируется новый, ссылку tg:// придётся открыть заново
 		}
 	}
 	for i := range s.Panels {

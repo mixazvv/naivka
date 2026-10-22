@@ -53,6 +53,16 @@ func knownFolder(id *syscall.GUID) string {
 	return syscall.UTF16ToString((*[1 << 15]uint16)(unsafe.Pointer(p))[:])
 }
 
+// sysExe — полный путь к системной программе (System32). По одному имени Windows ищет программу
+// и в PATH пользователя, и в текущей папке (обычно папке с Naivka.exe) — подложенный там schtasks.exe
+// или cmd.exe получил бы права администратора вместе с Naivka.
+func sysExe(name string) string {
+	if win := knownFolder(&folderWindows); win != "" {
+		return filepath.Join(win, "System32", name+".exe")
+	}
+	return name
+}
+
 // exeProtected — лежит ли программа там, куда без прав администратора не записать
 // (Program Files, Windows). Только такой exe можно запускать с правами без запроса UAC.
 func exeProtected(exe string) bool {
@@ -88,7 +98,7 @@ func restrictDir(dir string) {
 		// Ограничение по времени: зависший icacls не должен навсегда задержать подключение.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "icacls", args...)
+		cmd := exec.CommandContext(ctx, sysExe("icacls"), args...)
 		hideWindow(cmd)
 		return cmd.Run()
 	}

@@ -145,8 +145,9 @@ func xrayOutbound(sv Server, tag string) map[string]any {
 		xh["mode"] = sv.XMode
 	}
 	if sv.XExtra != "" {
-		var extra any
-		if json.Unmarshal([]byte(sv.XExtra), &extra) == nil {
+		// Только объект: остаётся внутри xhttpSettings и не трогает остальной конфиг Xray.
+		var extra map[string]any
+		if json.Unmarshal([]byte(sv.XExtra), &extra) == nil && extra != nil {
 			xh["extra"] = extra
 		}
 	}

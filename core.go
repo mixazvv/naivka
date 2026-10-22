@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -528,37 +527,6 @@ func (c *Core) Stop() {
 
 const singboxRepo = "https://github.com/SagerNet/sing-box"
 
-func latestSingboxTag() (string, error) {
-	hc := &http.Client{
-		Timeout:       20 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	resp, err := hc.Head(singboxRepo + "/releases/latest")
-	if err != nil {
-		return "", err
-	}
-	resp.Body.Close()
-	loc := resp.Header.Get("Location")
-	i := strings.LastIndex(loc, "/tag/")
-	if i < 0 {
-		return "", fmt.Errorf("GitHub вернул неожиданный ответ (%s)", resp.Status)
-	}
-	return loc[i+5:], nil
-}
-
-type progressWriter struct {
-	c *Core
-	n int64
-}
-
-func (p *progressWriter) Write(b []byte) (int, error) {
-	p.n += int64(len(b))
-	p.c.mu.Lock()
-	p.c.dl.Done = p.n
-	p.c.mu.Unlock()
-	return len(b), nil
-}
-
 func (c *Core) StartDownload() error {
 	if runtime.GOOS != "windows" {
 		return errors.New("Автозагрузка ядра сделана для Windows. Положите sing-box и libcronet в папку core вручную.")
@@ -596,7 +564,7 @@ func (c *Core) StartDownload() error {
 }
 
 func (c *Core) download() (string, error) {
-	tag, err := latestSingboxTag()
+	tag, err := latestTag(strings.TrimPrefix(singboxRepo, "https://github.com/"))
 	if err != nil {
 		return "", fmt.Errorf("не удалось узнать последнюю версию: %v", err)
 	}
@@ -611,29 +579,19 @@ func (c *Core) download() (string, error) {
 	name := fmt.Sprintf("sing-box-%s-windows-%s%s.zip", ver, runtime.GOARCH, suffix)
 	asset := fmt.Sprintf("%s/releases/download/%s/%s", singboxRepo, tag, name)
 
-	hc := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := hc.Get(asset)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("GitHub ответил %s на %s", resp.Status, asset)
-	}
-	c.mu.Lock()
-	c.dl.Total = resp.ContentLength
-	c.mu.Unlock()
-
 	tmp, err := os.CreateTemp(c.runDir(), "core-*.zip")
 	if err != nil {
 		return "", err
 	}
+	tmp.Close()
 	defer os.Remove(tmp.Name())
-	if _, err := io.Copy(io.MultiWriter(tmp, &progressWriter{c: c}), resp.Body); err != nil {
-		tmp.Close()
+	if err := downloadTo(asset, tmp.Name(), func(done, total int64) {
+		c.mu.Lock()
+		c.dl.Done, c.dl.Total = done, total
+		c.mu.Unlock()
+	}); err != nil {
 		return "", err
 	}
-	tmp.Close()
 	if ok, err := verifyAsset(strings.TrimPrefix(singboxRepo, "https://github.com/"), tag, name, tmp.Name()); err != nil {
 		return "", err
 	} else if !ok {
@@ -657,6 +615,7 @@ func extractCore(zipPath, dst string, want []string) error {
 	}
 	defer zr.Close()
 	found := map[string]bool{}
+	left := int64(maxUnpacked)
 	for _, f := range zr.File {
 		base := filepath.Base(f.Name)
 		ok := false
@@ -678,10 +637,11 @@ func extractCore(zipPath, dst string, want []string) error {
 			rc.Close()
 			return err
 		}
-		_, err = io.Copy(out, rc)
+		err = copyLimited(out, rc, &left)
 		rc.Close()
 		out.Close()
 		if err != nil {
+			os.Remove(tmp)
 			return err
 		}
 		if err := os.Rename(tmp, filepath.Join(dst, base)); err != nil {

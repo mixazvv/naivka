@@ -233,7 +233,19 @@ func (a *App) buildReport() string {
 		line("Автоопределение: напрямую %d сайтов, через сервер %d", sv.Direct, sv.Proxy)
 	}
 	if from, to := a.fo.get(); from != "" {
-		line("Временная замена сервера: %s → %s", a.serverName(from), a.serverName(to))
+		// Имя сервера пользователь мог назвать адресом — в отчёт идёт только номер.
+		label := func(tag string) string {
+			if tag == tagAuto {
+				return "Автовыбор"
+			}
+			for i, sv := range s.Servers {
+				if serverTag(sv) == tag {
+					return fmt.Sprintf("сервер-%d", i+1)
+				}
+			}
+			return "другой"
+		}
+		line("Временная замена сервера: %s → %s", label(from), label(to))
 	}
 	if p := a.core.SystemProxyPort(); p > 0 {
 		ours, _ := systemProxyOurs(p)

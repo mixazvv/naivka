@@ -44,8 +44,8 @@ func TestRuleListsConfig(t *testing.T) {
 	s := DefaultSettings()
 	s.Servers = []Server{{ID: "a", Type: "naive", Host: "nl.example.com", Port: 443}}
 	s.RuleLists = []RuleList{
-		{ID: "r1", Name: "srs", URL: "https://x/russia_inside.srs", Action: "proxy", Enabled: true},
-		{ID: "r2", Name: "txt", URL: "https://x/direct.lst", Action: "direct", Enabled: true},
+		{ID: "0000aa01", Name: "srs", URL: "https://x/russia_inside.srs", Action: "proxy", Enabled: true},
+		{ID: "0000aa02", Name: "txt", URL: "https://x/direct.lst", Action: "direct", Enabled: true},
 		{ID: "r3", Name: "off", URL: "https://x/off.srs", Action: "block", Enabled: false},
 		{ID: "r4", Name: "not yet", URL: "https://x/missing.txt", Action: "block", Enabled: true},
 	}
@@ -53,14 +53,14 @@ func TestRuleListsConfig(t *testing.T) {
 	if err := s.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	env := ConfigEnv{APIPort: 9090, InlineLists: map[string]*inlineList{"r2": {Domains: []string{"gosuslugi.ru"}, IPs: []string{"5.6.7.0/24"}}}}
+	env := ConfigEnv{APIPort: 9090, InlineLists: map[string]*inlineList{"0000aa02": {Domains: []string{"gosuslugi.ru"}, IPs: []string{"5.6.7.0/24"}}}}
 	cfg, err := BuildConfig(s, env)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b, _ := json.Marshal(cfg["route"])
 	js := string(b)
-	for _, want := range []string{`"tag":"list-r1"`, `"format":"binary"`, `"tag":"list-r2"`, `"type":"inline"`, `gosuslugi.ru`, `5.6.7.0/24`} {
+	for _, want := range []string{`"tag":"list-0000aa01"`, `"format":"binary"`, `"tag":"list-0000aa02"`, `"type":"inline"`, `gosuslugi.ru`, `5.6.7.0/24`} {
 		if !contains(js, want) {
 			t.Errorf("нет %s", want)
 		}
@@ -91,5 +91,34 @@ func TestListCacheDownload(t *testing.T) {
 	}
 	if _, err := os.Stat(c.path("x")); err != nil {
 		t.Error("рабочий список удалён")
+	}
+}
+
+// Чужой список не может забрать себе весь интернет, а id из копии — выйти за папку lists.
+func TestListSafety(t *testing.T) {
+	il := parseInlineList("0.0.0.0/0\n::/0\n10.0.0.0/4\ncom\n.ru\nexample.com\n5.6.7.0/24\n2001:db8::/32")
+	if len(il.Domains) != 1 || il.Domains[0] != "example.com" || len(il.IPs) != 2 {
+		t.Fatalf("%+v", il)
+	}
+	l := RuleList{ID: `..\..\x`, URL: "https://x/a.lst"}
+	l.normalize()
+	if !listIDRe.MatchString(l.ID) {
+		t.Fatalf("id %q", l.ID)
+	}
+	s := DefaultSettings()
+	s.RuleLists = []RuleList{{ID: "0000aa01", URL: "https://x/a.lst"}, {ID: "0000aa01", URL: "https://x/b.lst"}}
+	s.normalize()
+	if s.Validate() == nil {
+		t.Fatal("повтор id принят")
+	}
+}
+
+// Адрес панели — только веб-адрес: file:, UNC и прочее превращается во вход через туннель.
+func TestPanelURLSafety(t *testing.T) {
+	s := DefaultSettings()
+	s.Panels = []Panel{{Access: "public", URL: `\\attacker\s\x.exe`}, {Access: "public", URL: "file:///C:/x.exe"}, {Access: "public", URL: "https://203.0.113.1:2053/p/"}}
+	s.normalize()
+	if s.Panels[0].Access != "tunnel" || s.Panels[1].URL != "" || s.Panels[2].Access != "public" {
+		t.Fatalf("%+v", s.Panels)
 	}
 }

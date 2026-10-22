@@ -42,7 +42,6 @@ var (
 )
 
 const (
-	wmCommand  = 0x0111
 	wmNull     = 0x0000
 	wmApp      = 0x8000
 	wmTray     = wmApp + 1

@@ -230,35 +230,10 @@ function powerLabel(p) {
 }
 
 // ---------- карта ----------
-const MAP_K = 10; // единиц SVG на градус
-const MAP = { vb: null, to: null, anim: 0, key: '', ro: null, land: '' };
-
-function mapXY(lat, lon) { return [(lon + 180) * MAP_K, (80 - lat) * MAP_K]; }
-
 function geoLatLon(info, cc) {
   if (info && (info.lat || info.lon)) return [info.lat, info.lon];
   const c = ((info && info.countryCode) || cc || '').toUpperCase();
   return COUNTRY_POS[c] || null;
-}
-
-// landPath — все точки суши одним путём: «M x y h0» с круглыми концами линии рисует точку.
-function landPath() {
-  if (MAP.land) return MAP.land;
-  const { step, top, cols, rows, data } = WORLD_DOTS;
-  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let d = '';
-  for (let r = 0, i = 0; r < rows; r++) {
-    const lat = top - r * step;
-    const off = (r % 2) * step / 2;
-    for (let c = 0; c < cols; c++, i++) {
-      const bit = (B64.indexOf(data[i / 6 | 0]) >> (5 - i % 6)) & 1;
-      if (!bit) continue;
-      const [x, y] = mapXY(lat, -180 + step / 2 + c * step + off - step / 4);
-      d += `M${x.toFixed(0)} ${y.toFixed(0)}h0`;
-    }
-  }
-  MAP.land = d;
-  return d;
 }
 
 // Точки маршрута: где вы и через какой сервер выходите в интернет.
@@ -277,132 +252,6 @@ function mapEnds() {
     me: a && { ll: a, label: 'Вы' + (me.city ? ', ' + me.city : me.country ? ', ' + me.country : '') },
     srv: b && { ll: b, label: srvName, cc: (srv.info && srv.info.countryCode) || srv.cc },
   };
-}
-
-// Точки рядом (например, Петербург и Хельсинки) — подписи ставим иначе, чтобы не налезали.
-function mapClose(ends) {
-  return !!(ends.me && ends.srv) && Math.abs(ends.me.ll[1] - ends.srv.ll[1]) < 20;
-}
-
-function mapTarget(box, ends) {
-  const W = Math.max(box.clientWidth, 200), H = Math.max(box.clientHeight, 120);
-  const pts = [ends.me, ends.srv].filter(Boolean).map(e => mapXY(...e.ll));
-  let cx, cy, span;
-  if (pts.length === 2) {
-    const [a, b] = pts;
-    cx = (a[0] + b[0]) / 2;
-    cy = (a[1] + b[1]) / 2 - Math.hypot(b[0] - a[0], b[1] - a[1]) * 0.14;
-    // Маршрут занимает около трети ширины: видно и его, и карту вокруг.
-    span = Math.max(Math.abs(a[0] - b[0]) / (W > 640 ? 0.26 : 0.5), (Math.abs(a[1] - b[1]) + 160) * 1.8 * W / H, 70 * MAP_K);
-  } else if (pts.length === 1) {
-    [cx, cy] = pts[0];
-    span = 96 * MAP_K;
-  } else {
-    [cx, cy] = mapXY(52, 40);
-    span = 110 * MAP_K;
-  }
-  span = Math.min(span, 330 * MAP_K);
-  const vh = span * H / W;
-  // Слева на карте — кнопка и текст, поэтому середина маршрута смещена вправо.
-  const shift = 0.5; // карта стоит отдельным блоком в «Сводке», маршрут — по центру
-  return [cx - span * shift, cy - vh / 2, span, vh];
-}
-
-function mapAnimate(to) {
-  cancelAnimationFrame(MAP.anim);
-  const svg = $('#mapSvg');
-  if (!svg) return;
-  const from = MAP.vb;
-  MAP.to = to;
-  if (!from || REDUCE.matches || document.hidden) { MAP.vb = to; svg.setAttribute('viewBox', to.map(v => v.toFixed(1)).join(' ')); return; }
-  const t0 = performance.now();
-  const step = now => {
-    const k = Math.min(1, (now - t0) / 1100);
-    const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-    MAP.vb = from.map((v, i) => v + (to[i] - v) * e);
-    svg.setAttribute('viewBox', MAP.vb.map(v => v.toFixed(1)).join(' '));
-    if (k < 1) MAP.anim = requestAnimationFrame(step);
-  };
-  MAP.anim = requestAnimationFrame(step);
-}
-
-function renderMap() {
-  const box = $('#heroMap');
-  if (!box || !S) return;
-  const ends = mapEnds();
-  const p = phase();
-  const on = p === 'on';
-  const target = mapTarget(box, ends);
-  const span = target[2];
-  const key = JSON.stringify([ends, on, Math.round(span), box.clientWidth, box.clientHeight]);
-  if (!$('#mapSvg')) {
-    box.replaceChildren(s('svg', { id: 'mapSvg', class: 'map', preserveAspectRatio: 'xMidYMid slice', role: 'img', 'aria-label': 'Карта: где вы и где сервер' },
-      s('path', { class: 'map-land', d: landPath() }),
-      s('g', { id: 'mapFx' })));
-    MAP.vb = null;
-    if (!MAP.ro && window.ResizeObserver) {
-      MAP.ro = new ResizeObserver(() => { MAP.key = ''; renderMap(); });
-    }
-    if (MAP.ro) { MAP.ro.disconnect(); MAP.ro.observe(box); }
-  }
-  if (key !== MAP.key) {
-    MAP.key = key;
-    const fx = $('#mapFx');
-    const u = span / 100; // «единица» размера подписей и меток, чтобы они не зависели от масштаба
-    const items = [];
-    const glow = (x, y, cls) => s('circle', { cx: x, cy: y, r: u * 9, class: 'map-glow ' + cls });
-    // Метка: пульсирующая точка, флаг и подпись. Обычно подпись под точкой (над ней дуга маршрута);
-    // когда точки близко, подписи справа, одна над другой (dy — сдвиг по вертикали).
-    const marker = (x, y, cls, label, cc, side = 0, dy = 0, lx = x) => {
-      const out = [
-        s('circle', { cx: x, cy: y, r: u * 1.1, class: 'map-pulse ' + cls }),
-        s('circle', { cx: x, cy: y, r: u * 0.85, class: 'map-pin ' + cls }),
-      ];
-      const fs = u * 1.75, fw = u * 2.4, gap = u * 0.7;
-      const fl = cc && flagInSvg(cc, 0, 0, fw);
-      const width = label.length * fs * 0.55 + (fl ? fw + gap : 0);
-      const ty = side ? y + dy : y + u * 3.4;
-      let tx = side ? lx + u * 2 : x - width / 2;
-      if (fl) { fl.setAttribute('x', tx); fl.setAttribute('y', ty - fw / 3); out.push(fl); tx += fw + gap; }
-      out.push(s('text', { x: tx, y: ty, 'dominant-baseline': 'central', class: 'map-lbl halo', style: `font-size:${fs}px;stroke-width:${u * 0.7}px` }, label));
-      return out;
-    };
-    flowsBegin('map');
-    if (ends.me && ends.srv) {
-      const [ax, ay] = mapXY(...ends.me.ll);
-      const [bx, by] = mapXY(...ends.srv.ll);
-      const dist = Math.hypot(bx - ax, by - ay);
-      const qx = (ax + bx) / 2, qy = (ay + by) / 2 - Math.max(dist * 0.32, u * 6);
-      const d = `M${ax.toFixed(1)} ${ay.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${bx.toFixed(1)} ${by.toFixed(1)}`;
-      items.push(glow(ax, ay, 'me'), glow(bx, by, 'srv' + (on ? ' on' : '')));
-      items.push(s('path', { d, class: 'map-arc-glow' + (on ? ' on' : ''), style: `stroke-width:${u * 2.2}px` }));
-      const arc = s('path', { d, class: 'map-arc' + (on ? ' on' : ''), style: `stroke-width:${u * 0.45}px;stroke-dasharray:${on ? 'none' : `${u * 1.2} ${u * 1.4}`}` });
-      items.push(arc);
-      const pts = s('g', { class: 'map-pts' });
-      items.push(pts);
-      const close = mapClose(ends);
-      // Близкие точки: обе подписи справа, северная выше, южная ниже.
-      const mid = (ay + by) / 2, meUp = ay < by;
-      const dyMe = close ? mid + (meUp ? -1.4 : 1.4) * u - ay : 0;
-      const dySrv = close ? mid + (meUp ? 1.4 : -1.4) * u - by : 0;
-      const rx = Math.max(ax, bx); // подписи начинаются правее восточной точки
-      items.push(...marker(ax, ay, 'me', ends.me.label, '', close ? 1 : 0, dyMe, close ? rx : ax));
-      items.push(...marker(bx, by, 'srv' + (on ? ' on' : ''), ends.srv.label, ends.srv.cc, close ? 1 : 0, dySrv, close ? rx : bx));
-      fx.replaceChildren(...items);
-      if (on) flowBind('map:arc', arc, pts, 'var(--tunnel)', u * 0.55);
-    } else {
-      const one = ends.srv || ends.me;
-      if (one) {
-        const [x, y] = mapXY(...one.ll);
-        items.push(glow(x, y, ends.srv ? 'srv' : 'me'), ...marker(x, y, ends.srv ? 'srv' : 'me', one.label, one.cc));
-      }
-      fx.replaceChildren(...items);
-    }
-    flowsEnd('map');
-    mapAnimate(target);
-  }
-  const sp = lastSpeeds();
-  flowSpeed('map:arc', on ? sp.pd + sp.pu : 0);
 }
 
 // ---------- мини-окно из трея ----------

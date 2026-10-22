@@ -34,7 +34,12 @@ func (a *App) mobileConfig() ([]byte, error) {
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
+// shareMu — раздача по одной: два быстрых запроса подряд иначе оставили бы открытым лишний порт.
+var shareMu sync.Mutex
+
 func (a *App) apiMobileShare(*http.Request) (any, error) {
+	shareMu.Lock()
+	defer shareMu.Unlock()
 	body, err := a.mobileConfig()
 	if err != nil {
 		return nil, err
@@ -83,6 +88,7 @@ func (a *App) apiMobileShare(*http.Request) (any, error) {
 		if same {
 			a.stopShare()
 		}
+		_ = sh.srv.Close() // и если раздачу уже сменили — этот порт всё равно закрыть
 	})
 
 	port := ln.Addr().(*net.TCPAddr).Port

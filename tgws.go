@@ -22,6 +22,7 @@ type TgWs struct {
 	addonBase
 	a *App
 
+	startMu  sync.Mutex // Start по одному: его зовут и оживление после сбоя, и применение настроек
 	pmu      sync.Mutex
 	cmd      *exec.Cmd
 	running  bool
@@ -154,6 +155,8 @@ func (t *TgWs) Running() bool {
 }
 
 func (t *TgWs) Start(s *Settings) error {
+	t.startMu.Lock()
+	defer t.startMu.Unlock()
 	if _, err := os.Stat(t.exePath()); err != nil {
 		return errors.New("tg-ws-proxy ещё не установлен")
 	}

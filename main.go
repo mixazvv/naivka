@@ -89,6 +89,15 @@ func main() {
 		return
 	}
 
+	// Создание задачи автозапуска: этот экземпляр запущен с правами только ради неё (см. setAutostart).
+	if args["--create-autostart-task"] {
+		if err := createAutostartTask(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Пароли шифруются всегда, и в портативном режиме тоже: на другом компьютере их придётся
 	// ввести заново (или перенести настройки резервной копией), зато папку с ними не прочитать.
 	encryptSecrets = runtime.GOOS == "windows"

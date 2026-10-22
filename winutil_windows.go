@@ -172,7 +172,7 @@ func openWindow(url, profile string) *exec.Cmd {
 			return cmd
 		}
 	}
-	_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	_ = exec.Command(sysExe("rundll32"), "url.dll,FileProtocolHandler", url).Start()
 	return nil
 }
 
@@ -210,4 +210,6 @@ func protectedBase() string {
 	return filepath.Join(pf, "Naivka")
 }
 
-func openURL(u string) { _ = exec.Command("rundll32", "url.dll,FileProtocolHandler", u).Start() }
+func openURL(u string) {
+	_ = exec.Command(sysExe("rundll32"), "url.dll,FileProtocolHandler", u).Start()
+}

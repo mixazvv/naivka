@@ -64,13 +64,28 @@ func downloadTo(url, dst string, fn progressFunc) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(io.MultiWriter(f, &countingWriter{total: resp.ContentLength, fn: fn}), resp.Body)
+	left := int64(maxUnpacked)
+	err = copyLimited(io.MultiWriter(f, &countingWriter{total: resp.ContentLength, fn: fn}), resp.Body, &left)
 	f.Close()
 	if err != nil {
 		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, dst)
+}
+
+// maxUnpacked — сколько всего можно распаковать из одного архива: ядро, zapret и прочее весят
+// десятки мегабайт, а «архив-бомба» иначе забила бы диск.
+const maxUnpacked = 512 << 20
+
+// copyLimited копирует, пока не кончится общий запас left.
+func copyLimited(dst io.Writer, src io.Reader, left *int64) error {
+	n, err := io.Copy(dst, io.LimitReader(src, *left+1))
+	*left -= n
+	if err == nil && *left < 0 {
+		err = errors.New("архив распаковывается в слишком большой объём")
+	}
+	return err
 }
 
 // extractZip распаковывает архив в dst. Если всё лежит в одной общей папке — она снимается.
@@ -91,6 +106,7 @@ func extractZip(zipPath, dst string) error {
 		}
 	}
 	root := filepath.Clean(dst) + string(filepath.Separator)
+	left := int64(maxUnpacked)
 	for _, f := range zr.File {
 		name := strings.TrimPrefix(strings.ReplaceAll(f.Name, `\`, "/"), prefix)
 		if name == "" {
@@ -118,7 +134,7 @@ func extractZip(zipPath, dst string) error {
 			rc.Close()
 			return err
 		}
-		_, err = io.Copy(out, rc)
+		err = copyLimited(out, rc, &left)
 		rc.Close()
 		out.Close()
 		if err != nil {

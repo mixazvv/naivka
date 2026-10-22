@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"unicode/utf16"
@@ -41,21 +40,53 @@ func setAutostart(enable, elevated bool) error {
 		}
 		syscall.RegCloseKey(k)
 	}
-	q := exec.Command("schtasks", "/Query", "/TN", taskName)
+	q := exec.Command(sysExe("schtasks"), "/Query", "/TN", taskName)
 	hideWindow(q)
 	taskExists := q.Run() == nil
 	switch {
 	case enable && elevated:
-		xmlPath := filepath.Join(os.TempDir(), "naivka-task.xml")
-		if err := os.WriteFile(xmlPath, utf16File(taskXML(exe)), 0o600); err != nil {
-			return err
+		if isAdmin() {
+			return createAutostartTask()
 		}
-		defer os.Remove(xmlPath)
-		return runAdmin("schtasks", fmt.Sprintf(`/Create /F /TN %s /XML "%s"`, taskName, xmlPath))
+		// Без прав задачу создаёт сама Naivka, запущенная с правами (exe уже в Program Files):
+		// файл с описанием задачи она пишет в свою защищённую папку. Раньше он лежал в %TEMP%,
+		// и другая программа пользователя могла подменить его, пока открыто окно UAC.
+		return runAdmin(exe, "--create-autostart-task")
 	case taskExists:
-		return runAdmin("schtasks", fmt.Sprintf(`/Delete /F /TN %s`, taskName))
+		return runAdmin(sysExe("schtasks"), fmt.Sprintf(`/Delete /F /TN %s`, taskName))
 	}
 	return nil
+}
+
+// createAutostartTask создаёт задачу автозапуска с наивысшими правами. Только с правами
+// администратора и только для exe в Program Files; описание задачи — во временном файле в
+// папке Program Files\Naivka, куда без прав администратора не записать.
+func createAutostartTask() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	base := protectedBase()
+	if !isAdmin() || !exeProtected(exe) || base == "" {
+		return fmt.Errorf("задачу автозапуска с правами можно создать только для Naivka из Program Files")
+	}
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(base, "task-*.xml")
+	if err != nil {
+		return err
+	}
+	xmlPath := f.Name()
+	defer os.Remove(xmlPath)
+	_, err = f.Write(utf16File(taskXML(exe)))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return runAdmin(sysExe("schtasks"), fmt.Sprintf(`/Create /F /TN %s /XML "%s"`, taskName, xmlPath))
 }
 
 func xmlEscape(s string) string {
@@ -64,7 +95,11 @@ func xmlEscape(s string) string {
 }
 
 func taskXML(exe string) string {
-	user := os.Getenv("USERDOMAIN") + `\` + os.Getenv("USERNAME")
+	// Пользователь — по SID из токена: переменные окружения USERNAME/USERDOMAIN можно подменить.
+	user := currentUserSID()
+	if user == "" {
+		user = os.Getenv("USERDOMAIN") + `\` + os.Getenv("USERNAME")
+	}
 	return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo><Description>Naivka: запуск при входе в систему</Description></RegistrationInfo>
@@ -149,7 +184,7 @@ func allowLANPort(port int, program string) error {
 	if strings.ContainsAny(program, `"&|<>^%`) {
 		return fmt.Errorf("недопустимый путь к ядру: %s", program)
 	}
-	return runAdmin("cmd", fmt.Sprintf(`/c netsh advfirewall firewall delete rule name="%s" >nul 2>&1 & netsh advfirewall firewall add rule name="%s" dir=in action=allow protocol=TCP localport=%d profile=private remoteip=localsubnet program="%s"`, rule, rule, port, program))
+	return runAdmin(sysExe("cmd"), fmt.Sprintf(`/c netsh advfirewall firewall delete rule name="%s" >nul 2>&1 & netsh advfirewall firewall add rule name="%s" dir=in action=allow protocol=TCP localport=%d profile=private remoteip=localsubnet program="%s"`, rule, rule, port, program))
 }
 
 // fixUnsafeAutostart убирает задачу с наивысшими правами, созданную прежними версиями для exe
@@ -159,7 +194,7 @@ func fixUnsafeAutostart(s *Settings) {
 	if err != nil || !s.AutoStart || !s.needsAdmin() || exeProtected(exe) || !isAdmin() {
 		return
 	}
-	q := exec.Command("schtasks", "/Query", "/TN", taskName)
+	q := exec.Command(sysExe("schtasks"), "/Query", "/TN", taskName)
 	hideWindow(q)
 	if q.Run() == nil {
 		_ = setAutostart(true, true)
