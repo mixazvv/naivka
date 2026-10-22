@@ -617,7 +617,7 @@ function updateStatusNow() {
   navCounts();
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
-  if (S.mascot !== false) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet') }); Pet.update(p, kb * 1024); }
+  if (S.mascot === true) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet') }); Pet.update(p, kb * 1024); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -1710,7 +1710,7 @@ function achvToast(id, many) {
       h('div', null, h('small', null, 'Достижение'), h('b', null, a ? a[1] : `Открыто достижений: ${it[1]}`), h('span', null, a ? a[2] : 'Загляните в «Сводку» → «Достижения».')));
     el.addEventListener('click', () => { el.remove(); openDiag('achv'); });
     document.body.append(el);
-    if (S.mascot !== false) Pet.cheer(a ? `Ура! «${a[1]}»` : 'Сколько всего открыто!');
+    if (S.mascot === true) Pet.cheer(a ? `Ура! «${a[1]}»` : 'Сколько всего открыто!');
     setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); next(); }, 400); }, 4200);
   };
   next();
@@ -3851,7 +3851,7 @@ function viewSettings() {
     h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
     accentPicker(),
     h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme)),
-    check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить.', updateStatus),
+    check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить. По умолчанию выключен.', updateStatus),
     check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'),
     h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
       segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),

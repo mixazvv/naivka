@@ -266,7 +266,7 @@ func DefaultSettings() *Settings {
 		Notify:          true,
 		Theme:           "dark",
 		Custom:          customDefault,
-		Mascot:          true,
+		Mascot:          false, // котёнок — по желанию: включается в «Настройках» → «Внешний вид»
 		Achievements:    true,
 		Achv:            map[string]int64{},
 		Wall:            WallSettings{Dim: 55, Blur: 0, React: true, Fit: "cover", Scale: 100},
