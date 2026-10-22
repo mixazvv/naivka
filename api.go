@@ -27,6 +27,7 @@ func (a *App) routes() http.Handler {
 
 	// Шрифты интерфейса: в старых Windows тип .woff2 может быть не зарегистрирован.
 	_ = mime.AddExtensionType(".woff2", "font/woff2")
+	_ = mime.AddExtensionType(".webp", "image/webp")
 	sub, _ := fs.Sub(webFS, "web")
 	static := http.FileServer(http.FS(sub))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
