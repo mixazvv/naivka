@@ -115,6 +115,7 @@ function toast(msg, bad) {
   const t = $('#toast');
   t.textContent = msg;
   t.className = 'toast show' + (bad ? ' bad' : '');
+  if (bad && S && S.mascot === true) Pet.startle();
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.className = 'toast'; }, bad ? 5000 : 2200);
 }

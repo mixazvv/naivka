@@ -6,6 +6,9 @@
 // сидит, а в простое умывается, потягивается, зевает и прогуливается; идёт трафик — бежит
 // (чем быстрее, тем чаще шаги); сбой — пугается, спина дугой; защита заблокировала — грустит;
 // связь вернулась — прыгает от радости. Его можно погладить (провести мышью несколько раз) и потыкать.
+// Следит глазами за курсором и охотится на него, если резко махнуть мышью рядом; пока вы не трогаете
+// компьютер — дремлет (ночью — раньше); унесённый на карточку — сам перепрыгивает на соседние;
+// пугается сообщений об ошибке и изредка что-нибудь говорит.
 // Выключается в «Настройках» → «Внешний вид».
 const Pet = (() => {
   'use strict';
@@ -93,6 +96,8 @@ const Pet = (() => {
   function enterNow(s) {
     if (!root || s !== state || inAir()) return;
     setFlip(false);
+    root.classList.remove('nap');
+    if (napping && (s === 'on' || s === 'sad')) { root.classList.add('nap'); loop(sleepSeq, 1400); return; }
     switch (s) {
       case 'off': loop(sleepSeq, 1400); break;
       case 'wait': loop(() => ['look_1', 'look_2'], 900); break;
@@ -110,9 +115,23 @@ const Pet = (() => {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       if (!root) return;
-      if (!REDUCE.matches && !busy && !strolling && !inAir()) {
+      if (!REDUCE.matches && !busy && !strolling && !inAir() && !watching) {
         const r = Math.random();
-        if (state === 'on') {
+        // Давно никто не трогал мышь и клавиатуру — ложится подремать (ночью — быстрее).
+        const night = (h => h >= 23 || h < 6)(new Date().getHours());
+        if ((state === 'on' || state === 'sad') && !napping && performance.now() - lastInput > (night ? 60e3 : 180e3)) {
+          napping = true;
+          play(['liedown_1', 'liedown_2'], 400, back);
+        } else if (napping) {
+          // спит дальше
+        } else if (performance.now() - lastMeow > 240e3 && r < 0.25 && bubble && bubble.hidden) {
+          lastMeow = performance.now();
+          talk(['Мяу', 'Мрр?', 'Мяу!', '…', say(state)].filter(Boolean)[Math.floor(Math.random() * 5)] || 'Мяу', 1800);
+        } else if (state === 'on' && free && r < 0.18) {
+          hop();
+        } else if (state === 'on' && night && r < 0.3) {
+          play([['yawn_1', 250], ['yawn_2', 900], ['yawn_1', 250]], 0, back);
+        } else if (state === 'on') {
           if (r < 0.22) play(['sit_2', 'sit_3', 'sit_4', 'sit_1'], 520, back);
           else if (r < 0.42) play(['wash_1', 'wash_2', 'wash_3', 'wash_2', 'wash_3', 'wash_1'], 330, back);
           else if (r < 0.56) play([['stretch_1', 450], ['stretch_2', 1000], ['stretch_3', 450]], 0, back);
@@ -125,6 +144,103 @@ const Pet = (() => {
       }
       idleLoop();
     }, 4000 + Math.random() * 6000);
+  }
+
+  // ---------- курсор, дрёма, испуг ----------
+  let lastInput = performance.now(), lastMeow = performance.now(), napping = false, watching = false, watchTimer = 0;
+  let lastPounce = 0, ptr = null;
+  // Любое движение мышью или нажатие клавиши будит дремлющего кота.
+  function wake() {
+    if (!napping) return;
+    napping = false;
+    if (root) root.classList.remove('nap');
+    if (!root || inAir() || (state !== 'on' && state !== 'sad')) return;
+    stopStroll();
+    play(['liedown_2', 'liedown_1', ['yawn_1', 220], ['yawn_2', 650], ['stretch_1', 400], ['stretch_2', 700], ['stretch_3', 400]], 260, back);
+  }
+  function onKey() { lastInput = performance.now(); wake(); }
+  function onPointer(e) {
+    const now = performance.now();
+    lastInput = now;
+    if (napping) { wake(); return; }
+    const prevPtr = ptr;
+    ptr = { x: e.clientX, y: e.clientY, t: now };
+    if (!root || REDUCE.matches || held || press || inAir() || strolling || busy) return;
+    if (state !== 'on' && state !== 'sad') return;
+    const r = root.getBoundingClientRect();
+    if (!r.width) return;
+    const cx = r.left + r.width / 2, cy = r.top + r.height * 0.45;
+    const dx = e.clientX - cx, dy = e.clientY - cy, dist = Math.hypot(dx, dy);
+    if (dist > 320 || dist < 18) return;
+    // Резко махнули мышью рядом — бросается ловить.
+    const speed = prevPtr ? Math.hypot(e.clientX - prevPtr.x, e.clientY - prevPtr.y) / Math.max(1, now - prevPtr.t) : 0;
+    if (state === 'on' && speed > 1.6 && dist < 230 && dist > 50 && Math.abs(dy) < 170 && now - lastPounce > 4000 && Math.random() < 0.6) {
+      lastPounce = now;
+      pounce(e.clientX);
+      return;
+    }
+    // Иначе просто смотрит на курсор.
+    watching = true;
+    show(dx > 0 ? 'look_1' : 'look_2');
+    clearTimeout(watchTimer);
+    watchTimer = setTimeout(() => { watching = false; if (root && !busy && !strolling && !inAir()) back(); }, 1400);
+  }
+  // Прыжок за курсором по своей опоре (дома — по ширине меню).
+  function pounce(targetX) {
+    const w = root.offsetWidth;
+    let lo, hi, cur;
+    if (free) {
+      if (!support || !support.isConnected) return;
+      const r = support.getBoundingClientRect();
+      lo = Math.max(0, r.left - w * 0.2); hi = Math.min(innerWidth - w, r.right - w * 0.8); cur = fx;
+    } else {
+      const host = root.parentElement, hr = host && host.getBoundingClientRect();
+      if (!hr) return;
+      lo = 0; hi = host.clientWidth - w - 8; cur = posX;
+      targetX -= hr.left;
+    }
+    const to = Math.max(lo, Math.min(hi, targetX - w / 2));
+    watching = false; clearTimeout(watchTimer);
+    setFlip(to < cur);
+    flash('pounce', 700);
+    // Присел — прыжок — приземлился; по горизонтали летит за 0,45 с.
+    play([['stretch_1', 220], ['jump_1', 150], ['jump_2', 150], ['jump_3', 150], ['sit_1', 80]], 0, () => { setFlip(false); back(); });
+    const from = cur, t0 = performance.now() + 220;
+    const step = now => {
+      if (!root) return;
+      const k = Math.max(0, Math.min(1, (now - t0) / 450));
+      const x = from + (to - from) * k;
+      if (free) { fx = x; place(); } else { posX = x; root.style.setProperty('--pet-x', posX + 'px'); }
+      if (k < 1) requestAnimationFrame(step);
+      else if (free && onMove) onMove([+(fx / innerWidth).toFixed(4), +(fy / innerHeight).toFixed(4)]);
+    };
+    requestAnimationFrame(step);
+  }
+  // Унесённый кот иногда перепрыгивает на соседнюю карточку или кнопку.
+  function hop() {
+    if (!free) return;
+    const w = root.offsetWidth, h = root.offsetHeight, f = feet(), cx = fx + w / 2;
+    const cands = [...document.querySelectorAll(SURFACES)].filter(e => e !== support && !root.contains(e)).map(e => ({ e, r: e.getBoundingClientRect() }))
+      .filter(({ r }) => r.width >= 60 && r.top > h && r.top < innerHeight - 4 && Math.abs(r.top - f) < 220 && Math.abs((r.left + r.right) / 2 - cx) < 360 && Math.abs((r.left + r.right) / 2 - cx) > 50)
+      .filter(({ e, r }) => surfaceAt(Math.min(r.right - 4, Math.max(r.left + 4, cx)), r.top + 2) === e || surfaceAt((r.left + r.right) / 2, r.top + 2) === e);
+    if (!cands.length) return;
+    const c = cands[Math.floor(Math.random() * cands.length)];
+    const tx = Math.max(c.r.left, Math.min(c.r.right - w, (c.r.left + c.r.right) / 2 - w / 2 + (Math.random() - 0.5) * 40));
+    const dy = c.r.top - f, T = 0.55, g = 2200;
+    setFlip(tx < fx);
+    play([['stretch_1', 260], ['jump_1', 120]], 0, () => {
+      if (!root || held) return;
+      vx = (tx - fx) / T; vy = (dy - 0.5 * g * T * T) / T;
+      support = null;
+      fall();
+    });
+  }
+  // Испуг от сообщения об ошибке: на секунду выгибает спину.
+  function startle() {
+    if (!root || REDUCE.matches || inAir() || state === 'off' || state === 'run') return;
+    if (napping) { wake(); return; }
+    stopStroll();
+    play([['scared_1', 160], ['scared_2', 160], ['scared_1', 160], ['scared_2', 160], ['look_1', 500]], 0, back);
   }
 
   // ---------- где стоит ----------
@@ -224,6 +340,8 @@ const Pet = (() => {
   }
   function land(speed) {
     falling = false; vx = vy = 0;
+    setFlip(false);
+    flash('squash', 300);
     if (onMove) onMove([+(fx / Math.max(1, innerWidth)).toFixed(4), +(fy / Math.max(1, innerHeight)).toFixed(4)]);
     if (REDUCE.matches) { back(); return; }
     // С высоты — приземляется с прыжка и немного пугается, с небольшой — просто садится.
@@ -235,7 +353,10 @@ const Pet = (() => {
   let held = null, press = null, dragged = false;
   function down(e) {
     if (e.button !== 0) return;
+    dragged = false;
     press = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    // Ловим указатель сразу: резкий рывок мышью не должен соскользнуть с кота до начала переноса.
+    try { root.setPointerCapture(e.pointerId); } catch (_) { /* старый WebView */ }
   }
   function moveHeld(e) {
     if (!press) return false;
@@ -244,8 +365,8 @@ const Pet = (() => {
       // Схватили: кот выходит из меню и висит под курсором.
       makeFree();
       stopFall(); stopStroll(); stopAnim();
-      root.setPointerCapture(press.id);
-      held = { dx: press.x - fx, dy: press.y - fy, lx: e.clientX, ly: e.clientY, t: performance.now(), vx: 0, vy: 0 };
+      try { root.setPointerCapture(press.id); } catch (_) { /* уже пойман */ }
+      held = { dx: press.x - fx, dy: press.y - fy, lx: e.clientX, ly: e.clientY, t: performance.now(), since: performance.now(), vx: 0, vy: 0 };
       root.classList.add('held');
       show('jump_2');
       if (bubble) bubble.hidden = true;
@@ -259,11 +380,13 @@ const Pet = (() => {
     place();
     // Раскачивается вслед за рукой.
     root.style.setProperty('--pet-tilt', Math.max(-20, Math.min(20, -held.vx / 60)).toFixed(1) + 'deg');
-    show(Math.abs(held.vx) > 600 ? 'scared_1' : 'jump_2');
+    // Резко дёрнули — пугается; держат долго — вырывается.
+    const long = now - held.since > 2500 && Math.floor(now / 180) % 2;
+    show(Math.abs(held.vx) > 600 ? 'scared_1' : long ? 'scared_2' : 'jump_2');
     return true;
   }
   function up(e) {
-    if (!held) { press = null; return; }
+    if (!held) { press = null; try { root.releasePointerCapture(e.pointerId); } catch (_) { /* не пойман */ } return; }
     const h = held;
     held = null; press = null; dragged = true;
     root.classList.remove('held');
@@ -380,6 +503,12 @@ const Pet = (() => {
     }
     gravTimer = setInterval(gravity, 700);
     addEventListener('resize', gravity);
+    addEventListener('pointermove', onPointer, { passive: true });
+    addEventListener('keydown', onKey);
+    lastInput = performance.now(); napping = false;
+    // Утром, впервые за запуск, — потягивается.
+    const hr = new Date().getHours();
+    if (!REDUCE.matches && hr >= 6 && hr < 11 && !opts.spot) setTimeout(() => { if (root && !busy && !inAir()) play([['stretch_1', 450], ['stretch_2', 1000], ['stretch_3', 450], ['yawn_2', 600]], 0, back); }, 1500);
     idleLoop();
   }
 
@@ -387,6 +516,9 @@ const Pet = (() => {
     if (!root) return;
     stopAnim(); stopStroll(); stopFall(); clearTimeout(idleTimer); clearInterval(gravTimer);
     removeEventListener('resize', gravity);
+    removeEventListener('pointermove', onPointer);
+    removeEventListener('keydown', onKey);
+    clearTimeout(watchTimer);
     root.remove();
     root = svg = bubble = body = sprite = home = support = null; state = prev = ''; free = false; held = press = null;
   }
@@ -412,6 +544,7 @@ const Pet = (() => {
   function poke() {
     if (dragged) { dragged = false; return; } // это был перенос, а не щелчок
     if (inAir()) return;
+    if (napping) { wake(); talk('Мр… я не сплю!'); return; }
     if (state !== 'run' && state !== 'err') {
       stopStroll();
       if (state === 'off') play([['sleep_3', 600]], 0, back);
@@ -463,10 +596,11 @@ const Pet = (() => {
     if (s === state) return;
     // Связь вернулась после сбоя — праздник на пару секунд.
     const revived = (state === 'err' || state === 'wait' || state === 'sad') && (s === 'on' || s === 'run');
+    if (s !== 'on' && s !== 'sad') napping = false; // трафик, сбой или отключение будят
     prev = state; state = s; root.dataset.mood = s;
     enter(s, prev);
     if (revived && prev !== 'wait') { joy(); talk('Ура, связь вернулась!'); }
   }
 
-  return { mount, unmount, update, talk, home: () => { if (root && free) goHome(); }, cheer: (t) => { flash('hop', 650); joy(); talk(t, 3600); } };
+  return { mount, unmount, update, talk, startle, home: () => { if (root && free) goHome(); }, cheer: (t) => { flash('hop', 650); joy(); talk(t, 3600); } };
 })();
