@@ -93,6 +93,25 @@ jobs:
       - name: Контрольные суммы
         run: cd out && sha256sum *.zip > SHA256SUMS.txt
 
+      # Подпись сумм ключом из секрета NAIVKA_SIGN_KEY (Ed25519, PEM). Naivka ставит обновление, только
+      # если подпись сходится с открытым ключом внутри неё (signing.go). Без секрета релиз не выходит:
+      # неподписанное обновление установленные программы всё равно не примут.
+      - name: Подпись контрольных сумм
+        env:
+          SIGN_KEY: ${{ secrets.NAIVKA_SIGN_KEY }}
+        run: |
+          if [ -z "$SIGN_KEY" ]; then echo "::error::Нет секрета NAIVKA_SIGN_KEY — релиз не подписать"; exit 1; fi
+          umask 077
+          KEY="$(mktemp)"; trap 'rm -f "$KEY"' EXIT
+          printf '%s\n' "$SIGN_KEY" > "$KEY"
+          openssl pkeyutl -sign -rawin -inkey "$KEY" -in out/SHA256SUMS.txt | base64 -w0 > out/SHA256SUMS.txt.sig
+          # Проверка тем же открытым ключом, что встроен в программу: не сошлось — секрет не тот.
+          PUB="$(sed -n 's/^var updatePubKey = "\(.*\)"$/\1/p' signing.go)"
+          { printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00'; echo "$PUB" | base64 -d; } > "$KEY.pub"
+          base64 -d out/SHA256SUMS.txt.sig > "$KEY.sig"
+          openssl pkeyutl -verify -pubin -keyform DER -inkey "$KEY.pub" -rawin -in out/SHA256SUMS.txt -sigfile "$KEY.sig"
+          rm -f "$KEY.pub" "$KEY.sig"
+
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
@@ -115,7 +134,8 @@ jobs:
                «Подробнее» → «Выполнить в любом случае» (программа не подписана сертификатом).
             4. Откроется подсказка «Как пользоваться»: добавьте сервер по ссылке и нажмите большую кнопку.
 
-            `SHA256SUMS.txt` — контрольные суммы архивов. Сборка из исходников (${{ github.sha }}).
+            `SHA256SUMS.txt` — контрольные суммы архивов, `SHA256SUMS.txt.sig` — их подпись (её проверяет автообновление). Сборка из исходников (${{ github.sha }}).
           files: |
             out/*.zip
             out/SHA256SUMS.txt
+            out/SHA256SUMS.txt.sig

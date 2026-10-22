@@ -108,10 +108,8 @@ func (x *Xray) install() error {
 		return err
 	}
 	defer os.Remove(zipPath)
-	if ok, err := verifyAsset(xrayRepo, tag, xrayAsset(), zipPath); err != nil {
+	if err := verifyAsset(xrayRepo, tag, xrayAsset(), zipPath); err != nil {
 		return err
-	} else if !ok {
-		x.a.mon.Event("info", "Xray: GitHub не сообщил контрольную сумму, файл получен только по HTTPS", false)
 	}
 	x.Stop()
 	if err := extractCore(zipPath, x.dir(), []string{xrayExe()}); err != nil {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestVerifyAsset(t *testing.T) {
@@ -30,23 +31,23 @@ func TestVerifyAsset(t *testing.T) {
 		_, _ = w.Write([]byte(`{"assets":[{"name":"other.zip","digest":"sha256:00"},{"name":"core.zip","digest":"` + digest + `"}]}`))
 	}))
 	defer srv.Close()
-	old := githubAPI
-	githubAPI = srv.URL + "/"
-	defer func() { githubAPI = old }()
+	old, oldRetry := githubAPI, digestRetry
+	githubAPI, digestRetry = srv.URL+"/", time.Millisecond
+	defer func() { githubAPI, digestRetry = old, oldRetry }()
 
-	if ok, err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); !ok || err != nil {
-		t.Fatalf("верный файл: ok=%v err=%v", ok, err)
+	if err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); err != nil {
+		t.Fatalf("верный файл: %v", err)
 	}
 	digest = "sha256:" + hex.EncodeToString(make([]byte, 32))
-	if _, err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); err == nil {
+	if err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); err == nil {
 		t.Error("подменённый файл принят")
 	}
-	digest = "" // старый релиз: GitHub хеша не знает
-	if ok, err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); ok || err != nil {
-		t.Errorf("без хеша: ok=%v err=%v", ok, err)
+	digest = "" // старый релиз: GitHub хеша не знает — непроверенный файл не ставится
+	if err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); err == nil {
+		t.Error("файл без хеша принят")
 	}
 	status = 403 // лимит запросов к API
-	if ok, err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); ok || err != nil {
-		t.Errorf("API недоступно: ok=%v err=%v", ok, err)
+	if err := verifyAsset("SagerNet/sing-box", "v1.14.3", "core.zip", file); err == nil {
+		t.Error("файл принят без доступа к API")
 	}
 }

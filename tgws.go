@@ -98,11 +98,9 @@ func (t *TgWs) install() error {
 	if err := downloadTo(url, tmp, t.progress); err != nil {
 		return err
 	}
-	if ok, err := verifyAsset(tgwsRepo, tag, tgwsAsset(), tmp); err != nil {
+	if err := verifyAsset(tgwsRepo, tag, tgwsAsset(), tmp); err != nil {
 		os.Remove(tmp)
 		return err
-	} else if !ok {
-		t.a.mon.Event("info", "tg-ws-proxy: GitHub не сообщил контрольную сумму, файл получен только по HTTPS", false)
 	}
 	wasRunning := t.Running()
 	t.Stop()
