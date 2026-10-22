@@ -1664,6 +1664,14 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 @keyframes petSpark { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.15) rotate(8deg); } }
 @keyframes petHearts { from { transform: translateY(4px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
 @keyframes petHop { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-10px); } }
+/* Охота за курсором — прыжок дугой; приземление — сплющивается и пружинит; дрёма — «z» над головой. */
+.pet.pounce .pet-jump { animation: petPounce .7s ease-out; }
+@keyframes petPounce { 0%, 30% { transform: translateY(0); } 55% { transform: translateY(-16px); } 85%, 100% { transform: translateY(0); } }
+.pet.squash .pet-jump { animation: petSquash .3s ease-out; }
+@keyframes petSquash { 0% { transform: scale(1.14, .82); } 60% { transform: scale(.95, 1.06); } 100% { transform: none; } }
+.pet.nap .pet-zzz { opacity: 1; }
+.pet.nap .pet-zzz text { animation: petZ 3s ease-in-out infinite; }
+.pet.nap .pet-zzz text:nth-child(2) { animation-delay: .6s; } .pet.nap .pet-zzz text:nth-child(3) { animation-delay: 1.2s; }
 
 .pet-bubble { position: absolute; left: 74px; bottom: 60px; z-index: 5; width: max-content; max-width: 150px; padding: 6px 10px; border-radius: 12px 12px 12px 3px; background: var(--raised); border: 1px solid var(--line);
   color: var(--ink); font-size: 12px; line-height: 1.35; box-shadow: var(--shadow); animation: petBubble .25s cubic-bezier(.3, 1.4, .5, 1); pointer-events: none; }
