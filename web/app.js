@@ -734,6 +734,7 @@ async function toggleConnect() {
   if (busy) return;
   const pw = $('#connectBtn');
   if (pw) { pw.classList.remove('ripple'); void pw.offsetWidth; pw.classList.add('ripple'); }
+  if (S && S.mascot === true) Pet.press();
   // «Только zapret» без прав администратора: zapret включается после перезапуска с правами.
   if (zapretOnly() && !(ST && ST.zapretOn) && needElevation()) {
     S.zapret.enabled = true; save(0); await saveNow();
