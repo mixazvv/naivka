@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -51,7 +53,9 @@ func listFormatFromURL(u string) string {
 func (l *RuleList) normalize() {
 	l.Name = strings.TrimSpace(l.Name)
 	l.URL = strings.TrimSpace(l.URL)
-	if l.ID == "" {
+	// id — имя файла в папке lists и часть тега в конфиге: только восемь hex-знаков,
+	// иначе id из чужой копии вроде «..\\..\\x» записал бы скачанный список вне папки.
+	if !listIDRe.MatchString(l.ID) {
 		l.ID = newID()
 	}
 	if l.Format != "srs" && l.Format != "json" && l.Format != "text" {
@@ -66,6 +70,8 @@ func (l *RuleList) normalize() {
 		}
 	}
 }
+
+var listIDRe = regexp.MustCompile(`^[0-9a-f]{8}$`)
 
 func (l RuleList) validate() error {
 	u, err := url.Parse(l.URL)
@@ -164,7 +170,10 @@ func parseInlineList(text string) *inlineList {
 	for _, r := range res.Rules {
 		switch r.Kind {
 		case "domain":
-			out.Domains = append(out.Domains, strings.TrimPrefix(r.Value, "."))
+			// Домен верхнего уровня («com», «ru») из чужого списка забрал бы себе полинтернета.
+			if d := strings.TrimPrefix(r.Value, "."); strings.Contains(d, ".") {
+				out.Domains = append(out.Domains, d)
+			}
 		case "ip":
 			v := r.Value
 			if !strings.Contains(v, "/") {
@@ -174,10 +183,24 @@ func parseInlineList(text string) *inlineList {
 					v += "/32"
 				}
 			}
+			// Слишком широкие сети (0.0.0.0/0, /4…) из чужого списка увели бы мимо сервера или
+			// заблокировали бы весь трафик — такие строки пропускаем.
+			if _, n, err := net.ParseCIDR(v); err != nil || !narrowEnough(n) {
+				continue
+			}
 			out.IPs = append(out.IPs, v)
 		}
 	}
 	return out
+}
+
+// narrowEnough — сеть не шире /8 для IPv4 и /16 для IPv6.
+func narrowEnough(n *net.IPNet) bool {
+	ones, bits := n.Mask.Size()
+	if bits == 32 {
+		return ones >= 8
+	}
+	return ones >= 16
 }
 
 // fillLists — текстовые списки для конфига. fetch: скачать свежие (при подключении).

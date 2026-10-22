@@ -66,10 +66,25 @@ umask 077
 [[ -s "$FRIENDS" ]] || echo '[]' > "$FRIENDS"
 NOW="$(date +%s)"
 
+# Если правка списка не дошла до конфигов (проверка не прошла), прежний список возвращается —
+# иначе Naivka показала бы друга удалённым, а вход у него остался бы. Временные файлы убираются всегда.
+ROLLBACK=0
+cleanup() {
+  local code=$?
+  if [[ "$ROLLBACK" == 1 && $code -ne 0 && -f "$FRIENDS.prev" ]]; then
+    mv -f "$FRIENDS.prev" "$FRIENDS"
+    warn "Список друзей возвращён к прежнему."
+  fi
+  rm -f "$FRIENDS_DIR"/.friends.* "$FRIENDS_DIR"/.config.* "$FRIENDS_DIR"/.caddy.* "$FRIENDS.prev"
+}
+trap cleanup EXIT
+
 save() { # save <json>
   local tmp
   tmp="$(mktemp "$FRIENDS_DIR/.friends.XXXXXX")"
   printf '%s\n' "$1" > "$tmp"
+  cp -p "$FRIENDS" "$FRIENDS.prev"
+  ROLLBACK=1
   mv "$tmp" "$FRIENDS"
   chmod 600 "$FRIENDS"
 }
@@ -81,7 +96,7 @@ need_fid() {
 
 # apply — переписывает пользователей sing-box и Caddy: владелец + все друзья, у которых доступ открыт.
 apply() {
-  local active tmp
+  local active tmp ctmp=""
   active="$(jq --argjson now "$NOW" '[.[] | select((.paused | not) and (.until == 0 or .until > $now))]' "$FRIENDS")"
 
   tmp="$(mktemp "$FRIENDS_DIR/.config.XXXXXX")"
@@ -92,7 +107,26 @@ apply() {
       elif .tag == "naivka-hy2" then
         .users = ([.users[] | select(.name == "naivka")] + [$f[] | {name: ("f-" + .id), password: .hy2}])
       else . end)' "$CONFIG" > "$tmp"
-  if ! sing-box check -c "$tmp"; then rm -f "$tmp"; die "Конфиг не прошёл проверку sing-box — ничего не изменено."; fi
+  if ! sing-box check -c "$tmp"; then die "Конфиг не прошёл проверку sing-box — ничего не изменено."; fi
+
+  # NaiveProxy: строки basic_auth друзей помечены «# naivka-friend» и стоят сразу за строкой владельца.
+  # Оба конфига сначала собираются и проверяются, и только потом записываются.
+  if [[ -n "${NAIVE_USER:-}" && -f "$CADDYFILE" ]]; then
+    ctmp="$(mktemp "$FRIENDS_DIR/.caddy.XXXXXX")"
+    jq -r '.[] | "    basic_auth \(.nuser) \(.npass) # naivka-friend"' <<<"$active" > "$ctmp.add"
+    awk -v owner="basic_auth ${NAIVE_USER} " -v addf="$ctmp.add" '
+      /# naivka-friend$/ { next }
+      { print }
+      index($0, owner) { while ((getline l < addf) > 0) print l }' "$CADDYFILE" > "$ctmp"
+    rm -f "$ctmp.add"
+    if cmp -s "$ctmp" "$CADDYFILE"; then
+      ctmp=""
+    elif ! "$CADDY_BIN" validate --config "$ctmp" --adapter caddyfile >/dev/null 2>&1; then
+      die "Конфиг Caddy не прошёл проверку — ничего не изменено."
+    fi
+  fi
+  ROLLBACK=0 # дальше конфиги меняются: список уже верный, откатывать нечего
+
   if ! cmp -s "$tmp" "$CONFIG"; then
     cat "$tmp" > "$CONFIG" # cat, а не mv: права и владелец файла остаются прежними
     if [[ "${NO_SINGBOX_RESTART:-0}" != 1 ]]; then
@@ -107,27 +141,15 @@ apply() {
   fi
   rm -f "$tmp"
 
-  # NaiveProxy: строки basic_auth друзей помечены «# naivka-friend» и стоят сразу за строкой владельца.
-  if [[ -n "${NAIVE_USER:-}" && -f "$CADDYFILE" ]]; then
-    tmp="$(mktemp "$FRIENDS_DIR/.caddy.XXXXXX")"
-    jq -r '.[] | "    basic_auth \(.nuser) \(.npass) # naivka-friend"' <<<"$active" > "$tmp.add"
-    awk -v owner="basic_auth ${NAIVE_USER} " -v addf="$tmp.add" '
-      /# naivka-friend$/ { next }
-      { print }
-      index($0, owner) { while ((getline l < addf) > 0) print l }' "$CADDYFILE" > "$tmp"
-    rm -f "$tmp.add"
-    if ! cmp -s "$tmp" "$CADDYFILE"; then
-      if ! "$CADDY_BIN" validate --config "$tmp" --adapter caddyfile >/dev/null 2>&1; then
-        rm -f "$tmp"; die "Конфиг Caddy не прошёл проверку — ничего не изменено."
-      fi
-      cat "$tmp" > "$CADDYFILE"
-      if [[ "$TEST" == 1 ]]; then
-        "$CADDY_BIN" reload --config "$CADDYFILE" --adapter caddyfile --force >/dev/null 2>&1 || warn "Caddy не перечитал конфиг."
-      else
-        systemctl reload naivka-caddy || warn "Caddy не перечитал конфиг."
-      fi
+  if [[ -n "$ctmp" ]]; then
+    cat "$ctmp" > "$CADDYFILE"
+    rm -f "$ctmp"
+    if [[ "$TEST" == 1 ]]; then
+      "$CADDY_BIN" reload --config "$CADDYFILE" --adapter caddyfile --force >/dev/null 2>&1 || warn "Caddy не перечитал конфиг."
+    else
+      # Не перечитал — перезапуск; иначе старые входы NaiveProxy остались бы открыты.
+      systemctl reload naivka-caddy 2>/dev/null || systemctl restart naivka-caddy || die "Caddy не перезапустился — проверьте: systemctl status naivka-caddy"
     fi
-    rm -f "$tmp"
   fi
 }
 
@@ -187,10 +209,10 @@ case "$ACTION" in
     id="$(openssl rand -hex 4)"
     until=0
     (( DAYS > 0 )) && until=$(( NOW + DAYS * 86400 ))
-    save "$(jq --arg id "$id" --arg name "$NAME" --arg uuid "$(sing-box generate uuid)" \
-      --arg hy2 "$(openssl rand -hex 16)" --arg nuser "f$(openssl rand -hex 5)" --arg npass "$(openssl rand -hex 16)" \
-      --argjson now "$NOW" --argjson until "$until" \
-      '. + [{id: $id, name: $name, uuid: $uuid, hy2: $hy2, nuser: $nuser, npass: $npass, created: $now, until: $until, paused: false}]' "$FRIENDS")"
+    # Ключи передаются через окружение, а не аргументами: аргументы процесса видны всем на сервере.
+    save "$(F_UUID="$(sing-box generate uuid)" F_HY2="$(openssl rand -hex 16)" F_NUSER="f$(openssl rand -hex 5)" F_NPASS="$(openssl rand -hex 16)" \
+      jq --arg id "$id" --arg name "$NAME" --argjson now "$NOW" --argjson until "$until" \
+      '. + [{id: $id, name: $name, uuid: $ENV.F_UUID, hy2: $ENV.F_HY2, nuser: $ENV.F_NUSER, npass: $ENV.F_NPASS, created: $now, until: $until, paused: false}]' "$FRIENDS")"
     apply
     ensure_timer
     log "Друг «$NAME» добавлен."

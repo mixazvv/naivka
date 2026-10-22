@@ -286,8 +286,6 @@ body[data-state="off"] .lanes-box .power::after { content: ""; position: absolut
 .tile-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-spark { align-self: end; }
 .tile-spark .mspark { height: 26px; }
-.mapcard { padding: 0; overflow: hidden; }
-.map-box { position: relative; height: 300px; }
 /* ---------- кнопки и поля ---------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 7px; cursor: pointer; border: 1px solid var(--line); background: var(--raised); white-space: nowrap; }
 .btn:hover { border-color: var(--faint); }
@@ -718,27 +716,7 @@ body[data-state="blocked"] .pw-core { fill: var(--danger-soft); }
 @keyframes breathe { 0%, 100% { opacity: .1; transform: scale(.94); } 50% { opacity: .26; transform: scale(1.04); } }
 @keyframes shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
 
-.map { width: 100%; height: 100%; display: block; }
-.map-land { fill: none; stroke: color-mix(in srgb, var(--ink) 17%, transparent); stroke-width: 7.2; stroke-linecap: round; }
-.map-glow { opacity: .55; }
-.map-glow.me { fill: color-mix(in srgb, var(--direct) 16%, transparent); filter: blur(18px); }
-.map-glow.srv { fill: color-mix(in srgb, var(--tunnel) 14%, transparent); filter: blur(18px); }
-.map-glow.srv.on { fill: color-mix(in srgb, var(--tunnel) 30%, transparent); }
-.map-arc { fill: none; stroke: var(--faint); stroke-linecap: round; }
-.map-arc.on { stroke: var(--tunnel); }
-.map-arc-glow { fill: none; stroke: transparent; stroke-linecap: round; }
-.map-arc-glow.on { stroke: var(--tunnel); opacity: .16; }
-.map-pin { stroke: var(--surface); stroke-width: .9px; vector-effect: non-scaling-stroke; }
-.map-pin.me { fill: var(--direct); }
-.map-pin.srv { fill: var(--faint); }
-.map-pin.srv.on { fill: var(--tunnel); }
-.map-pulse { fill: none; stroke-width: 2px; vector-effect: non-scaling-stroke; transform-box: fill-box; transform-origin: center; animation: ping 2.4s ease-out infinite; }
-.map-pulse.me { stroke: var(--direct); }
-.map-pulse.srv { stroke: var(--faint); animation: none; opacity: 0; }
-.map-pulse.srv.on { stroke: var(--tunnel); animation: ping 2.4s ease-out infinite .8s; opacity: 1; }
 @keyframes ping { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(4.2); opacity: 0; } }
-.map-lbl { fill: var(--ink); font-family: var(--font); font-weight: 600; }
-.map .halo { paint-order: stroke; stroke: var(--surface); stroke-linejoin: round; }
 
 /* частицы трафика (схема и карта) */
 .pt { pointer-events: none; }
@@ -854,7 +832,7 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
 .mini-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ambient, .pw-halo, .pw-ring, .map-pulse, .skel, .power svg { animation: none !important; }
+  .ambient, .pw-halo, .pw-ring, .skel, .power svg { animation: none !important; }
   .scard, .scard:hover { transition: none; transform: none; }
 }
 
@@ -995,9 +973,8 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
 :root[data-skin="gold"] .pt-glow { opacity: .12; }
 :root[data-skin="gold"] .pt-core { fill: #FFF3DC; }
 :root[data-skin="gold"] .lane-node, :root[data-skin="gold"] .lane-end { fill: #0F0E0C; stroke-width: 1.5; }
-:root[data-skin="gold"] .lanes-stage .lanes .halo, :root[data-skin="gold"] .map .halo { stroke: #0A0A09; }
+:root[data-skin="gold"] .lanes-stage .lanes .halo { stroke: #0A0A09; }
 :root[data-skin="gold"] .leg-dot { box-shadow: none; border-radius: 0; transform: rotate(45deg) scale(.85); }
-:root[data-skin="gold"] .map-land { stroke: rgba(216, 179, 106, .2); }
 /* Счётчики на вкладках — золотые ромбы. */
 :root[data-skin="gold"] .nav-count { display: inline-grid; place-items: center; position: relative; min-width: 16px; height: 16px; margin-left: 4px; font: 700 9.5px/1 var(--font); color: var(--tunnel); }
 :root[data-skin="gold"] .nav-count::before { content: ""; position: absolute; inset: 2px; z-index: -1; transform: rotate(45deg); border: 1px solid currentColor; }
@@ -1130,7 +1107,6 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
 :root[data-skin="blocks"] .pt-core { fill: #FFFFFF; }
 :root[data-skin="blocks"] .pt-tail { fill: currentColor; opacity: .6; }
 :root[data-skin="blocks"] .leg-dot { border-radius: 0; box-shadow: none; }
-:root[data-skin="blocks"] .map-land { stroke-linecap: square; }
 /* Кнопка подключения: ровно как в основной теме (ореол, дорожка, ядро, значок), но по клеткам. */
 .pw-px { display: none; }
 :root[data-skin="blocks"] .pw-c, :root[data-skin="blocks"] .pw-h, :root[data-skin="blocks"] .pw-icon { display: none; }
@@ -1188,7 +1164,7 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
 /* Без неонового свечения: линии, кнопки, узлы и фон — плоские. В «Никогда не проси об этом»
    огни — часть замысла темы, там свечение остаётся. */
 :root:not([data-skin="gold"]) .ambient { background: none; }
-:root:not([data-skin="gold"]) :is(.lane-glow, .pt-glow, .map-glow, .map-arc-glow, .pw-halo) { display: none; }
+:root:not([data-skin="gold"]) :is(.lane-glow, .pt-glow, .pw-halo) { display: none; }
 
 :root:not([data-skin="gold"]) .leg-dot { box-shadow: none; }
 :root:not([data-skin="gold"]) .btn.primary { box-shadow: none; }

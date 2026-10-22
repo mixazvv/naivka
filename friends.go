@@ -55,6 +55,8 @@ type friendsSessions struct {
 	ops   sync.Mutex              // команды по одной: скрипт и так не даёт править список одновременно
 }
 
+// get берёт соединение на время команды: таймер простоя стоит, пока не вызван release.
+// Если таймер уже сработал, соединение вот-вот закроется — считаем, что его нет.
 func (f *friendsSessions) get(id string) *ssh.Client {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -62,8 +64,21 @@ func (f *friendsSessions) get(id string) *ssh.Client {
 	if c == nil {
 		return nil
 	}
-	c.timer.Reset(friendsIdle)
+	if !c.timer.Stop() {
+		c.cl.Close()
+		delete(f.conns, id)
+		return nil
+	}
 	return c.cl
+}
+
+// release снова запускает отсчёт простоя после команды.
+func (f *friendsSessions) release(id string, cl *ssh.Client) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c := f.conns[id]; c != nil && c.cl == cl {
+		c.timer.Reset(friendsIdle)
+	}
 }
 
 func (f *friendsSessions) put(id string, cl *ssh.Client) {
@@ -193,7 +208,12 @@ func (a *App) runFriends(req friendsReq) ([]Friend, error) {
 			return nil, err
 		}
 		a.friends.put(host.ID, cl)
+		cl = a.friends.get(host.ID)
+		if cl == nil {
+			return nil, errors.New("соединение с сервером закрылось")
+		}
 	}
+	defer a.friends.release(host.ID, cl)
 	env := map[string]string{"ACTION": req.Action, "SERVER_ADDR": host.Host}
 	if req.Action == "add" {
 		env["NAME"] = req.Name

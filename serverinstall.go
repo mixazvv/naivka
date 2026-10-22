@@ -330,6 +330,7 @@ func (a *App) runScriptOpts(cl *ssh.Client, user, script string, env map[string]
 		logf = func(l string) { si.logf("%s", l) }
 	}
 	var res scriptResult
+	var seen []string // строки этого запуска — для распознавания отказа sudo
 	sess, err := cl.NewSession()
 	if err != nil {
 		return res, err
@@ -374,6 +375,9 @@ func (a *App) runScriptOpts(cl *ssh.Client, user, script string, env map[string]
 				res.friends = append(res.friends, strings.TrimSpace(l))
 				continue
 			}
+			if len(seen) < 200 {
+				seen = append(seen, line)
+			}
 			logf(line)
 		}
 	}()
@@ -398,7 +402,7 @@ func (a *App) runScriptOpts(cl *ssh.Client, user, script string, env map[string]
 	<-readDone
 	if err != nil {
 		var ee *ssh.ExitError
-		if errors.As(err, &ee) && user != "root" && sudoFailed(si) {
+		if errors.As(err, &ee) && user != "root" && sudoFailed(seen) {
 			return res, errors.New("sudo требует пароль. Войдите как root или разрешите этому пользователю sudo без пароля")
 		}
 		if ee == nil {
@@ -496,7 +500,7 @@ func parsePanelLine(b64 string) (Panel, error) {
 	if (v.Type != "3x-ui" && v.Type != "s-ui") || v.Port < 1 || v.Port > 65535 || v.User == "" || v.Pass == "" {
 		return p, errors.New("скрипт панели выдал неполные данные")
 	}
-	if v.Access != "public" {
+	if v.Access != "public" || !webURL(v.URL) {
 		v.Access, v.URL = "tunnel", ""
 	}
 	if !strings.HasPrefix(v.Path, "/") {
@@ -526,9 +530,8 @@ func (a *App) addPanel(p Panel) (string, error) {
 	return p.ID, SaveSettings(a.dir, ns)
 }
 
-func sudoFailed(si *serverInstaller) bool {
-	v := si.view()
-	for _, l := range v.Log {
+func sudoFailed(lines []string) bool {
+	for _, l := range lines {
 		if strings.Contains(l, "sudo") && (strings.Contains(l, "password") || strings.Contains(l, "пароль")) {
 			return true
 		}
@@ -601,7 +604,7 @@ func (a *App) openPanelTunnel(id, password, key, passphrase string) (string, err
 	if p == nil {
 		return "", errors.New("Панель не найдена")
 	}
-	if p.Access == "public" && p.URL != "" {
+	if p.Access == "public" && webURL(p.URL) {
 		return p.URL, nil
 	}
 	if password == "" && strings.TrimSpace(key) == "" {
@@ -665,6 +668,10 @@ func (a *App) openPanelTunnel(id, password, key, passphrase string) (string, err
 	si.tunMu.Lock()
 	if si.tunnels == nil {
 		si.tunnels = map[string]*panelTunnel{}
+	}
+	// Пока поднимался этот туннель, мог успеть подняться другой для той же панели — закрываем прежний.
+	if old := si.tunnels[id]; old != nil {
+		old.close()
 	}
 	si.tunnels[id] = t
 	si.tunMu.Unlock()

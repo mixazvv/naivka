@@ -21,14 +21,25 @@ type mmdb struct {
 	ipVersion  uint
 	dataStart  uint
 	ipv4Start  uint // узел, с которого начинаются IPv4-адреса (::/96) в базе IPv6
+	budget     int  // сколько ещё значений можно разобрать за один разбор (защита от «бомб» из указателей)
 }
 
-func openMMDB(b []byte) (*mmdb, error) {
+// decodeBudget — больше значений одна запись базы стран не содержит; испорченный файл с указателями
+// на одну и ту же большую карту иначе разворачивался бы до нехватки памяти.
+const decodeBudget = 10000
+
+func openMMDB(b []byte) (db *mmdb, err error) {
+	// Испорченный файл не должен уронить Naivka: любая ошибка разбора — просто «база не открылась».
+	defer func() {
+		if recover() != nil {
+			db, err = nil, errors.New("повреждена база MMDB")
+		}
+	}()
 	i := bytes.LastIndex(b, mmdbMarker)
 	if i < 0 {
 		return nil, errors.New("это не база MMDB")
 	}
-	db := &mmdb{buf: b}
+	db = &mmdb{buf: b}
 	meta, _, err := db.decode(uint(i+len(mmdbMarker)), uint(i+len(mmdbMarker)))
 	if err != nil {
 		return nil, err
@@ -41,6 +52,11 @@ func openMMDB(b []byte) (*mmdb, error) {
 	db.nodeCount, db.recordSize, db.ipVersion = num("node_count"), num("record_size"), num("ip_version")
 	if db.recordSize != 24 && db.recordSize != 28 && db.recordSize != 32 {
 		return nil, errors.New("неизвестный размер записи MMDB")
+	}
+	// Узел занимает не меньше 6 байт: больше узлов, чем байт в файле, — испорченные сведения
+	// (и защита от переполнения при умножении ниже).
+	if db.nodeCount > uint(len(b)) {
+		return nil, errors.New("повреждено дерево MMDB")
 	}
 	tree := db.nodeCount * db.recordSize / 4
 	if db.nodeCount == 0 || tree+16 > uint(i) {
@@ -106,13 +122,15 @@ func (db *mmdb) lookup(ip net.IP) (any, error) {
 
 // decode разбирает значение по смещению off; base — начало раздела данных (от него считаются указатели).
 func (db *mmdb) decode(off, base uint) (any, uint, error) {
+	db.budget = decodeBudget
 	return db.decodeDepth(off, base, 0)
 }
 
 func (db *mmdb) decodeDepth(off, base uint, depth int) (any, uint, error) {
 	b := db.buf
 	bad := errors.New("повреждена запись MMDB")
-	if depth > 32 || off >= uint(len(b)) {
+	db.budget--
+	if depth > 32 || off >= uint(len(b)) || db.budget < 0 {
 		return nil, 0, bad
 	}
 	ctrl := b[off]

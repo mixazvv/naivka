@@ -23,8 +23,12 @@ func restoreSystemProxy(string)        {}
 
 func systemProxyOurs(int) (bool, string) { return true, "" }
 
-func protectedBase() string { return "" }
-func legacyWindows() bool   { return false }
+func protectedBase() string     { return "" }
+func sysExe(name string) string { return name }
+func createAutostartTask() error {
+	return fmt.Errorf("задача автозапуска поддерживается только в Windows")
+}
+func legacyWindows() bool { return false }
 
 func setAutostart(enable, elevated bool) error {
 	if enable {

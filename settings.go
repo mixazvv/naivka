@@ -343,6 +343,12 @@ func (c *CustomTheme) normalize() {
 	}
 }
 
+// webURL — адрес сайта: схема http или https и имя сервера.
+func webURL(u string) bool {
+	p, err := url.Parse(strings.TrimSpace(u))
+	return err == nil && (p.Scheme == "https" || p.Scheme == "http") && p.Host != "" && p.User == nil
+}
+
 var achvIDRe = regexp.MustCompile(`^[a-z0-9-]{1,24}$`)
 
 // normalizeAchv — только похожие на настоящие записи и не больше 64: окно не раздует настройки.
@@ -493,6 +499,13 @@ func (s *Settings) normalize() {
 	}
 	if s.OwnHosts == nil {
 		s.OwnHosts = []OwnHost{}
+	}
+	// Адрес панели открывается в браузере по щелчку — только веб-адрес (http/https с сервером):
+	// file:, UNC-путь или exe из чужой копии или от подменённого сервера запустили бы программу.
+	for i := range s.Panels {
+		if s.Panels[i].Access != "public" || !webURL(s.Panels[i].URL) {
+			s.Panels[i].Access, s.Panels[i].URL = "tunnel", ""
+		}
 	}
 	for i := range s.RuleLists {
 		s.RuleLists[i].normalize()
@@ -706,10 +719,16 @@ func (s *Settings) Validate() error {
 	if len(s.RuleLists) > maxRuleLists {
 		return fmt.Errorf("Списков по ссылке больше %d — оставьте самые нужные", maxRuleLists)
 	}
+	seenList := map[string]bool{}
 	for _, l := range s.RuleLists {
 		if err := l.validate(); err != nil {
 			return err
 		}
+		// Одинаковые id дали бы два одинаковых тега rule-set — ядро не запустилось бы.
+		if seenList[l.ID] {
+			return fmt.Errorf("Список «%s» повторяется — уберите копию", l.Name)
+		}
+		seenList[l.ID] = true
 	}
 	if _, _, err := parseDoH(s.DNSRemote); err != nil {
 		return err

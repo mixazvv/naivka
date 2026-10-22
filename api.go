@@ -356,14 +356,6 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/zapret/trial/probe", func(*http.Request) (any, error) { go a.zapret.TrialProbe(); return nil, nil })
 	api("POST", "/api/zapret/trial/accept", func(*http.Request) (any, error) { return nil, a.zapret.TrialAccept() })
 	api("POST", "/api/zapret/trial/cancel", func(*http.Request) (any, error) { a.zapret.TrialCancel(); return nil, nil })
-	api("POST", "/api/zapret/restart", func(*http.Request) (any, error) {
-		if a.zapret.busy() {
-			return nil, errors.New("Дождитесь окончания подбора или проверки стратегий")
-		}
-		err := a.zapret.Start(a.settingsCopy())
-		go a.applyZapretRoute() // заработал — его сайты напрямую, нет — через сервер
-		return nil, err
-	})
 	api("POST", "/api/tg/install", func(*http.Request) (any, error) { return nil, a.tgws.Install() })
 	api("POST", "/api/tg/open", func(*http.Request) (any, error) {
 		if !a.tgws.Running() {
@@ -823,6 +815,28 @@ func (a *App) applyAutostart(prev, ns *Settings) error {
 	return nil
 }
 
+// riskyJSON — то из настроек, что из чужой резервной копии без подтверждения брать нельзя.
+func riskyJSON(s *Settings) string {
+	b, _ := json.Marshal(struct {
+		Override, ExtraOutbounds, ExtraRules, DNSRemote, DNSDirect string
+		RuleLists                                                  []RuleList
+		KillSwitch, ShareOpen                                      bool
+		Panels                                                     []Panel
+		OwnHosts                                                   []OwnHost
+	}{strings.TrimSpace(s.Override), strings.TrimSpace(s.ExtraOutbounds), strings.TrimSpace(s.ExtraRules), s.DNSRemote, s.DNSDirect,
+		s.RuleLists, s.KillSwitch, s.Share.Enabled && !s.Share.Auth, s.Panels, s.OwnHosts})
+	return string(b)
+}
+
+func riskyDiffers(ns, cur *Settings) bool { return riskyJSON(ns) != riskyJSON(cur) }
+
+// keepRisky оставляет опасные настройки текущими, а всё остальное берёт из копии.
+func keepRisky(ns, cur *Settings) {
+	ns.Override, ns.ExtraOutbounds, ns.ExtraRules = cur.Override, cur.ExtraOutbounds, cur.ExtraRules
+	ns.DNSRemote, ns.DNSDirect, ns.KillSwitch = cur.DNSRemote, cur.DNSDirect, cur.KillSwitch
+	ns.RuleLists, ns.Share, ns.Panels, ns.OwnHosts = cur.RuleLists, cur.Share, cur.Panels, cur.OwnHosts
+}
+
 func (a *App) apiRestore(r *http.Request) (any, error) {
 	var req struct {
 		Text     string `json:"text"`
@@ -856,18 +870,19 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 	if problems := openSettings(ns); len(problems) > 0 {
 		return nil, fmt.Errorf("%s", strings.Join(problems, "; "))
 	}
-	// Ручные правки конфига и свои outbounds из чужой копии могут увести весь трафик на чужой
-	// сервер — их берём, только если пользователь подтвердил, что копия его.
+	// Опасное из чужой копии (ручные правки конфига, свои outbounds и правила, удалённые списки, DNS,
+	// выключенная защита от утечек, открытая раздача, свои серверы и панели) может увести трафик мимо
+	// сервера или на чужой, а через подставленный «свой сервер» — выманить пароль SSH. Берём его,
+	// только если человек подтвердил, что копия его; иначе оставляем свои значения.
 	cur := a.settingsCopy()
-	if strings.TrimSpace(ns.Override) != strings.TrimSpace(cur.Override) || strings.TrimSpace(ns.ExtraOutbounds) != strings.TrimSpace(cur.ExtraOutbounds) {
+	ns.normalize() // сравниваем в одном виде: пустой DNS в копии — это DNS по умолчанию
+	if riskyDiffers(ns, cur) {
 		switch req.Advanced {
 		case "keep":
 		case "drop":
-			ns.Override, ns.ExtraOutbounds = cur.Override, cur.ExtraOutbounds
+			keepRisky(ns, cur)
 		default:
-			if strings.TrimSpace(ns.Override) != "" || strings.TrimSpace(ns.ExtraOutbounds) != "" {
-				return nil, errors.New("needAdvanced")
-			}
+			return nil, errors.New("needAdvanced")
 		}
 	}
 	ns.normalize()

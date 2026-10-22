@@ -994,7 +994,6 @@ function jsonArea(key, placeholder, wantArray) {
   return h('div', null, ta, err);
 }
 
-function moreId(id, d) { d.id = id; return d; }
 
 // Раскрытые блоки «ещё» запоминаются по заголовку: окно часто пересобирает разделы
 // (обновились данные, изменилась настройка), и без этого блок закрывался сам.
@@ -1949,7 +1948,6 @@ function renderOverviewLiveNow() {
   renderLive();
   renderGlobe();
   renderTiles();
-  renderMap();
   renderLanes();
   renderChart();
   renderTop();
@@ -1998,7 +1996,6 @@ function renderIP() {
   } else cols = h('div', { class: 'ipcols' }, ipColumn('Сейчас', d.direct, 'Подключитесь, чтобы сайты видели адрес сервера.'));
   card.classList.toggle('loading', ip.loading);
   card.replaceChildren(head, cols);
-  renderMap();
   renderTiles();
 }
 // ---------- диагностика ----------
@@ -2073,7 +2070,6 @@ function viewDiag() {
           h('div', { class: 'card-head' }, h('h3', null, 'Куда идёт трафик'), h('small', { id: 'globeNote' })),
           h('div', { class: 'globe-box', id: 'globeBox' }),
           h('div', { class: 'globe-legend', id: 'globeLegend' })));
-      MAP.key = '';
       renderOverviewLive();
       renderIP();
     } else if (diagTab === 'conns') {
@@ -4066,7 +4062,7 @@ function restoreBackup() {
         return;
       } catch (e) {
         if (e.message === 'needAdvanced') {
-          advanced = confirm('В копии есть ручные правки конфига или свои outbounds. Через них весь трафик можно отправить на чужой сервер.\n\nПрименить их? Нажимайте «ОК», только если копию сделали вы сами. «Отмена» — восстановить всё остальное, а правки оставить свои.') ? 'keep' : 'drop';
+          advanced = confirm('В копии другие настройки, через которые трафик можно увести мимо сервера или на чужой: ручные правки конфига, свои правила и списки по ссылке, DNS, защита от утечек, раздача по сети, свои серверы и панели.\n\nВзять их из копии? Нажимайте «ОК», только если копию сделали вы сами. «Отмена» — восстановить всё остальное, а эти настройки оставить свои.') ? 'keep' : 'drop';
           continue;
         }
         if (e.message !== 'needPassword') { toast(e.message, true); return; }

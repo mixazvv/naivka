@@ -124,8 +124,11 @@ udp_busy() { port_busy u "$1"; }
 
 # Повторный запуск: те же ключи и порты.
 if [[ -r "$STATE_FILE" ]]; then
+  WANT_DOMAIN="$DOMAIN"
   # shellcheck disable=SC1090
   . "$STATE_FILE"
+  # Домен — тот, что указан сейчас, а не прошлый из файла: иначе сменить его повторной установкой нельзя.
+  [[ "$NAIVE" == 1 ]] && DOMAIN="$WANT_DOMAIN"
   log "Найдена прошлая установка — использую её ключи и порты."
   # если в прошлый раз Hysteria2 не ставили, а теперь просят — порт выберем ниже
   [[ "$HY2" == 1 && -z "${HY2_PASS:-}" ]] && HY2_PORT=auto
@@ -291,6 +294,8 @@ if [[ "$NAIVE" == 1 ]]; then
   CADDY_CONF_DIR="$CADDY_DIR"
   [[ "$TEST" == 1 ]] && CADDY_CONF_DIR="$CONF_DIR/caddy"
   mkdir -p "$CADDY_CONF_DIR"
+  OLD_UMASK="$(umask)"
+  umask 027 # в Caddyfile пароль NaiveProxy: даже на миг файл не должен быть доступен всем
   # HTTP/3 выключаем, если UDP 443 занимает Hysteria2.
   H3_OPT=""
   [[ "$HY2" == 1 && "${HY2_PORT:-}" == 443 ]] && H3_OPT=$'\n  servers {\n    protocols h1 h2\n  }'
@@ -321,6 +326,7 @@ if [[ "$NAIVE" == 1 ]]; then
     echo "}"
   } > "$CADDY_CONF_DIR/Caddyfile"
   chmod 640 "$CADDY_CONF_DIR/Caddyfile"
+  umask "$OLD_UMASK"
   if ! "$CADDY_BIN" validate --config "$CADDY_CONF_DIR/Caddyfile" --adapter caddyfile >"$CONF_DIR/caddy-validate.log" 2>&1; then
     tail -n 15 "$CONF_DIR/caddy-validate.log" >&2
     die "Конфиг Caddy не прошёл проверку."
