@@ -134,6 +134,8 @@ type TrafficView struct {
 	PeriodUp   int64            `json:"periodUp"`
 	PeriodKeys TrafficDay       `json:"periodKeys"` // все ключи за месяц
 	LimitGB    int              `json:"limitGB"`
+	Lifetime   TrafficDay       `json:"lifetime"` // за всё хранимое время (для достижений)
+	Streak     int              `json:"streak"`   // дней подряд по сегодня (или вчера) с трафиком
 }
 
 type TrafficDayView struct {
@@ -169,6 +171,32 @@ func (t *trafficStore) view(now time.Time, days int, s *Settings) TrafficView {
 			cur[1] += val[1]
 			v.PeriodKeys[kk] = cur
 		}
+	}
+	v.Lifetime = TrafficDay{}
+	for _, d := range t.days {
+		for kk, val := range d {
+			cur := v.Lifetime[kk]
+			cur[0] += val[0]
+			cur[1] += val[1]
+			v.Lifetime[kk] = cur
+		}
+	}
+	// Серия: сегодня ещё может не быть трафика — тогда считаем с вчера.
+	for i := 0; i < 400; i++ {
+		d, ok := t.days[dayKey(now.AddDate(0, 0, -i))]
+		used := false
+		for _, val := range d {
+			if val[0]+val[1] > 0 {
+				used = true
+			}
+		}
+		if !ok || !used {
+			if i == 0 {
+				continue
+			}
+			break
+		}
+		v.Streak++
 	}
 	t.mu.Unlock()
 	v.PeriodDown, v.PeriodUp = v.PeriodKeys["proxy"][0], v.PeriodKeys["proxy"][1]

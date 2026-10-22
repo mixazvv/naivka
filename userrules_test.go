@@ -162,3 +162,11 @@ func TestCustomThemeNormalize(t *testing.T) {
 		t.Fatal("тема и свои серверы не должны требовать переподключения")
 	}
 }
+
+// Котёнок по умолчанию выключен, достижения — включены.
+func TestMascotOffByDefault(t *testing.T) {
+	s := DefaultSettings()
+	if s.Mascot || !s.Achievements {
+		t.Fatalf("mascot=%v achievements=%v", s.Mascot, s.Achievements)
+	}
+}

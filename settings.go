@@ -208,16 +208,19 @@ type Settings struct {
 	SleepReconnect  bool             `json:"sleepReconnect"` // отключаться перед сном, подключаться после пробуждения
 	Notify          bool             `json:"notify"`
 	AutoStart       bool             `json:"autoStart"`
-	Theme           string           `json:"theme"`       // dark | gold («Никогда не проси об этом») | blocks («Пиксели») | custom («Своя»)
-	Custom          CustomTheme      `json:"custom"`      // цвета и шрифт темы «Своя»
-	Accent          string           `json:"accent"`      // акцентный цвет, #RRGGBB
-	Oled            bool             `json:"oled"`        // тёмная тема на чистом чёрном
-	Wall            WallSettings     `json:"wall"`        // свой фон окна (фото или видео)
-	TrayMini        bool             `json:"trayMini"`    // щелчок по значку в трее открывает мини-окно
-	NativeFrame     bool             `json:"nativeFrame"` // обычная рамка Windows вместо своей строки заголовка
-	OwnServer       bool             `json:"ownServer"`   // показывать раздел «Свой сервер»
-	Lang            string           `json:"lang"`        // язык интерфейса: ru | en
-	Nav             string           `json:"nav"`         // боковое меню: list (список) | wheel (колесо с лепестками)
+	Theme           string           `json:"theme"`        // dark | gold («Никогда не проси об этом») | blocks («Пиксели») | custom («Своя»)
+	Custom          CustomTheme      `json:"custom"`       // цвета и шрифт темы «Своя»
+	Mascot          bool             `json:"mascot"`       // талисман внизу меню
+	Achievements    bool             `json:"achievements"` // достижения
+	Achv            map[string]int64 `json:"achv"`         // открытые достижения: id → когда (unix)
+	Accent          string           `json:"accent"`       // акцентный цвет, #RRGGBB
+	Oled            bool             `json:"oled"`         // тёмная тема на чистом чёрном
+	Wall            WallSettings     `json:"wall"`         // свой фон окна (фото или видео)
+	TrayMini        bool             `json:"trayMini"`     // щелчок по значку в трее открывает мини-окно
+	NativeFrame     bool             `json:"nativeFrame"`  // обычная рамка Windows вместо своей строки заголовка
+	OwnServer       bool             `json:"ownServer"`    // показывать раздел «Свой сервер»
+	Lang            string           `json:"lang"`         // язык интерфейса: ru | en
+	Nav             string           `json:"nav"`          // боковое меню: list (список) | wheel (колесо с лепестками)
 	Window          *WindowGeom      `json:"window,omitempty"`
 	Zapret          ZapretSettings   `json:"zapret"`
 	Telegram        TelegramSettings `json:"telegram"`
@@ -263,6 +266,9 @@ func DefaultSettings() *Settings {
 		Notify:          true,
 		Theme:           "dark",
 		Custom:          customDefault,
+		Mascot:          false, // котёнок — по желанию: включается в «Настройках» → «Внешний вид»
+		Achievements:    true,
+		Achv:            map[string]int64{},
 		Wall:            WallSettings{Dim: 55, Blur: 0, React: true, Fit: "cover", Scale: 100},
 		Accent:          accentDefault,
 		TrayMini:        true,
@@ -337,6 +343,19 @@ func (c *CustomTheme) normalize() {
 	}
 }
 
+var achvIDRe = regexp.MustCompile(`^[a-z0-9-]{1,24}$`)
+
+// normalizeAchv — только похожие на настоящие записи и не больше 64: окно не раздует настройки.
+func normalizeAchv(m map[string]int64) map[string]int64 {
+	out := map[string]int64{}
+	for k, v := range m {
+		if achvIDRe.MatchString(k) && v > 0 && len(out) < 64 {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func newID() string {
 	b := make([]byte, 4)
 	_, _ = rand.Read(b)
@@ -408,6 +427,7 @@ func (s *Settings) fingerprint() string {
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
 	c.Wall = WallSettings{}
 	c.Custom = CustomTheme{}
+	c.Mascot, c.Achievements, c.Achv = false, false, nil
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
 		c.Servers[i].Fav = false
@@ -527,6 +547,7 @@ func (s *Settings) normalize() {
 	}
 	s.Accent = normalizeAccent(s.Accent)
 	s.Custom.normalize()
+	s.Achv = normalizeAchv(s.Achv)
 	if s.Lang != "en" {
 		s.Lang = "ru"
 	}
