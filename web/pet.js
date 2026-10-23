@@ -258,6 +258,9 @@ const Pet = (() => {
     [1, null, () => play(['tail_1', 'tail_2', 'tail_3', 'tail_4', 'tail_1', 'tail_2', 'tail_3', 'tail_4'], 140, back)],
     [2, null, () => play(['scratch_1', 'scratch_2', 'scratch_3', 'scratch_2', 'scratch_3', 'scratch_1'], 210, back)],
     [3, null, () => play([['loaf_1', 3500], ['loaf_2', 2500], ['loaf_1', 1500]], 0, back)],
+    // Ложится на живот, поглядывает по сторонам, моргает.
+    [3, null, () => play([['liebar_1', 2500], ['liebar_2', 1800], ['liebar_3', 2200], ['liebar_4', 1500], ['liebar_1', 1500]], 0, back)],
+    [2, null, () => play([['perch_1', 2500], ['perch_2', 1500], ['perch_4', 2000], ['perch_3', 2500], ['perch_1', 1200]], 0, back)],
     // Разворачивается спиной, смотрит в окно, поворачивается обратно.
     [2, null, () => play([['bodyturn_5', 250], ['bodyturn_4', 300], ['back_1', 1200], ['back_2', 900], ['bodyturn_1', 300], ['bodyturn_2', 300], ['bodyturn_3', 350], ['bodyturn_6', 300]], 0, back)],
     [1, null, () => play([['sneeze_1', 600], ['sneeze_2', 250], ['tiltb_2', 700]], 0, back)],
@@ -625,8 +628,10 @@ const Pet = (() => {
     const fast = opt.fast != null ? opt.fast : dist > 220 && chance(0.4);
     const trot = !fast && dist > 150 && chance(0.35);
     const diag = !fast && !trot && !done0 && chance(0.15);
-    const gait = fast ? { cycle: seq('gallop', 6), ms: 75, speed: 140 } : trot ? { cycle: seq('trot', 6), ms: 95, speed: 70 }
-      : diag ? { cycle: seq(left ? 'diagl' : 'diagr', 4), ms: 190, speed: 30 } : { cycle: seq('stride', 8), ms: 115, speed: 34 };
+    const gait = fast ? (chance(0.5) ? { cycle: seq('gallop', 6), ms: 75, speed: 140 } : { cycle: seq('dash', 6), ms: 80, speed: 130 })
+      : trot ? { cycle: seq('trot', 6), ms: 95, speed: 70 }
+      : diag ? { cycle: seq(left ? 'diagl' : 'diagr', 4), ms: 190, speed: 30 }
+      : chance(0.5) ? { cycle: seq('stride', 8), ms: 115, speed: 34 } : { cycle: seq('pace', 6), ms: 125, speed: 34 };
     const turn = flip !== left && !diag;
     strolling = true; busy = true;
     const begin = () => {
@@ -728,7 +733,8 @@ const Pet = (() => {
       // Совсем рядом и двигается — бьёт лапой.
       if (dist < 90 && speed > 0.4 && now - lastPaw > 4000) {
         lastPaw = now;
-        play(dy < -40 ? [['pounceup_1', 160], ['pounceup_2', 260], ['reachb_4', 200]] : seq('paw', 6), 90, back);
+        play(dy < -40 ? [['pounceup_1', 160], ['pounceup_2', 260], ['reachb_4', 200]]
+          : chance(0.5) ? seq('paw', 6) : [['playcur_1', 120], ['playcur_2', 160], ['playcur_3', 160], ['playcur_4', 200], ['playcur_5', 200]], 90, back);
         return;
       }
       // Резко махнули рядом — бросается ловить (иногда сначала зовёт поиграть).
@@ -951,7 +957,7 @@ const Pet = (() => {
       vx = vy = 0;
       if (REDUCE.matches || feet() > innerHeight - 40) { fall(); return; }
       halt(); hanging = true;
-      play(['hang_1', 'hang_2', 'hang_1', 'hang_2'], 200, () => {
+      play(['hangb_1', 'hangb_2', 'hangb_3', 'hangb_2', 'hangb_1', 'hangb_4'], 180, () => {
         hanging = false;
         afterLand = () => play([['fallhigh_3', 300], ['fallhigh_4', 500]], 0, back);
         fall(v => v < 500 ? 'fallhigh_1' : 'fallhigh_2');
