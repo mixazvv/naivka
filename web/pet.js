@@ -4,8 +4,8 @@
 // на карточку, спрыгивает с краёв, бегает по низу окна и карабкается наверх; иногда бежит туда, где щёлкнули. Следит за курсором, ловит его лапой и охотится; если курсор задержать на нём —
 // ластится; гладят по голове, чешут подбородок, трогают живот — каждое по-своему. Взяли мышью — висит
 // по-разному: за холку, хвост, лапу или туловище; трясут — кружится голова; швырнули — обижается.
-// Живёт состоянием подключения: отключено — ложится спать; подключается — насторожен; трафик — бежит;
-// сбой — пугается; заблокировано защитой — грустит; связь вернулась — радуется.
+// Живёт состоянием подключения: отключено — ложится спать; подключается — насторожен; много трафика —
+// носится по окну; сбой — пугается; заблокировано защитой — грустит; связь вернулась — радуется.
 // Выключается в «Настройках» → «Внешний вид». Место, куда его унесли, хранится в настройках.
 const Pet = (() => {
   'use strict';
@@ -167,13 +167,29 @@ const Pet = (() => {
     switch (s) {
       case 'off': loop(() => boxSleep ? [['box_3', 3000], ['box_2', 500], ['box_3', 4000]] : sleepSeq(), 1400); break;
       case 'wait': loop(() => pick([['alert_1', 'alert_2', 'alert_3'], seq('listen', 4), ['scan_1', 'scan_2', 'scan_3', 'scan_4'], ['earmove_1', 'earmove_2', 'earmove_1']]), 600); break;
-      case 'run': loop(() => chance(0.5) ? seq('run', 4) : seq('run', 4, 5), runMs); break;
+      case 'run': runAbout(); break;
       case 'err': loop(() => chance(0.15) ? [['hiss_1', 300], ['hiss_2', 400]] : ['scared_1', 'scared_2'], 170); break;
       case 'sad': stopAnim(); show(chance(0.5) ? 'sad_1' : 'sadlie_1'); break;
       default: stopAnim(); show(grumpy() ? 'angry_4' : 'idle_1');
     }
   }
   const back = () => enterNow(state);
+
+  // Идёт трафик — носится по-настоящему: бегом по меню или по своей опоре, с опоры на опору по окну,
+  // иногда выскакивает из меню; время от времени останавливается перевести дух. Места нет — бежит на месте.
+  let rested = false;
+  function runAbout() {
+    if (REDUCE.matches) { loop(() => seq('run', 4, 5), runMs); return; }
+    if (!rested && chance(0.3)) {
+      rested = true;
+      play([['runstop_3', 150], ['runstop_4', 200], ['tosit_5', 300], pick([['idle_3', rnd(2500, 5000)], ['scan_2', rnd(2500, 4500)], ['loaf_1', rnd(3000, 6000)]])], 0, back);
+      return;
+    }
+    rested = false;
+    if (free ? chance(0.55) && roam(true) : chance(0.3) && explore(null, true)) return;
+    if (stroll(null, { fast: true })) return;
+    play([...seq('run', 4, 5), ...seq('run', 4, 5), ...seq('run', 4, 5)], runMs(), back);
+  }
 
   // ---------- живой простой: позы, моргание, дела ----------
   const IDLE = ['idle_1', 'idle_2', 'idle_3', 'idle_4', 'idle_5', 'idle_6', 'idle_7', 'idle_8', 'sit_1', 'sit_2', 'sit_3', 'sit_4', 'look_1', 'look_2'];
@@ -324,15 +340,16 @@ const Pet = (() => {
   // Вылазка из меню в окно: спрыгивает и добирается до карточки (t или случайной) по другим опорам;
   // через 1,5–4 минуты — домой. fast — носится бегом.
   function explore(t, fast) {
-    if (free || !root) return;
+    if (free || !root) return false;
     const sideR = home && home.getBoundingClientRect();
     const minX = sideR ? sideR.right + 20 : 0;
     const c = t ? [t] : targets().filter(t => t.r.left > minX - 40);
-    if (!c.length) return;
+    if (!c.length) return false;
     makeFree();
     exploreUntil = performance.now() + rnd(90e3, 240e3);
     const to = pick(c);
     jumpOff(to.r.left + to.r.width / 2 > fx ? 1 : -1, () => travel(to, { fast }));
+    return true;
   }
 
   // На что можно встать: карточки, плитки, кнопки, колонка «Сейчас» и т. п.
@@ -378,7 +395,8 @@ const Pet = (() => {
   // Видимые опоры, на которые можно перепрыгнуть.
   function targets() {
     const w = root.offsetWidth, h = root.offsetHeight;
-    return [...document.querySelectorAll(SURFACES)].filter(e => e !== support && !root.contains(e)).map(e => ({ e, r: e.getBoundingClientRect() }))
+    // Опора и то, что в неё вложено (кнопки в переключателе), — одно и то же место: туда не прыгает.
+    return [...document.querySelectorAll(SURFACES)].filter(e => e !== support && !root.contains(e) && !(support && (support.contains(e) || e.contains(support)))).map(e => ({ e, r: e.getBoundingClientRect() }))
       .filter(({ r }) => r.width >= 70 && r.top > h && r.top < innerHeight - 4 && r.left >= 0 && r.right <= innerWidth + 1)
       .filter(({ e, r }) => surfaceAt(Math.min(r.right - 4, Math.max(r.left + 4, (r.left + r.right) / 2)), r.top + 2) === e && w > 0);
   }
@@ -432,8 +450,8 @@ const Pet = (() => {
   }
   // Прыжок на опору: выше — присел, прыгнул, подтянулся за край; сильно выше — вскарабкался;
   // ниже — заглянул вниз и спрыгнул (иногда передумал).
-  // done — что дальше после приземления (в путешествии); без него — садится.
-  function leapTo(t, done) {
+  // done — что дальше после приземления (в путешествии); без него — садится. quick — на бегу, без примерки.
+  function leapTo(t, done, quick) {
     if (!free || !root) return;
     const w = root.offsetWidth, f = feet();
     const tx = Math.max(t.r.left - w * 0.2, Math.min(t.r.right - w * 0.8, (t.r.left + t.r.right) / 2 - w / 2 + rnd(-30, 30)));
@@ -441,6 +459,8 @@ const Pet = (() => {
     setFlip(tx < fx);
     // Вскарабкаться можно только по боку высокого элемента, который доходит донизу, до лап.
     if (dy < -180 && Math.abs(tx - fx) < 260 && t.r.bottom >= f - 40) { climbTo(t, done); return; }
+    // Цель — то же место, где стоит (вложенный элемент): просто остаётся.
+    if (Math.abs(tx - fx) < 12 && Math.abs(dy) < 6) { support = t.e; (done || back)(); return; }
     leaping = true; // пока готовится к прыжку, проверка опоры его не роняет
     const go = (pre) => play(pre, 0, () => {
       if (!root || held) { leaping = false; return; }
@@ -454,6 +474,7 @@ const Pet = (() => {
       play([['edgethink_1', 500], ['edgethink_2', 600], ['edgethink_3', 700], ['edgethink_4', 500]], 0, () => { leaping = false; back(); });
       return;
     }
+    if (quick) { go(dy > 40 ? [['jumpdown_1', 140]] : [['jumpup_1', 140]]); return; }
     go(dy > 40 ? [['lookdown_1', 400], ['lookdown_2', 500], ['lookdown_3', 400], ['jumpdown_1', 250]] : [['jumpup_1', 300]]);
   }
   // Карабкается по боковому краю карточки вверх.
@@ -506,7 +527,7 @@ const Pet = (() => {
   function halt() { trip = null; stopStroll(); }
   function travel(t, opt = {}) {
     if (!root || !free || held) return;
-    const me = trip = { hops: 0, fast: !!opt.fast };
+    const me = trip = { hops: 0, fast: !!opt.fast, seen: [] };
     const stop = () => { if (trip === me) trip = null; setFlip(false); back(); };
     const finish = () => {
       if (trip !== me) return;
@@ -515,20 +536,28 @@ const Pet = (() => {
         : [['sitdown_2', 160], ['sitdown_3', 180], ['sitdown_4', 260]], 0, () => { setFlip(false); save(); back(); });
     };
     const next = () => {
-      if (trip !== me || !root || !free || held) return;
+      if (trip !== me || !root || !free || held) {
+        // Путешествие прервали (новое состояние, руки) — если никто не занял кота, возвращается к своему.
+        if (trip !== me && root && !held && !busy && !strolling && !inAir()) back();
+        return;
+      }
       if (!t.e.isConnected) { stop(); return; }
       t.r = t.e.getBoundingClientRect();
       if (support === t.e || ++me.hops > 14) { finish(); return; }
+      if (support) { if (me.seen.includes(support)) me.hops += 2; me.seen = [support, ...me.seen].slice(0, 4); }
       if (!supported()) { vx = vy = 0; support = null; afterLand = () => play([['land_1', 220]], 0, next); fall(); return; }
       const w = root.offsetWidth, f = feet(), cx = fx + w / 2;
       const mid = r => (r.left + r.right) / 2;
       const gap = r => Math.max(0, r.left - cx, cx - r.right);
       const ok = r => r.width > 0 && gap(r) <= 360 && (r.top - f >= -260 || (gap(r) < 200 && r.bottom >= f - 40));
-      if (ok(t.r)) { leapTo(t, next); return; }
+      if (ok(t.r)) { leapTo(t, next, me.fast); return; }
       const far = c => Math.hypot(mid(c.r) - mid(t.r), c.r.top - t.r.top);
       const mine = Math.hypot(cx - mid(t.r), f - t.r.top);
-      const c = targets().filter(c => c.e !== t.e && ok(c.r) && far(c) < mine - 60).sort((a, b) => far(a) - far(b));
-      if (c.length) { leapTo(c.length > 1 && chance(0.3) ? c[1] : c[0], next); return; }
+      // Промежуточная опора: ближе к цели, не из недавних и в стороне (чтобы не скакать на месте по соседним).
+      const c = targets().filter(c => c.e !== t.e && ok(c.r) && far(c) < mine - 60 && !me.seen.includes(c.e)
+        && (Math.abs(Math.max(c.r.left, Math.min(c.r.right - w, cx - w / 2)) - fx) > 60 || Math.abs(c.r.top - f) > 24))
+        .sort((a, b) => far(a) - far(b));
+      if (c.length) { leapTo(c.length > 1 && chance(0.3) ? c[1] : c[0], next, me.fast); return; }
       const dir = mid(t.r) > cx ? 1 : -1;
       if (support) {
         const r = support.getBoundingClientRect();
@@ -541,7 +570,9 @@ const Pet = (() => {
   function roam(fast) {
     const f = feet(), cx = fx + root.offsetWidth / 2;
     const c = targets().filter(({ r }) => Math.hypot((r.left + r.right) / 2 - cx, r.top - f) > 300);
-    if (c.length) travel(pick(c), { fast });
+    if (!c.length) return false;
+    travel(pick(c), { fast });
+    return true;
   }
 
   // ---------- ходьба ----------
@@ -988,7 +1019,7 @@ const Pet = (() => {
   // update — фаза подключения (off | wait | on | revive | err | blocked) и скорость в байтах/с.
   function update(phase, bps) {
     if (!root) return;
-    const s = phase === 'on' ? (bps > 30 * 1024 ? 'run' : 'on') : phase === 'wait' || phase === 'revive' ? 'wait'
+    const s = phase === 'on' ? (bps > 150 * 1024 ? 'run' : 'on') : phase === 'wait' || phase === 'revive' ? 'wait'
       : phase === 'err' ? 'err' : phase === 'blocked' ? 'sad' : 'off';
     const kb = Math.max(0, bps) / 1024;
     root.style.setProperty('--pet-step', (0.7 - Math.min(0.48, Math.log10(1 + kb) * 0.13)).toFixed(2) + 's');
