@@ -1264,8 +1264,8 @@ function renderLanes() {
     });
     // Узел «Компьютер» — сама кнопка подключения (HTML поверх схемы), здесь только подписи.
     const end = (x, ic, title, sub) => ic === 'pc' ? [
-      s('text', { x, y: Y0 + 74, 'text-anchor': 'middle', class: 'lbl halo' }, title),
-      s('text', { x, y: Y0 + 90, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)] : [
+      s('text', { x, y: Y0 + 88, 'text-anchor': 'middle', class: 'lbl halo' }, title),
+      s('text', { x, y: Y0 + 104, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)] : [
       ...(mc ? [pxNode(x, Y0, 25, ic, 'var(--ink)', 'end')] : [s('circle', { cx: x, cy: Y0, r: 25, class: 'lane-end' }), icon(ic, x, Y0, 24, 'var(--ink)')]),
       s('text', { x, y: Y0 + 46, 'text-anchor': 'middle', class: 'lbl halo' }, title),
       s('text', { x, y: Y0 + 62, 'text-anchor': 'middle', class: 'sub-lbl halo' }, sub)];
