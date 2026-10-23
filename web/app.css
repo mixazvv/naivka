@@ -209,7 +209,7 @@ p { margin: 0 0 10px; }
 .stage-notices:empty { display: none; }
 .lanes-stage { margin-top: 10px; flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 300px; }
 .lanes-box { position: relative; }
-.lanes-box .power { position: absolute; left: var(--pcx, 9.5%); top: var(--pcy, 50%); transform: translate(-50%, -50%); width: clamp(60px, 10.5%, 110px); height: auto; aspect-ratio: 1; z-index: 1; }
+.lanes-box .power { position: absolute; left: var(--pcx, 9.5%); top: var(--pcy, 50%); transform: translate(-50%, -50%); width: clamp(76px, 13%, 140px); height: auto; aspect-ratio: 1; z-index: 1; }
 /* Живые ветви (branches.js): canvas с ветками, поверх — узлы и листья-сайты. */
 .lanes-box.branches { height: clamp(360px, 44vw, 520px); }
 .lanes-box.branches::before { content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -1201,8 +1201,8 @@ body.mini-mode { overflow: hidden; height: auto; background: var(--surface); }
    с обводкой цвета состояния и значком, без сплошной заливки и ореолов. Во всех темах со схемой ветвей. */
 .pw-px-gap { display: none; }
 :root[data-skin="blocks"] .pw-px-gap { display: inline; }
-.lanes-box.branches .power { width: 66px; }
-.lanes-box.branches.small .power { width: 54px; }
+.lanes-box.branches .power { width: 100px; }
+.lanes-box.branches.small .power { width: 72px; }
 .lanes-box.branches .power .pw-h, .lanes-box.branches .pw-halo { display: none; }
 .lanes-box.branches .power .pw-c:not(.pw-halo) { display: inline; }
 .lanes-box.branches .pw-track { fill: var(--raised); stroke: var(--line); stroke-width: 4.5; }
@@ -1217,7 +1217,7 @@ body[data-state="blocked"] .lanes-box.branches .pw-core { fill: none; }
 @media (prefers-reduced-motion: reduce) { body[data-state="on"] .lanes-box.branches .power { filter: none; } }
 
 /* Узкое окно: подпись «Компьютер» прижата к левому краю кнопки, чтобы не обрезалась. */
-.lanes-box.branches.small .br-node.comp { transform: translate(-27px, 0); justify-items: start; text-align: left; }
+.lanes-box.branches.small .br-node.comp { transform: translate(-36px, 0); justify-items: start; text-align: left; }
 
 /* ---------- 2.4: режим «Только zapret» ---------- */
 body.zapret-only .srv-only { display: none; }

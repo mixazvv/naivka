@@ -20,7 +20,8 @@ const Branches = (() => {
   // ---------- геометрия ----------
   const narrow = () => W < 620;
   // Справа оставляем место под подпись «Интернет» сбоку: так её не пересекают сходящиеся ветки.
-  const cx0 = () => Math.max(W * 0.1, 48), cx1 = () => narrow() ? Math.min(W * 0.9, W - 34) : W - 150;
+  // Кнопка подключения (100 px, в узком окне 72) целиком в окне.
+  const cx0 = () => Math.max(W * 0.1, narrow() ? 48 : 68), cx1 = () => narrow() ? Math.min(W * 0.9, W - 34) : W - 150;
   function geom(key) {
     const c = [cx0(), H * 0.5], n = [cx1(), H * 0.5], top = 64, bot = H - 64;
     switch (key) {
@@ -123,7 +124,7 @@ const Branches = (() => {
     for (const el of nodesEl.children) {
       const k = el.dataset.key;
       let p;
-      if (k === 'comp') p = [cx0(), H * 0.5 + (narrow() ? 38 : 48)];
+      if (k === 'comp') p = [cx0(), H * 0.5 + (narrow() ? 44 : 60)]; // подпись под кнопкой
       else if (k === 'net') p = [cx1(), H * 0.5];
       else if (k === 'tg') p = geom('tg')[3];
       else p = bez(geom(k), .5);
