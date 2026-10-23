@@ -1664,6 +1664,10 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 @keyframes petSpark { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.15) rotate(8deg); } }
 @keyframes petHearts { from { transform: translateY(4px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-8px); opacity: 0; } }
 @keyframes petHop { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-10px); } }
+/* Уходит после прогулки — уменьшается и тает; выходит из меню — наоборот. */
+.pet.leaving svg { transform: scale(.55) translateY(-8px); opacity: 0; transition: transform 1.1s ease-in, opacity 1.1s ease-in; transform-origin: 50% 95%; }
+.pet.arriving svg { animation: petArrive .8s ease-out; transform-origin: 50% 95%; }
+@keyframes petArrive { from { transform: scale(.55) translateY(-8px); opacity: 0; } }
 /* Охота за курсором — прыжок дугой; приземление — сплющивается и пружинит; дрёма — «z» над головой. */
 .pet.pounce .pet-jump { animation: petPounce .7s ease-out; }
 @keyframes petPounce { 0%, 30% { transform: translateY(0); } 55% { transform: translateY(-16px); } 85%, 100% { transform: translateY(0); } }
