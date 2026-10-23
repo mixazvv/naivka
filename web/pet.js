@@ -182,7 +182,11 @@ const Pet = (() => {
     if (REDUCE.matches) { loop(() => seq('run', 4, 5), runMs); return; }
     if (!rested && chance(0.3)) {
       rested = true;
-      play([['runstop_3', 150], ['runstop_4', 200], ['tosit_5', 300], pick([['idle_3', rnd(2500, 5000)], ['scan_2', rnd(2500, 4500)], ['loaf_1', rnd(3000, 6000)]])], 0, back);
+      play([['brake_1', 110], ['brake_2', 160], ['brake_3', 220], ...pick([
+        [['pant_1', 900], ['pant_2', 1200], ['pant_1', 900], ['pant_2', 1000]],
+        [['pant_3', rnd(2500, 4500)]],
+        [...seq('observe', 4).map(n => [n, 800])],
+        [['tosit_5', 300], ['scan_2', rnd(2500, 4500)]]])], 0, back);
       return;
     }
     rested = false;
@@ -218,7 +222,7 @@ const Pet = (() => {
   const bugHunt = () => {
     flash('hop', 650);
     play([['lookup_3', 700], ['lookup_4', 600], ['lookup_3', 500], ['stalk_1', 200], ['stalk_2', 200], ['stalk_1', 200],
-      ['pounceup_1', 180], ['pounceup_2', 320], ['land_1', 220], chance(0.4) ? ['happy_1', 900] : ['tiltb_2', 900]], 0, back);
+      ['pounceup_1', 180], ['pounceup_2', 320], ['touch_3', 220], chance(0.4) ? ['happy_1', 900] : ['tiltb_2', 900]], 0, back);
   };
   // Дела в простое: [вес, условие, действие]. Чем больше вес, тем чаще. «Ничего» — просто сидит.
   const ACTIONS = [
@@ -235,6 +239,15 @@ const Pet = (() => {
     [3, null, () => play([...seq('scan', 4), 'scan_1'], 650, back)],
     [3, null, () => play(seq('scanb', 5), 600, back)],
     [3, null, () => play([...seq('lookhead', 5), 'lookhead_3', 'lookhead_1'], 600, back)],
+    [3, null, () => play([...seq('lookaround', 4), 'lookaround_2', 'lookaround_1'], 700, back)],
+    [3, null, () => play([...seq('observe', 4), 'observe_2', 'observe_3'], 900, back)],
+    [2, null, () => play([...seq('inspect', 4), 'inspect_3', 'inspect_4'], 500, back)],
+    // Послышалось что-то — вздрогнул, обернулся, успокоился.
+    [1, null, () => play([['alertb_1', 300], ['alertb_2', 400], ['alertb_3', 500], ['alertb_4', 900]], 0, back)],
+    // Охотится на невидимую добычу: припал, подкрался, прыгнул, прижал лапами.
+    [2, null, () => play([['hunt_1', 600], ['hunt_2', 500], ['hunt_3', 220], ['hunt_4', 260], ['hunt_5', 400], ['hunt_6', 900]], 0, back)],
+    // Поворачивается к нам мордочкой и обратно.
+    [2, null, () => play([['turnin_1', 150], ['turnin_2', 150], ['turnin_3', 1500], ['turnin_4', 900], ['turnin_3', 300], ['turnin_2', 150], ['turnin_1', 150]], 0, back)],
     [2, null, () => play([...seq('lookup', 4), 'lookup_2'], 550, back)],
     [3, null, () => play([...seq('listen', 4), 'listen_2'], 550, back)],
     [3, null, () => play(['earmove_1', 'earmove_2', 'earmove_3', 'earmove_2', 'earmove_4', 'earmove_1'], 350, back)],
@@ -329,7 +342,7 @@ const Pet = (() => {
     if (quiet) {
       root.classList.add('arriving');
       play([['front_1', 200], ['front_2', 200], ['front_3', 200], ['front_4', 200], ['tosit_4', 160], ['tosit_5', 160]], 0, () => { root && root.classList.remove('arriving'); back(); });
-    } else { flash('hop', 650); play([['jump_3', 220], ['land_1', 220]], 0, back); }
+    } else { flash('hop', 650); play([['leap_3', 220], ['touch_3', 160], ['touch_5', 160]], 0, back); }
   }
   function comeHome() {
     if (!free) { exploreUntil = 0; return; }
@@ -417,7 +430,7 @@ const Pet = (() => {
       const w = root.offsetWidth;
       vy = Math.min(1600, vy + 2200 * dt);
       vx *= Math.pow(0.4, dt);
-      show(airFrame ? airFrame(vy) : vy < 0 ? 'jumpup_2' : 'jumpdown_2');
+      show(airFrame ? airFrame(vy) : vy < 0 ? 'leap_3' : 'hopdown_2');
       const f0 = feet();
       fx += vx * dt; fy += vy * dt;
       if (fx < 0) { fx = 0; vx = Math.abs(vx) * 0.5; }
@@ -445,8 +458,8 @@ const Pet = (() => {
     if (REDUCE.matches) { back(); return; }
     const then = afterLand; afterLand = null;
     if (then) { then(speed); return; }
-    if (speed > 900) { flash('hop', 650); play([['land_1', 300], ['startle_2', 300], ['alert_2', 400]], 0, back); }
-    else play([['land_1', 260]], 0, back);
+    if (speed > 900) { flash('hop', 650); play([['touch_1', 160], ['touch_3', 220], ['alert_2', 400]], 0, back); }
+    else play([['touch_3', 140], ['touch_5', 180]], 0, back);
   }
   // Прыжок на опору: выше — присел, прыгнул, подтянулся за край; сильно выше — вскарабкался;
   // ниже — заглянул вниз и спрыгнул (иногда передумал).
@@ -455,7 +468,7 @@ const Pet = (() => {
     if (!free || !root) return;
     const w = root.offsetWidth, f = feet();
     const tx = Math.max(t.r.left - w * 0.2, Math.min(t.r.right - w * 0.8, (t.r.left + t.r.right) / 2 - w / 2 + rnd(-30, 30)));
-    const dy = t.r.top - f;
+    const dy = t.r.top - f, far = Math.abs(tx - fx) > 260;
     setFlip(tx < fx);
     // Вскарабкаться можно только по боку высокого элемента, который доходит донизу, до лап.
     if (dy < -180 && Math.abs(tx - fx) < 260 && t.r.bottom >= f - 40) { climbTo(t, done); return; }
@@ -467,15 +480,20 @@ const Pet = (() => {
       const T = Math.max(0.45, Math.min(0.9, Math.hypot(tx - fx, dy) / 700)), g = 2200;
       vx = (tx - fx) / T; vy = (dy - 0.5 * g * T * T) / T;
       support = null; leaping = true;
-      afterLand = sp => play(dy < -40 ? [['jumpup_4', 300], ['land_1', 200]] : [['land_1', 260]], 0, done || back);
-      fall(v => v < -200 ? 'jumpup_2' : v < 150 ? 'jumpup_3' : dy > 40 ? 'jumpdown_2' : 'jump_2');
+      afterLand = sp => play(dy < -40 ? [['highjump_6', 200], ['touch_3', 140], ['touch_5', 180]]
+        : sp > 900 ? [['touch_1', 120], ['touch_3', 160], ['touch_5', 200]] : [['touch_3', 130], ['touch_5', 170]], 0, done || back);
+      // Вверх — тянется лапами; далеко — длинный прыжок; вниз — спрыгивает; рядом — обычный прыжок вбок.
+      fall(v => dy < -60 ? (v < -300 ? 'highjump_2' : v < 0 ? 'highjump_3' : 'leap_5')
+        : far ? (v < -250 ? 'longjump_3' : v < 0 ? 'longjump_4' : v < 300 ? 'longjump_5' : 'longjump_6')
+        : dy > 40 ? (v < 0 ? 'leap_3' : 'hopdown_2') : (v < -150 ? 'leap_2' : v < 150 ? 'leap_3' : 'leap_5'));
     });
     if (!done && dy > 140 && chance(0.25)) { // передумал прыгать вниз
       play([['edgethink_1', 500], ['edgethink_2', 600], ['edgethink_3', 700], ['edgethink_4', 500]], 0, () => { leaping = false; back(); });
       return;
     }
-    if (quick) { go(dy > 40 ? [['jumpdown_1', 140]] : [['jumpup_1', 140]]); return; }
-    go(dy > 40 ? [['lookdown_1', 400], ['lookdown_2', 500], ['lookdown_3', 400], ['jumpdown_1', 250]] : [['jumpup_1', 300]]);
+    if (quick) { go(dy < -60 ? [['highjump_1', 140]] : [['leap_1', 120]]); return; }
+    go(dy > 40 ? [['lookdown_1', 400], ['lookdown_2', 500], ['lookdown_3', 400], ['leap_1', 220]]
+      : dy < -60 ? [['highjump_1', 300]] : far ? [['longjump_1', 200], ['longjump_2', 150]] : [['leap_1', 250]]);
   }
   // Карабкается по боковому краю карточки вверх.
   function climbTo(t, done) {
@@ -497,7 +515,7 @@ const Pet = (() => {
       leaping = false; support = t.e;
       fx = Math.max(t.r.left - w * 0.2, Math.min(t.r.right - w * 0.8, fx + (leftSide ? w * 0.6 : -w * 0.6))); place();
       save();
-      play([['jumpup_3', 250], ['jumpup_4', 350], ['land_1', 200]], 0, done || (() => { setFlip(false); back(); }));
+      play([['highjump_5', 200], ['highjump_6', 220], ['touch_3', 160], ['touch_5', 200]], 0, done || (() => { setFlip(false); back(); }));
     };
     requestAnimationFrame(step);
   }
@@ -512,11 +530,11 @@ const Pet = (() => {
     if (!free || !root) return;
     setFlip(dir < 0);
     leaping = true;
-    play([['jumpdown_1', 220]], 0, () => {
+    play([['leap_1', 200]], 0, () => {
       if (!root || held) { leaping = false; return; }
       vx = dir * 320; vy = -380; support = null;
-      afterLand = () => play([['land_1', 200]], 0, then);
-      fall(v => v < 0 ? 'jumpup_3' : 'jumpdown_2');
+      afterLand = () => play([['hopdown_3', 220]], 0, then);
+      fall(v => v < 0 ? 'leap_3' : 'hopdown_2');
     });
   }
 
@@ -532,8 +550,8 @@ const Pet = (() => {
     const finish = () => {
       if (trip !== me) return;
       trip = null;
-      play(me.fast ? [['runstop_3', 150], ['runstop_4', 150], ['shakefull_1', 120], ['shakefull_2', 120], ['tosit_5', 300]]
-        : [['sitdown_2', 160], ['sitdown_3', 180], ['sitdown_4', 260]], 0, () => { setFlip(false); save(); back(); });
+      play(me.fast ? [['brake_1', 110], ['brake_2', 160], ['brake_3', 220], ['pant_1', 700], ['pant_2', 900], ['pant_1', 500]]
+        : [['stop_3', 140], ['stop_4', 150], ['stop_5', 220]], 0, () => { setFlip(false); save(); back(); });
     };
     const next = () => {
       if (trip !== me || !root || !free || held) {
@@ -545,7 +563,7 @@ const Pet = (() => {
       t.r = t.e.getBoundingClientRect();
       if (support === t.e || ++me.hops > 14) { finish(); return; }
       if (support) { if (me.seen.includes(support)) me.hops += 2; me.seen = [support, ...me.seen].slice(0, 4); }
-      if (!supported()) { vx = vy = 0; support = null; afterLand = () => play([['land_1', 220]], 0, next); fall(); return; }
+      if (!supported()) { vx = vy = 0; support = null; afterLand = () => play([['touch_3', 160], ['touch_5', 160]], 0, next); fall(); return; }
       const w = root.offsetWidth, f = feet(), cx = fx + w / 2;
       const mid = r => (r.left + r.right) / 2;
       const gap = r => Math.max(0, r.left - cx, cx - r.right);
@@ -602,27 +620,37 @@ const Pet = (() => {
       if (done0) { busy = true; done0(); return true; }
       to = cur0 - lo < (hi - lo) / 2 ? hi : lo;
     }
-    const dir = Math.sign(to - cur0), left = dir < 0;
-    const fast = opt.fast != null ? opt.fast : Math.abs(to - cur0) > 220 && chance(0.4);
-    const diag = !fast && !done0 && chance(0.35);
-    const cycle = fast ? seq('run', 4, 5) : diag ? seq(left ? 'diagl' : 'diagr', 4) : seq('walk', 4);
-    const speed = fast ? 120 : 30, frameMs = fast ? 80 : diag ? 190 : 170;
+    const dir = Math.sign(to - cur0), left = dir < 0, dist = Math.abs(to - cur0);
+    // Аллюр: галоп (с разгоном), рысь, шаг или шаг вполоборота.
+    const fast = opt.fast != null ? opt.fast : dist > 220 && chance(0.4);
+    const trot = !fast && dist > 150 && chance(0.35);
+    const diag = !fast && !trot && !done0 && chance(0.15);
+    const gait = fast ? { cycle: seq('gallop', 6), ms: 75, speed: 140 } : trot ? { cycle: seq('trot', 6), ms: 95, speed: 70 }
+      : diag ? { cycle: seq(left ? 'diagl' : 'diagr', 4), ms: 190, speed: 30 } : { cycle: seq('stride', 8), ms: 115, speed: 34 };
     const turn = flip !== left && !diag;
     strolling = true; busy = true;
     const begin = () => {
       setFlip(diag ? false : left);
-      let t0 = performance.now(), gag = !fast && !done0 && Math.abs(to - cur0) > 120 && chance(0.15), gagAt = (cur0 + to) / 2, pausedUntil = 0;
-      let x = cur0;
+      const t00 = performance.now();
+      let t0 = t00, x = cur0, pausedUntil = 0;
+      // По пути (шагом, далеко): иногда коробочка на дороге, иногда спотыкается.
+      let gag = !fast && !done0 && dist > 120 && chance(0.2) ? pick(['box', 'trip']) : null;
+      const gagAt = (cur0 + to) / 2;
       const step = now => {
         if (!root || !strolling) return;
         if (now < pausedUntil) { strollRaf = requestAnimationFrame(step); t0 = now; return; }
-        x += dir * speed * Math.min(0.05, (now - t0) / 1000); t0 = now;
+        const accel = fast && now - t00 < 360; // разгон: первые шаги медленнее
+        x += dir * (accel ? 80 : gait.speed) * Math.min(0.05, (now - t0) / 1000); t0 = now;
         if (gag && (dir > 0 ? x >= gagAt : x <= gagAt)) {
-          gag = false;
-          const pseq = [...seq('obstop', 4), ...seq('obgo', 4)];
-          const dur = pseq.length * 260; pausedUntil = now + dur;
-          pseq.forEach((n, i) => setTimeout(() => strolling && show(n), i * 260));
-        } else if (now >= pausedUntil) show(cycle[Math.floor(now / frameMs) % cycle.length]);
+          const pseq = gag === 'box' ? [...seq('obstop', 4), ...seq('obgo', 4)].map(n => [n, 260])
+            : [['trip_1', 130], ['trip_2', 150], ['trip_3', 200], ['trip_4', 450], ['getup_3', 180], ['getup_4', 180]];
+          gag = null;
+          let t = 0;
+          for (const [n, ms] of pseq) { setTimeout(() => strolling && show(n), t); t += ms; }
+          pausedUntil = now + t;
+        } else if (now >= pausedUntil) {
+          show(accel ? seq('accel', 4, 5)[Math.min(3, Math.floor((now - t00) / 90))] : gait.cycle[Math.floor(now / gait.ms) % gait.cycle.length]);
+        }
         const done = dir > 0 ? x >= to : x <= to;
         if (done) x = to;
         if (free) { fx = x; place(); } else { posX = x; root.style.setProperty('--pet-x', posX + 'px'); }
@@ -630,20 +658,30 @@ const Pet = (() => {
           strolling = false;
           save();
           if (done0) { busy = true; done0(); return; }
-          if (!fast && chance(0.4)) { play([['sitdown_2', 160], ['sitdown_3', 180], ['sitdown_4', 220]], 0, () => { setFlip(false); back(); }); return; }
-          play(fast ? [...seq('runstop', 4).map(n => [n, 120]), ['skid_1', 200]] : [['tosit_3', 150], ['tosit_4', 150], ['tosit_5', 200]], 0, () => { setFlip(false); back(); });
+          const sit = () => { setFlip(false); back(); };
+          // Галоп — тормозит с заносом и иногда переводит дух; рысь и шаг — плавно останавливается.
+          if (fast) play([['brake_1', 110], ['brake_2', 160], ['brake_3', 220], ...(chance(0.4) ? [['pant_1', 700], ['pant_2', 900]] : [])], 0, sit);
+          else if (trot) play(seq('stop', 5).map(n => [n, 120]), 0, sit);
+          else if (chance(0.4)) play([['sitdown_2', 160], ['sitdown_3', 180], ['sitdown_4', 220]], 0, sit);
+          else play([['stop_3', 140], ['stop_4', 150], ['stop_5', 200]], 0, sit);
           return;
         }
         strollRaf = requestAnimationFrame(step);
       };
       strollRaf = requestAnimationFrame(step);
     };
-    // Встаёт и разворачивается.
-    const pre = [['stand_3', 140], ['stand_4b', 140]];
-    if (turn) pre.push(['turn_2', 160], ['turn_1', 120]);
+    // Встаёт (в пути — сразу трогается) и разворачивается на месте через «лицом к нам».
+    const pre = done0 ? [['start_6', 90]] : [['start_3', 110], ['start_4', 110], ['start_5', 110]];
+    if (turn) pre.push(['turnin_1', 110], ['turnin_2', 110], ['turnin_3', 130], [() => setFlip(left), 0], ['turnin_2', 110], ['start_6', 100]);
     stopAnim(); busy = true;
     let i = 0;
-    const steps = () => { if (!strolling) return; if (i < pre.length) { show(pre[i][0]); animTimer = setTimeout(steps, pre[i++][1]); } else begin(); };
+    const steps = () => {
+      if (!strolling) return;
+      if (i >= pre.length) { begin(); return; }
+      const [f, ms] = pre[i++];
+      if (typeof f === 'function') { f(); steps(); return; }
+      show(f); animTimer = setTimeout(steps, ms);
+    };
     steps();
     return true;
   }
@@ -658,7 +696,7 @@ const Pet = (() => {
     if (!root || inAir() || (state !== 'on' && state !== 'sad')) return;
     halt();
     play(boxSleep ? [['box_2', 400], ['box_1', 400], ['shakefull_1', 120], ['shakefull_2', 120]]
-      : [['lieyawn_1', 700], 'liedown_1', ['stretchb_1', 800], ['stretchb_3', 400], ['yawnsit_2', 600]], 260, back);
+      : [['lieyawn_1', 700], ...seq('wakestretch', 4).map(n => [n, 450]), ['yawnsit_2', 600]], 260, back);
   }
   function onKey() { lastInput = performance.now(); wake(); }
   // Куда смотреть: голова и глаза поворачиваются к курсору.
@@ -728,7 +766,7 @@ const Pet = (() => {
     const bow = chance(0.35) ? [['playbow_1', 200], ['playbow_2', 200], ['playbow_3', 200]] : [];
     const pre = bow.length * 200 + 720;
     setTimeout(() => flash('pounce', 700), pre);
-    play([...bow, ['stalk_1', 180], ['stalk_2', 180], ['stalk_1', 180], ['stalk_2', 180], ['jump_1', 150], ['jump_2', 150], ['jump_3', 150], ['land_1', 300]], 0, () => {
+    play([...bow, ['sneak_1', 180], ['sneak_2', 180], ['sneak_3', 180], ['sneak_4', 180], ['leap_2', 150], ['leap_3', 150], ['leap_5', 150], ['touch_3', 300]], 0, () => {
       setFlip(false);
       // Поймал — гордо сидит с «добычей».
       if (ptr && Math.abs(ptr.x - (root.getBoundingClientRect().left + w / 2)) < 50 && chance(0.4)) play([['mouse_1', 1300], ['happy_1', 600]], 0, back);
@@ -887,15 +925,17 @@ const Pet = (() => {
       if (h.dizzy) { play([...seq('dizzy', 3), ...seq('dizzy', 3), ...seq('shakefull', 4)].map(n => [n, 180]), 0, back); talk('Всё кружится…', 1800); return; }
       if (byTail || (thrown && now - h.since > 300)) {
         grumpyUntil = performance.now() + 45000;
-        play([['land_1', 250], ['hiss_1', 350], ['hiss_2', 500], ...seq('angry', 4).map(n => [n, 600]), ['sulk_1', 2500]], 0, back);
+        play([['touch_1', 250], ['hiss_1', 350], ['hiss_2', 500], ...seq('angry', 4).map(n => [n, 600]), ['sulk_1', 2500]], 0, back);
         setTimeout(() => talk(byTail ? 'Шшш! За хвост нельзя!' : 'Хмф!', 1800), 300);
         return;
       }
-      if (thrown) { play([['land_1', 250], ['startle_1', 300], ['startle_2', 300], ['alert_1', 400]], 0, back); return; }
-      play(chance(0.5) ? [['land_1', 250], ...seq('shakefull', 4).map(n => [n, 120])] : [['land_1', 260]], 0, back);
+      if (thrown) { play([...seq('tumble', 3, 5).map(n => [n, 160]), ...seq('getup', 4).map(n => [n, 170]), ['alert_1', 400]], 0, back); return; }
+      play(chance(0.5) ? [['touch_1', 200], ['touch_3', 150], ...seq('shakefull', 4).map(n => [n, 120])] : [['touch_3', 160], ['touch_5', 200]], 0, back);
     };
     support = null;
-    fall(v => v < 0 ? 'startle_1' : 'jumpdown_2');
+    // Швырнули — кувыркается в воздухе; просто отпустили — летит лапами вниз.
+    const t0 = performance.now();
+    fall(thrown ? () => seq('flip', 3)[Math.floor((performance.now() - t0) / 90) % 3] : v => v < 0 ? 'spook_2' : 'fallhigh_2');
   }
 
   // ---------- гравитация ----------
@@ -911,7 +951,11 @@ const Pet = (() => {
       vx = vy = 0;
       if (REDUCE.matches || feet() > innerHeight - 40) { fall(); return; }
       halt(); hanging = true;
-      play(['hang_1', 'hang_2', 'hang_1', 'hang_2'], 200, () => { hanging = false; fall(); });
+      play(['hang_1', 'hang_2', 'hang_1', 'hang_2'], 200, () => {
+        hanging = false;
+        afterLand = () => play([['fallhigh_3', 300], ['fallhigh_4', 500]], 0, back);
+        fall(v => v < 500 ? 'fallhigh_1' : 'fallhigh_2');
+      });
     }
   }
 
@@ -998,7 +1042,7 @@ const Pet = (() => {
     joyTimer = setTimeout(() => root && root.classList.remove('joy'), 2400);
     if (!REDUCE.matches && state !== 'off' && !inAir()) {
       halt();
-      play([['happy_1', 400], 'jump_1', 'jump_2', 'jump_3', ['land_1', 200], ['happy_1', 700]], 170, back);
+      play([['happy_1', 400], ['highjump_1', 170], ['highjump_3', 170], ['highjump_4', 200], ['highjump_5', 170], ['touch_3', 200], ['happy_1', 700]], 0, back);
     }
   }
   // Сообщение об ошибке: подпрыгивает от испуга.
@@ -1006,7 +1050,7 @@ const Pet = (() => {
     if (!root || REDUCE.matches || inAir() || state === 'off' || state === 'run') return;
     if (napping) { wake(); return; }
     halt();
-    play([['startle_1', 220], ['startle_2', 300], ['alert_2', 600], ['alert_3', 400]], 0, back);
+    play([['spook_1', 200], ['spook_2', 350], ['spook_3', 400], ['alert_2', 600], ['alert_3', 400]], 0, back);
   }
   // Нажали «Подключить» — нажимает лапой вместе с вами.
   function pressBtn() {
