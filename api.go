@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"mime"
 	"net"
@@ -32,6 +33,7 @@ func (a *App) routes() http.Handler {
 	static := http.FileServer(http.FS(sub))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer") // ключ в адресе первой страницы не уйдёт дальше
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:")
 		static.ServeHTTP(w, r)
 	}))
@@ -487,6 +489,10 @@ func decode(r *http.Request, v any) error {
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 4<<20))
 	if err := dec.Decode(v); err != nil {
 		return fmt.Errorf("неверный запрос: %v", err)
+	}
+	// После объекта — ничего: склеенные или обрезанные запросы не принимаются за верные.
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return errors.New("неверный запрос: после данных лишнее")
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,5 +145,16 @@ func TestPickOrder(t *testing.T) {
 	want := []string{"general (FAKE TLS)", "general (ALT2)", "general", "general (ALT)"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("order = %v, want %v", got, want)
+	}
+}
+
+// Запрос — ровно один объект: хвост после него (склейка, мусор) не принимается.
+func TestDecodeRejectsTrailingData(t *testing.T) {
+	var v struct{ A int }
+	for body, ok := range map[string]bool{`{"A":1}`: true, "{\"A\":1}\n": true, `{"A":1}{"A":2}`: false, `{"A":1} x`: false} {
+		err := decode(httptest.NewRequest("POST", "/", strings.NewReader(body)), &v)
+		if (err == nil) != ok {
+			t.Fatalf("%q: err = %v, want ok=%v", body, err, ok)
+		}
 	}
 }
