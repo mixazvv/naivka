@@ -298,15 +298,6 @@ func (a *App) routes() http.Handler {
 		}
 		return nil, errors.New("сервер не найден")
 	})
-	api("POST", "/api/mobile/share", a.apiMobileShare)
-	api("POST", "/api/mobile/stop", func(*http.Request) (any, error) { a.stopShare(); return nil, nil })
-	api("GET", "/api/mobile/config", func(*http.Request) (any, error) {
-		b, err := a.mobileConfig()
-		if err != nil {
-			return nil, err
-		}
-		return map[string]string{"config": string(b)}, nil
-	})
 	api("POST", "/api/backup", func(r *http.Request) (any, error) {
 		var req struct {
 			Password string `json:"password"`

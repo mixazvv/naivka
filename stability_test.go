@@ -264,11 +264,6 @@ func TestZapretRouteConfig(t *testing.T) {
 	if sel == nil || sel["default"] != tagProxy || route != tagZapretOut || dns != tagDNSRemote {
 		t.Fatalf("zapret не работает — по умолчанию через сервер: %v %q %q", sel, route, dns)
 	}
-
-	cfg, _ = BuildConfig(s, ConfigEnv{Mobile: true, ZapretRoute: true, ZapretDomains: []string{"youtube.com"}})
-	if sel, _, _, _ := find(cfg); sel != nil {
-		t.Fatal("в профиле телефона zapret нет")
-	}
 }
 
 func TestZapretExcludedServers(t *testing.T) {

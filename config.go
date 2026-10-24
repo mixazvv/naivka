@@ -78,9 +78,6 @@ type ConfigEnv struct {
 	// NoNaive — ядро собрано без Naive (сборка sing-box для Windows 7):
 	// Naive-серверы пропускаются, работают только VLESS+Reality.
 	NoNaive bool
-	// Mobile — профиль для телефона (sing-box для iOS/Android, Karing):
-	// только TUN, без локального API, служебных входов и правил по программам.
-	Mobile bool
 	// ZapretActive — zapret запущен и справляется: правила «через zapret» идут напрямую
 	// (обход DPI делает zapret), иначе — через сервер.
 	ZapretActive bool
@@ -240,7 +237,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 	outbounds = append(outbounds, M{"type": "selector", "tag": tagProxy, "outbounds": selOut,
 		"default": selected, "interrupt_exist_connections": true})
-	zapretRoute := env.ZapretRoute && !env.Mobile
+	zapretRoute := env.ZapretRoute
 	if zapretRoute {
 		def := tagProxy
 		if env.ZapretActive {
@@ -252,7 +249,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 
 	// UDP (голос Discord, игры): Naive его не передаёт, VLESS, Hysteria2, TUIC, Trojan и Shadowsocks — да.
 	udpTarget := ""
-	if s.UDPProxy && !env.Mobile {
+	if s.UDPProxy {
 		var vl []any
 		for _, sv := range s.Servers {
 			if serverTypes[sv.Type].udp && (sv.Transport != "xhttp" || env.XrayPorts[serverTag(sv)] > 0) {
@@ -289,15 +286,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			M{"type": "mixed", "tag": "probe-proxy", "listen": "127.0.0.1", "listen_port": env.ProbeProxyPort},
 		)
 	}
-	if env.Mobile {
-		inbounds = []any{M{
-			"type":         "tun",
-			"tag":          "tun-in",
-			"address":      []any{"172.19.0.1/30"},
-			"auto_route":   true,
-			"strict_route": true,
-		}}
-	} else if s.Mode == "tun" {
+	if s.Mode == "tun" {
 		inbounds = append([]any{M{
 			"type":           "tun",
 			"tag":            "tun-in",
@@ -312,7 +301,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	for tag, port := range env.ServerProbes {
 		inbounds = append(inbounds, M{"type": "mixed", "tag": "probe-" + tag, "listen": "127.0.0.1", "listen_port": port})
 	}
-	if s.Share.Enabled && !env.Mobile {
+	if s.Share.Enabled {
 		in := M{"type": "mixed", "tag": "lan-in", "listen": "0.0.0.0", "listen_port": s.Share.Port}
 		if s.Share.Auth {
 			in["users"] = []any{M{"username": s.Share.Username, "password": s.Share.Password}}
@@ -322,7 +311,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 
 	// ---------- route ----------
 	rules := []any{M{"action": "sniff"}}
-	if s.Share.Enabled && !env.Mobile {
+	if s.Share.Enabled {
 		// раздача — только для устройств домашней сети
 		// (в sing-box «source_ip_is_private: false» значит «условие не задано» — правило отклоняло бы
 		// вообще всё; нужное «адрес не из частной сети» записывается через invert)
@@ -356,7 +345,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	var dnsRules []any
 
 	// Пользовательские правила: сначала блокировки, потом «напрямую», потом «через сервер».
-	if env.TgWsProxy && !env.Mobile {
+	if env.TgWsProxy {
 		// tg-ws-proxy сам ходит к серверам Telegram. Напрямую — если так выбрано: у многих провайдеров
 		// эти соединения режутся, поэтому по умолчанию, пока Naivka подключена, — через сервер.
 		out := tagDirect
@@ -367,7 +356,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	}
 	var userSets []any
 	for _, action := range userRuleActions {
-		domains, ips, procs := userRuleParts(s, action, env.Mobile)
+		domains, ips, procs := userRuleParts(s, action)
 		target := func(m M) M {
 			switch action {
 			case "block":
@@ -472,7 +461,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		rules = append(rules, M{"rule_set": rs("ads"), "action": "reject"})
 		dnsRules = append([]any{M{"rule_set": rs("ads"), "action": "reject"}}, dnsRules...)
 	}
-	if len(env.ZapretDomains) > 0 && !env.Mobile && (zapretRoute || env.ZapretActive) {
+	if len(env.ZapretDomains) > 0 && (zapretRoute || env.ZapretActive) {
 		out := tagDirect
 		if zapretRoute {
 			out = tagZapretOut
@@ -600,7 +589,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		"auto_detect_interface":   true,
 		"default_domain_resolver": tagDNSDirect,
 	}
-	if env.UserRulesDir != "" && !env.Mobile {
+	if env.UserRulesDir != "" {
 		// Программу соединения ядро ищет само, только если правила по программам были при запуске;
 		// свои правила теперь меняются на ходу — ищем всегда.
 		route["find_process"] = true
@@ -690,12 +679,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		},
 	}
 
-	if env.Mobile {
-		cfg["experimental"] = M{"cache_file": M{"enabled": true}}
-		cfg["log"] = M{"level": "warn"}
-	}
-
-	if t := strings.TrimSpace(s.Override); t != "" && !env.Mobile {
+	if t := strings.TrimSpace(s.Override); t != "" {
 		var ov M
 		if err := json.Unmarshal([]byte(t), &ov); err != nil {
 			return nil, fmt.Errorf("Ручные правки конфига: %v", err)

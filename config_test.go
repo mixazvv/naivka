@@ -37,7 +37,6 @@ func TestConfigsWithSingbox(t *testing.T) {
 		{"proxy", "proxy", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ProbeDirectPort: 9101, ProbeProxyPort: 9102}},
 		{"tun", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db"}},
 		{"win7", "proxy", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", NoNaive: true}},
-		{"mobile", "proxy", ConfigEnv{Mobile: true}},
 		{"zapret+tg", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretActive: true, ZapretDomains: []string{"youtube.com", "discord.com"}, TgWsProxy: true}},
 		{"zapret-route", "tun", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretActive: true, ZapretRoute: true, ZapretDomains: []string{"youtube.com", "discord.com"}}},
 		{"zapret-route-off", "proxy", ConfigEnv{APIPort: 9090, Secret: "x", CachePath: "c.db", ZapretRoute: true, ZapretDomains: []string{"youtube.com"}}},
@@ -65,9 +64,6 @@ func TestConfigsWithSingbox(t *testing.T) {
 		}
 		if c.name == "zapret+tg" && (!contains(js, "TgWsProxy.exe") || !contains(js, "discord.com") || !contains(js, "rutracker.org")) {
 			t.Errorf("zapret+tg: нет правил zapret или tg-ws-proxy")
-		}
-		if c.env.Mobile && (contains(js, "process_name") || contains(js, "clash_api") || contains(js, "mixed")) {
-			t.Errorf("mobile: лишнее в профиле телефона")
 		}
 	}
 }

@@ -2280,11 +2280,7 @@ function viewServers() {
     h('div', { class: 'row mt' },
       h('button', { class: 'btn small', id: 'testAll', onclick: () => testServers('') }, 'Проверить все'),
       h('span', { class: 'hint' }, 'Карточки можно перетаскивать, звёздочка поднимает сервер наверх.')),
-    h('div', { id: 'wlBox' }),
-    h('h2', null, 'Телефон'),
-    h('div', { class: 'card' },
-      h('p', null, 'Ваши серверы и правила на iPhone или Android — в приложении sing-box.'),
-      h('button', { class: 'btn', onclick: phoneDialog }, 'Профиль для телефона')));
+    h('div', { id: 'wlBox' }));
 }
 
 // Серверы — карточками: избранные первыми, порядок меняется перетаскиванием.
@@ -2450,40 +2446,6 @@ async function qrDialog(sv) {
     h('div', { class: 'row end mt' },
       h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(link); toast('Ссылка скопирована'); } catch (_) { toast('Не удалось скопировать', true); } } }, 'Скопировать ссылку'),
       h('button', { class: 'btn primary', autofocus: true, onclick: () => dlg.close() }, 'Готово')));
-}
-
-async function phoneDialog() {
-  await saveNow();
-  const body = h('div', null, h('p', { class: 'hint' }, 'Готовлю профиль…'));
-  const dlg = openDialog(h('h2', null, 'Профиль для телефона'), body);
-  dlg.classList.add('wide');
-  dlg.addEventListener('close', () => api('/api/mobile/stop', {}).catch(() => {}));
-  const fileBtn = h('button', { class: 'btn', onclick: async () => {
-    try { const r = await api('/api/mobile/config'); download('naivka-phone.json', r.config, 'application/json'); toast('Файл сохранён в «Загрузки»'); } catch (e) { toast(e.message, true); }
-  } }, 'Скачать файлом');
-  let res;
-  try { res = await api('/api/mobile/share', {}); }
-  catch (e) {
-    body.replaceChildren(h('p', { class: 'err-text' }, e.message), h('div', { class: 'row end mt' }, fileBtn, h('button', { class: 'btn primary', onclick: () => dlg.close() }, 'Закрыть')));
-    return;
-  }
-  let idx = 0;
-  const show = () => {
-    const l = res.links[idx];
-    const left = Math.max(0, Math.round((res.expires - Date.now() / 1000) / 60));
-    body.replaceChildren(
-      h('p', null, 'Телефон должен быть в той же Wi-Fi-сети. Наведите камеру в приложении sing-box — профиль добавится сам.'),
-      res.links.length > 1 ? h('div', { class: 'row' }, h('span', { class: 'hint' }, 'Сеть:'),
-        segmented(res.links.map((x, i) => [String(i), x.ip]), () => String(idx), v => { idx = +v; show(); }, 'Сеть')) : null,
-      h('div', { class: 'qr-box' }, qrSvg(l.singbox)),
-      h('div', { class: 'link-box' }, l.url),
-      h('p', { class: 'hint mt' }, `Ссылка работает ${left} мин. В профиле пароли серверов — открывайте его только в своей сети. Если Windows спросит про брандмауэр, разрешите для частных сетей.`),
-      h('div', { class: 'row end mt' },
-        fileBtn,
-        h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(l.url); toast('Ссылка скопирована'); } catch (_) { toast('Не удалось скопировать', true); } } }, 'Скопировать ссылку'),
-        h('button', { class: 'btn primary', onclick: () => dlg.close() }, 'Готово')));
-  };
-  show();
 }
 
 function editServer(srv) {

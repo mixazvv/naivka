@@ -103,7 +103,7 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 	}
 	env.TgWsProxy = s.Telegram.Enabled
 	env.DNSFallback = a.dnsg.fallback.Load()
-	if (env.ZapretActive || env.ZapretRoute) && !env.Mobile && env.APIPort > 0 {
+	if (env.ZapretActive || env.ZapretRoute) && env.APIPort > 0 {
 		env.YouTubeDNS = a.ytdns.usable()
 	}
 	if smartOn(s) && a.smart != nil {
@@ -112,7 +112,7 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 		}
 	}
 	a.fillLists(s, env, env.APIPort > 0)
-	if env.APIPort > 0 && !env.Mobile { // настоящий запуск: свои правила — файлами, меняются без перезапуска
+	if env.APIPort > 0 { // настоящий запуск: свои правила — файлами, меняются без перезапуска
 		if err := writeUserRuleSets(a.core.runDir(), s); err == nil {
 			env.UserRulesDir = a.core.runDir()
 		} else {
