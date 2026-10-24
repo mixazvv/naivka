@@ -400,7 +400,11 @@ var saveMu sync.Mutex
 func SaveSettings(dir string, s *Settings) error {
 	saveMu.Lock()
 	defer saveMu.Unlock()
-	b, err := json.MarshalIndent(sealSettings(s), "", "  ")
+	sealed, err := sealSettings(s)
+	if err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(sealed, "", "  ")
 	if err != nil {
 		return err
 	}

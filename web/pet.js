@@ -74,6 +74,7 @@ const Pet = (() => {
   function stopAnim() { clearTimeout(animTimer); busy = false; }
   function play(steps, ms, done) {
     stopAnim();
+    stopWatching(); // любое действие главнее «смотрит на курсор»
     busy = true;
     let i = 0;
     const step = () => {
@@ -203,10 +204,15 @@ const Pet = (() => {
     tickTimer = setTimeout(() => {
       if (!root) return;
       if (state === 'on' && sitting() && !REDUCE.matches && !grumpy()) {
-        if (chance(0.35)) {
+        // Чаще моргает; позу меняет изредка и только на соседнюю (из сидячих), чтобы не прыгать между позами.
+        const r = Math.random();
+        if (r < 0.6) {
           const base = cur;
           play([['blink_2', 70], ['blink_3', 110], ['blink_2', 70], [base, 10]], 0, () => { busy = false; show(base); });
-        } else show(pick(IDLE));
+        } else if (r < 0.8) {
+          const i = Math.max(0, IDLE.indexOf(cur));
+          show(IDLE[(i + (chance(0.5) ? 1 : IDLE.length - 1)) % IDLE.length]);
+        }
       } else if (state === 'sad' && sitting() && chance(0.3)) show(cur === 'sad_1' ? 'sadlie_1' : 'sad_1');
       tick();
     }, rnd(2500, 6000));
@@ -272,14 +278,14 @@ const Pet = (() => {
     [1, () => nearEdge() !== 0, () => { setFlip(nearEdge() < 0); play([['knock_1', 900], ['knock_2', 700], ['knock_3', 500], ['wink_1', 900]], 0, () => { talk('Упс…', 1400); back(); }); }],
     [1, () => free, () => play([['peek_1', 1400], ['peek_2', 1200], ['peek_1', 1000]], 0, back)],
     // Перемещения: дома — прогулка по меню и вылазки в окно; в окне — ходит, перепрыгивает, путешествует.
-    [8, null, () => stroll()],
-    [6, () => free, () => hop()],
-    [6, () => free, () => roam()],
-    [2, () => free, () => roam(true)],
-    [8, () => !free && !exploreUntil, () => explore()],
-    [2, () => !free && !exploreUntil, () => explore(null, true)],
+    [8, null, () => stroll(), 'move'],
+    [6, () => free, () => hop(), 'move'],
+    [6, () => free, () => roam(), 'move'],
+    [2, () => free, () => roam(true), 'move'],
+    [8, () => !free && !exploreUntil, () => explore(), 'move'],
+    [2, () => !free && !exploreUntil, () => explore(null, true), 'move'],
   ];
-  let idleTimer = 0, lastMeow = performance.now();
+  let idleTimer = 0, lastMeow = performance.now(), recent = [], lastMove = 0;
   function idleLoop() {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
@@ -298,9 +304,18 @@ const Pet = (() => {
             lastMeow = performance.now();
             meow(pick(['Мяу', 'Мрр?', 'Мяу!', say(state) || 'Мяу']));
           } else {
-            const ok = ACTIONS.filter(a => !a[1] || a[1]());
-            let r = ok.reduce((s, a) => s + a[0], 0) * Math.random();
-            for (const a of ok) { if ((r -= a[0]) < 0) { a[2](); break; } }
+            // Не повторяет последние дела; после прогулки — сперва отдых: перемещения реже ещё 40 секунд.
+            const now = performance.now(), tired = now - lastMove < 40e3;
+            const ok = ACTIONS.filter(a => (!a[1] || a[1]()) && !recent.includes(a));
+            const wt = a => a[3] === 'move' && tired ? a[0] * 0.25 : a[0];
+            let r = ok.reduce((s, a) => s + wt(a), 0) * Math.random();
+            for (const a of ok) {
+              if ((r -= wt(a)) >= 0) continue;
+              if (a !== ACTIONS[0]) recent = [a, ...recent].slice(0, 4); // «просто сидит» можно подряд
+              if (a[3] === 'move') lastMove = now;
+              a[2]();
+              break;
+            }
           }
         } else if (state === 'sad' && chance(0.3)) {
           play([['lookup_2', 900], ['sad_1', 600]], 0, back);
@@ -415,8 +430,13 @@ const Pet = (() => {
   }
 
   // ---------- полёт ----------
-  let falling = false, fallRaf = 0, vx = 0, vy = 0, hanging = false, leaping = false, afterLand = null;
-  function stopFall() { cancelAnimationFrame(fallRaf); falling = false; leaping = false; hanging = false; }
+  let falling = false, fallRaf = 0, climbRaf = 0, vx = 0, vy = 0, hanging = false, leaping = false, afterLand = null;
+  // Полная отмена полёта (взяли в руки, домой, размонтирование): и реакция на приземление больше не нужна —
+  // иначе она сработала бы при следующем, уже постороннем падении.
+  function stopFall() {
+    cancelAnimationFrame(fallRaf); cancelAnimationFrame(climbRaf);
+    falling = false; leaping = false; hanging = false; afterLand = null;
+  }
   // airFrame(vy) — кадр в полёте: вверх — прыжок, вниз — лапами вперёд.
   function fall(airFrame) {
     if (!free || held) return;
@@ -507,17 +527,19 @@ const Pet = (() => {
     const t0 = performance.now(), dur = Math.max(1200, (y0 - y1) * 9);
     const step = now => {
       if (!root || !leaping) return;
+      // Карточку убрали (сменили раздел) — срывается и падает.
+      if (!t.e.isConnected || !t.e.getBoundingClientRect().width) { leaping = false; support = null; vx = vy = 0; fall(); return; }
       const k = Math.min(1, (now - t0) / dur);
       fx = x0 + (x - x0) * Math.min(1, k * 4); fy = y0 + (y1 - y0) * k;
       show(frames[Math.floor(now / 160) % 4]);
       place();
-      if (k < 1) { requestAnimationFrame(step); return; }
+      if (k < 1) { climbRaf = requestAnimationFrame(step); return; }
       leaping = false; support = t.e;
       fx = Math.max(t.r.left - w * 0.2, Math.min(t.r.right - w * 0.8, fx + (leftSide ? w * 0.6 : -w * 0.6))); place();
       save();
       play([['highjump_5', 200], ['highjump_6', 220], ['touch_3', 160], ['touch_5', 200]], 0, done || (() => { setFlip(false); back(); }));
     };
-    requestAnimationFrame(step);
+    climbRaf = requestAnimationFrame(step);
   }
   function hop() {
     if (!free) return;
@@ -542,7 +564,10 @@ const Pet = (() => {
   // К опоре t через другие: перепрыгивает на ту, что ближе к цели; некуда — бежит к краю и спрыгивает;
   // внизу окна — бежит под цель и запрыгивает или вскарабкивается. opt.fast — носится бегом.
   let trip = null;
-  function halt() { trip = null; stopStroll(); }
+  // halt — прервать всё, что кот делает на земле: прогулку, путешествие, бросок за курсором, взгляд.
+  // gen — поколение действия: отложенные шаги прежних действий сверяют его и молча не срабатывают.
+  let gen = 0;
+  function halt() { gen++; trip = null; stopStroll(); cancelAnimationFrame(pounceRaf); stopWatching(); }
   function travel(t, opt = {}) {
     if (!root || !free || held) return;
     const me = trip = { hops: 0, fast: !!opt.fast, seen: [] };
@@ -597,7 +622,12 @@ const Pet = (() => {
   // Встал — развернулся, если нужно, — шагом или бегом — остановился — сел. Иногда по пути натыкается
   // на коробочку и обходит её.
   let strolling = false, strollRaf = 0;
-  function stopStroll() { cancelAnimationFrame(strollRaf); if (strolling) busy = false; strolling = false; }
+  let gagTimers = [];
+  function stopStroll() {
+    cancelAnimationFrame(strollRaf); gagTimers.forEach(clearTimeout); gagTimers = [];
+    if (strolling) busy = false;
+    strolling = false;
+  }
   // opt.fast — бегом (по умолчанию — как выйдет), opt.done — что делать на месте вместо «сесть».
   // false — идти некуда (опоры нет или она слишком узкая).
   function stroll(target, opt = {}) {
@@ -646,7 +676,8 @@ const Pet = (() => {
             : [['trip_1', 130], ['trip_2', 150], ['trip_3', 200], ['trip_4', 450], ['getup_3', 180], ['getup_4', 180]];
           gag = null;
           let t = 0;
-          for (const [n, ms] of pseq) { setTimeout(() => strolling && show(n), t); t += ms; }
+          const g = gen;
+          for (const [n, ms] of pseq) { gagTimers.push(setTimeout(() => g === gen && strolling && show(n), t)); t += ms; }
           pausedUntil = now + t;
         } else if (now >= pausedUntil) {
           show(accel ? seq('accel', 4, 5)[Math.min(3, Math.floor((now - t00) / 90))] : gait.cycle[Math.floor(now / gait.ms) % gait.cycle.length]);
@@ -688,6 +719,7 @@ const Pet = (() => {
 
   // ---------- курсор ----------
   let lastInput = performance.now(), watching = false, watchTimer = 0, lastPounce = 0, lastPaw = 0, ptr = null;
+  function stopWatching() { watching = false; clearTimeout(watchTimer); }
   let hovering = false, hoverTimer = 0, lastPetAt = 0;
   function wake() {
     if (!napping) return;
@@ -747,6 +779,7 @@ const Pet = (() => {
     watchTimer = setTimeout(() => { watching = false; if (root && !busy && !strolling && !inAir()) back(); }, 1500);
   }
   // Прыжок за курсором по своей опоре.
+  let pounceRaf = 0;
   function pounce(targetX) {
     const w = root.offsetWidth;
     let lo, hi, cur0;
@@ -761,11 +794,12 @@ const Pet = (() => {
       targetX -= hr.left;
     }
     const to = Math.max(lo, Math.min(hi, targetX - w / 2));
-    watching = false; clearTimeout(watchTimer);
+    halt(); // новое действие: прежнее (и прежний бросок) больше не двигает кота
+    const g = gen;
     setFlip(to < cur0);
     const bow = chance(0.35) ? [['playbow_1', 200], ['playbow_2', 200], ['playbow_3', 200]] : [];
     const pre = bow.length * 200 + 720;
-    setTimeout(() => flash('pounce', 700), pre);
+    setTimeout(() => g === gen && flash('pounce', 700), pre);
     play([...bow, ['sneak_1', 180], ['sneak_2', 180], ['sneak_3', 180], ['sneak_4', 180], ['leap_2', 150], ['leap_3', 150], ['leap_5', 150], ['touch_3', 300]], 0, () => {
       setFlip(false);
       // Поймал — гордо сидит с «добычей».
@@ -774,13 +808,13 @@ const Pet = (() => {
     });
     const from = cur0, t0 = performance.now() + pre;
     const step = now => {
-      if (!root) return;
+      if (!root || g !== gen || held || inAir()) return; // взяли в руки или начато другое — бросок отменён
       const k = Math.max(0, Math.min(1, (now - t0) / 450));
       const x = from + (to - from) * k;
       if (free) { fx = x; place(); } else { posX = x; root.style.setProperty('--pet-x', posX + 'px'); }
-      if (k < 1) requestAnimationFrame(step); else if (free) save();
+      if (k < 1) pounceRaf = requestAnimationFrame(step); else if (free) save();
     };
-    requestAnimationFrame(step);
+    pounceRaf = requestAnimationFrame(step);
   }
   // Щёлкнули по карточке или кнопке — иногда бежит посмотреть, что там.
   let lastFollow = 0;
@@ -1031,6 +1065,7 @@ const Pet = (() => {
     root.remove();
     root = svg = bubble = body = sprite = clipRect = home = support = null;
     state = prev = ''; free = false; held = press = null; exploreUntil = 0; napping = false;
+    hot = false; hotSince = 0;
   }
 
   // Радость: прыжок и искры.
@@ -1061,9 +1096,19 @@ const Pet = (() => {
   }
 
   // update — фаза подключения (off | wait | on | revive | err | blocked) и скорость в байтах/с.
+  let hot = false, hotSince = 0;
   function update(phase, bps) {
     if (!root) return;
-    const s = phase === 'on' ? (bps > 150 * 1024 ? 'run' : 'on') : phase === 'wait' || phase === 'revive' ? 'wait'
+    // «Носится» — с запасом в обе стороны: включается, когда трафик больше 180 КБ/с три секунды подряд,
+    // выключается, когда меньше 90 КБ/с пять секунд подряд. Колебания у порога кота не дёргают.
+    const now = performance.now();
+    if (phase !== 'on') { hot = false; hotSince = 0; } else {
+      const want = hot ? bps > 90 * 1024 : bps > 180 * 1024;
+      if (want === hot) hotSince = 0;
+      else if (!hotSince) hotSince = now;
+      else if (now - hotSince > (hot ? 5000 : 3000)) { hot = want; hotSince = 0; }
+    }
+    const s = phase === 'on' ? (hot ? 'run' : 'on') : phase === 'wait' || phase === 'revive' ? 'wait'
       : phase === 'err' ? 'err' : phase === 'blocked' ? 'sad' : 'off';
     const kb = Math.max(0, bps) / 1024;
     root.style.setProperty('--pet-step', (0.7 - Math.min(0.48, Math.log10(1 + kb) * 0.13)).toFixed(2) + 's');

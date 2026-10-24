@@ -12,41 +12,42 @@ const secretPrefix = "dpapi:"
 // а переносить настройки целиком — резервной копией (она расшифровывает пароли и защищает своим).
 var encryptSecrets bool
 
-func sealSettings(s *Settings) *Settings {
+func sealSettings(s *Settings) (*Settings, error) {
 	if !encryptSecrets {
-		return s
+		return s, nil
 	}
 	c := s.clone()
-	if c.Share.Password != "" && !strings.HasPrefix(c.Share.Password, secretPrefix) {
-		if enc, err := protectSecret(c.Share.Password); err == nil {
-			c.Share.Password = enc
+	// Не удалось зашифровать хоть одно поле — не сохраняем вовсе: открытым текстом секрет на диск не попадёт,
+	// на диске останутся прежние (зашифрованные) настройки.
+	var failed error
+	seal := func(f *string) {
+		if failed != nil || *f == "" || strings.HasPrefix(*f, secretPrefix) {
+			return
 		}
-	}
-	if c.Telegram.Secret != "" && !strings.HasPrefix(c.Telegram.Secret, secretPrefix) {
-		if enc, err := protectSecret(c.Telegram.Secret); err == nil {
-			c.Telegram.Secret = enc
+		enc, err := protectSecret(*f)
+		if err != nil {
+			failed = fmt.Errorf("не удалось зашифровать секреты настроек средствами Windows, настройки не сохранены: %v", err)
+			return
 		}
+		*f = enc
 	}
+	seal(&c.Share.Password)
+	seal(&c.Telegram.Secret)
 	for i := range c.Panels {
 		// Секретный путь и логин панели — такая же тайна, как пароль: по ним панель находят и подбирают.
 		for _, p := range []*string{&c.Panels[i].Pass, &c.Panels[i].Path, &c.Panels[i].User} {
-			if *p != "" && !strings.HasPrefix(*p, secretPrefix) {
-				if enc, err := protectSecret(*p); err == nil {
-					*p = enc
-				}
-			}
+			seal(p)
 		}
 	}
 	for i := range c.Servers {
 		for _, f := range []*string{&c.Servers[i].Password, &c.Servers[i].UUID, &c.Servers[i].ObfsPassword} {
-			if *f != "" && !strings.HasPrefix(*f, secretPrefix) {
-				if enc, err := protectSecret(*f); err == nil {
-					*f = enc
-				}
-			}
+			seal(f)
 		}
 	}
-	return c
+	if failed != nil {
+		return nil, failed
+	}
+	return c, nil
 }
 
 func openSettings(s *Settings) []string {

@@ -60,7 +60,6 @@ type App struct {
 	probes  map[string]int // служебные входы теста скорости: тег → порт
 	ui      uiHost         // окно и значок в трее (зависит от платформы)
 	sleep   sleepState     // сон и пробуждение компьютера
-	lan     *lanShare
 
 	quitOnce sync.Once
 }
@@ -267,7 +266,6 @@ func (a *App) Quit() {
 		a.zapret.Stop()
 		a.tgws.Stop()
 		a.xray.Stop()
-		a.stopShare()
 		if a.ui != nil {
 			a.ui.Close()
 		}

@@ -26,7 +26,7 @@ func userRuleTag(action string, domains bool) string {
 func userRuleSetPath(dir, tag string) string { return filepath.Join(dir, tag+".json") }
 
 // userRuleParts раскладывает правила одного действия: домены, IP-сети, программы.
-func userRuleParts(s *Settings, action string, mobile bool) (domains, ips, procs []string) {
+func userRuleParts(s *Settings, action string) (domains, ips, procs []string) {
 	for _, r := range s.Rules {
 		if r.Action != action {
 			continue
@@ -45,9 +45,7 @@ func userRuleParts(s *Settings, action string, mobile bool) (domains, ips, procs
 			}
 			ips = append(ips, v)
 		case "process":
-			if !mobile { // на телефоне правил по программам нет
-				procs = append(procs, r.Value)
-			}
+			procs = append(procs, r.Value)
 		}
 	}
 	return
@@ -57,7 +55,7 @@ func userRuleParts(s *Settings, action string, mobile bool) (domains, ips, procs
 func userRuleSetFiles(s *Settings) map[string][]byte {
 	out := map[string][]byte{}
 	for _, action := range userRuleActions {
-		domains, ips, procs := userRuleParts(s, action, false)
+		domains, ips, procs := userRuleParts(s, action)
 		d, o := []any{}, []any{}
 		if len(domains) > 0 {
 			d = append(d, M{"domain_suffix": strs(domains)})
