@@ -618,7 +618,7 @@ function updateStatusNow() {
   navCounts();
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
-  if (S.mascot === true) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); } }); Pet.update(p, kb * 1024); }
+  if (S.mascot === true) { Pet.mount(document.querySelector('.side-foot'), { beta: S.mascotBeta === true, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); } }); Pet.update(p, kb * 1024); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -3812,6 +3812,7 @@ function viewSettings() {
     accentPicker(),
     h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme)),
     check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить. По умолчанию выключен.', updateStatus),
+    check('mascotBeta', 'Новый котёнок (бета)', 'Котёнок из нового набора анимаций: ходит и бегает по-новому, играет с мячиком, прячется в коробку, ест и пьёт. Пока бета — что-то может выглядеть непривычно. Работает, когда талисман включён.', updateStatus),
     check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'),
     h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
       segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),

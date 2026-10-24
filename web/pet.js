@@ -6,12 +6,13 @@
 // по-разному: за холку, хвост, лапу или туловище; трясут — кружится голова; швырнули — обижается.
 // Живёт состоянием подключения: отключено — ложится спать; подключается — насторожен; много трафика —
 // носится по окну; сбой — пугается; заблокировано защитой — грустит; связь вернулась — радуется.
-// Выключается в «Настройках» → «Внешний вид». Место, куда его унесли, хранится в настройках.
+// Выключается в «Настройках» → «Внешний вид»; там же — бета-котёнок из нового набора анимаций. Место, куда его унесли, хранится в настройках.
 const Pet = (() => {
   'use strict';
   const REDUCE = matchMedia('(prefers-reduced-motion: reduce)');
   const NS = 'http://www.w3.org/2000/svg';
-  const FR = PET_ATLAS.frames;
+  // Классический котёнок или бета (новый набор анимаций, pet-atlas-beta.js): у беты те же имена кадров.
+  let ATL = PET_ATLAS, FR = ATL.frames, IMG = 'cat-atlas.webp', beta = false;
   const K = 64 / 120; // единиц SVG на пиксель атласа: сидящий кот ростом 113 px — около 60 единиц
   let root = null, svg = null, bubble = null, body = null, home = null, sprite = null, clipRect = null;
   let state = '', prev = '', say = () => '', onPurr = null, onMove = null;
@@ -62,7 +63,7 @@ const Pet = (() => {
     return v < 0.55 && u > 0.35 && u < 0.75 ? 'chin' : 'body';
   }
   function makeBody() {
-    sprite = el('image', { class: 'pet-sprite', href: 'cat-atlas.webp', width: PET_ATLAS.w * K, height: PET_ATLAS.h * K, preserveAspectRatio: 'none' });
+    sprite = el('image', { class: 'pet-sprite', href: IMG, width: ATL.w * K, height: ATL.h * K, preserveAspectRatio: 'none' });
     clipRect = el('rect', { x: 0, y: 0, width: 1, height: 1 });
     body = el('g', { class: 'pet-body' }, el('g', { 'clip-path': 'url(#petClip)' }, sprite));
     return [el('clipPath', { id: 'petClip' }, clipRect), body];
@@ -1007,7 +1008,13 @@ const Pet = (() => {
   // opts: say(state) — реплика по щелчку, onPurr — погладили, spot — сохранённое место ([доля x, доля y]
   // или null — дома), onMove(spot) — кота перенесли.
   function mount(container, opts = {}) {
-    if (root) return;
+    const b = !!opts.beta && typeof PET_ATLAS_BETA !== 'undefined';
+    if (root) {
+      if (b === beta) return;
+      unmount(); // сменили котёнка в настройках — пересоздаём с другим набором кадров
+    }
+    beta = b;
+    ATL = b ? PET_ATLAS_BETA : PET_ATLAS; FR = ATL.frames; IMG = b ? 'cat-atlas-beta.webp' : 'cat-atlas.webp';
     say = opts.say || say;
     onPurr = opts.onPurr || onPurr;
     onMove = opts.onMove || onMove;
