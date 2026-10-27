@@ -181,7 +181,7 @@ const Pet = (() => {
   // иногда выскакивает из меню; время от времени останавливается перевести дух. Места нет — бежит на месте.
   let rested = false;
   function runAbout() {
-    if (REDUCE.matches) { loop(() => seq('run', 4, 5), runMs); return; }
+    if (REDUCE.matches) { loop(() => seq('run', 8), runMs); return; }
     if (!rested && chance(0.3)) {
       rested = true;
       play([['brake_1', 110], ['brake_2', 160], ['brake_3', 220], ...pick([
@@ -194,7 +194,7 @@ const Pet = (() => {
     rested = false;
     if (free ? chance(0.55) && roam(true) : chance(0.3) && explore(null, true)) return;
     if (stroll(null, { fast: true })) return;
-    play([...seq('run', 4, 5), ...seq('run', 4, 5), ...seq('run', 4, 5)], runMs(), back);
+    play([...seq('run', 8), ...seq('run', 8)], runMs(), back);
   }
 
   // ---------- живой простой: позы, моргание, дела ----------
@@ -209,7 +209,7 @@ const Pet = (() => {
         const r = Math.random();
         if (r < 0.6) {
           const base = cur;
-          play([['blink_2', 70], ['blink_3', 110], ['blink_2', 70], [base, 10]], 0, () => { busy = false; show(base); });
+          play([['blink_1', 50], ['blink_2', 70], ['blink_3', 110], ['blink_2', 70], ['blink_1', 50], [base, 10]], 0, () => { busy = false; show(base); });
         } else if (r < 0.8) {
           const i = Math.max(0, IDLE.indexOf(cur));
           show(IDLE[(i + (chance(0.5) ? 1 : IDLE.length - 1)) % IDLE.length]);
@@ -238,7 +238,7 @@ const Pet = (() => {
     [4, null, () => play(['ear_1', 'ear_2', 'ear_1', 'ear_2', 'ear_3'], 260, back)],
     [3, null, () => play(['wash_1', 'wash_2', 'wash_3', 'wash_2', 'wash_3', 'wash_1'], 330, back)],
     [3, null, () => play([['stretchb_1', 1100], ['stretchb_3', 600], ['stretchb_4', 500]], 0, back)],
-    [2, null, () => play([['stretch_1', 900], ['stretch_2', 1300], ['stretch_1', 500]], 0, back)],
+    [2, null, () => play([['stretch_1', 900], ['stretch_2', 1300], ['stretch_3', 900], ['stretch_1', 500]], 0, back)],
     [3, null, () => play([['yawnsit_1', 250], ['yawnsit_2', 900], ['yawnsit_3', 300]], 0, back)],
     [2, null, () => play([['yawn_1', 300], ['yawn_2', 1000], ['yawn_1', 300]], 0, back)],
     [1, null, () => play(['shake_1', 'shake_2', 'shake_3', 'shake_2', 'shake_1'], 120, back)],
@@ -254,7 +254,13 @@ const Pet = (() => {
     // Охотится на невидимую добычу: припал, подкрался, прыгнул, прижал лапами.
     [2, null, () => play([['hunt_1', 600], ['hunt_2', 500], ['hunt_3', 220], ['hunt_4', 260], ['hunt_5', 400], ['hunt_6', 900]], 0, back)],
     // Поворачивается к нам мордочкой и обратно.
-    [2, null, () => play([['turnin_1', 150], ['turnin_2', 150], ['turnin_3', 1500], ['turnin_4', 900], ['turnin_3', 300], ['turnin_2', 150], ['turnin_1', 150]], 0, back)],
+    [2, null, () => play([['turnin_1', 150], ['turnin_2', 150], ['turnin_3', 1500], ['turnin_4', 900], ['turnin_5', 700], ['turnin_6', 700], ['turnin_7', 900], ['turnin_3', 300], ['turnin_2', 150], ['turnin_1', 150]], 0, back)],
+    // Поворачивает голову из стороны в сторону.
+    [2, null, () => play([...seq('headturn', 5), 'headturn_4', 'headturn_3', 'headturn_2', 'headturn_1'], 450, back)],
+    // Встаёт, стоит, оглядываясь, и снова садится.
+    [2, null, () => play([...seq('stand', 5).map(n => [n, 260]), ['stand_4b', 900], ...seq('tosit', 5).map(n => [n, 170])], 0, back)],
+    // Вскакивает, будто что-то услышал, и разворачивается.
+    [1, null, () => play([['startle_1', 220], ['startle_2', 400], ['turn_2', 260], ['turn_1', 300], ['turn_2', 260], ['alert_1', 600]], 0, back)],
     [2, null, () => play([...seq('lookup', 4), 'lookup_2'], 550, back)],
     [3, null, () => play([...seq('listen', 4), 'listen_2'], 550, back)],
     [3, null, () => play(['earmove_1', 'earmove_2', 'earmove_3', 'earmove_2', 'earmove_4', 'earmove_1'], 350, back)],
@@ -479,8 +485,8 @@ const Pet = (() => {
     if (REDUCE.matches) { back(); return; }
     const then = afterLand; afterLand = null;
     if (then) { then(speed); return; }
-    if (speed > 900) { flash('hop', 650); play([['touch_1', 160], ['touch_3', 220], ['alert_2', 400]], 0, back); }
-    else play([['touch_3', 140], ['touch_5', 180]], 0, back);
+    if (speed > 900) { flash('hop', 650); play([...seq('touch', 5).map(n => [n, 110]), ['alert_2', 400]], 0, back); }
+    else play(chance(0.5) ? [['touch_3', 140], ['touch_4', 120], ['touch_5', 180]] : [['land_1', 200], ['touch_5', 160]], 0, back);
   }
   // Прыжок на опору: выше — присел, прыгнул, подтянулся за край; сильно выше — вскарабкался;
   // ниже — заглянул вниз и спрыгнул (иногда передумал).
@@ -489,7 +495,7 @@ const Pet = (() => {
     if (!free || !root) return;
     const w = root.offsetWidth, f = feet();
     const tx = Math.max(t.r.left - w * 0.2, Math.min(t.r.right - w * 0.8, (t.r.left + t.r.right) / 2 - w / 2 + rnd(-30, 30)));
-    const dy = t.r.top - f, far = Math.abs(tx - fx) > 260;
+    const dy = t.r.top - f, far = Math.abs(tx - fx) > 260, old = !far && chance(0.3);
     setFlip(tx < fx);
     // Вскарабкаться можно только по боку высокого элемента, который доходит донизу, до лап.
     if (dy < -180 && Math.abs(tx - fx) < 260 && t.r.bottom >= f - 40) { climbTo(t, done); return; }
@@ -501,18 +507,23 @@ const Pet = (() => {
       const T = Math.max(0.45, Math.min(0.9, Math.hypot(tx - fx, dy) / 700)), g = 2200;
       vx = (tx - fx) / T; vy = (dy - 0.5 * g * T * T) / T;
       support = null; leaping = true;
-      afterLand = sp => play(dy < -40 ? [['highjump_6', 200], ['touch_3', 140], ['touch_5', 180]]
-        : sp > 900 ? [['touch_1', 120], ['touch_3', 160], ['touch_5', 200]] : [['touch_3', 130], ['touch_5', 170]], 0, done || back);
+      // Два рисунка прыжка: новый (leap/highjump/longjump/hopdown) и прежний (jump/jumpup/jumpdown) — вперемешку.
+      afterLand = sp => play(old ? (dy < -40 ? [['jumpup_4', 260], ['land_1', 200]] : dy > 40 ? [['jumpdown_2', 120], ['land_1', 220]] : [['jump_3', 120], ['land_1', 220]])
+        : dy < -40 ? [['highjump_6', 200], ['touch_3', 140], ['touch_5', 180]]
+        : far ? [['longjump_7', 140], ['longjump_8', 180], ['touch_4', 120], ['touch_5', 160]]
+        : sp > 900 ? [['touch_1', 120], ['touch_2', 100], ['touch_3', 160], ['touch_5', 200]] : [['leap_6', 120], ['touch_3', 130], ['touch_5', 170]], 0, done || back);
       // Вверх — тянется лапами; далеко — длинный прыжок; вниз — спрыгивает; рядом — обычный прыжок вбок.
-      fall(v => dy < -60 ? (v < -300 ? 'highjump_2' : v < 0 ? 'highjump_3' : 'leap_5')
+      fall(v => old ? (dy < -60 ? (v < -200 ? 'jumpup_2' : 'jumpup_3') : dy > 40 ? (v < 0 ? 'jump_2' : 'jumpdown_2') : (v < -100 ? 'jump_1' : v < 100 ? 'jump_2' : 'jump_3'))
+        : dy < -60 ? (v < -300 ? 'highjump_2' : v < 0 ? 'highjump_3' : 'leap_5')
         : far ? (v < -250 ? 'longjump_3' : v < 0 ? 'longjump_4' : v < 300 ? 'longjump_5' : 'longjump_6')
-        : dy > 40 ? (v < 0 ? 'leap_3' : 'hopdown_2') : (v < -150 ? 'leap_2' : v < 150 ? 'leap_3' : 'leap_5'));
+        : dy > 40 ? (v < 0 ? 'leap_3' : 'hopdown_2') : (v < -150 ? 'leap_2' : v < 0 ? 'leap_3' : v < 150 ? 'leap_4' : 'leap_5'));
     });
     if (!done && dy > 140 && chance(0.25)) { // передумал прыгать вниз
       play([['edgethink_1', 500], ['edgethink_2', 600], ['edgethink_3', 700], ['edgethink_4', 500]], 0, () => { leaping = false; back(); });
       return;
     }
-    if (quick) { go(dy < -60 ? [['highjump_1', 140]] : [['leap_1', 120]]); return; }
+    if (quick) { go(old ? [[dy < -60 ? 'jumpup_1' : 'jump_1', 120]] : dy < -60 ? [['highjump_1', 140]] : [['leap_1', 120]]); return; }
+    if (old) { go(dy > 40 ? [['lookdown_1', 400], ['lookdown_2', 500], ['jumpdown_1', 250]] : dy < -60 ? [['jumpup_1', 300]] : [['jump_1', 250]]); return; }
     go(dy > 40 ? [['lookdown_1', 400], ['lookdown_2', 500], ['lookdown_3', 400], ['leap_1', 220]]
       : dy < -60 ? [['highjump_1', 300]] : far ? [['longjump_1', 200], ['longjump_2', 150]] : [['leap_1', 250]]);
   }
@@ -656,8 +667,10 @@ const Pet = (() => {
     const fast = opt.fast != null ? opt.fast : dist > 220 && chance(0.4);
     const trot = !fast && dist > 150 && chance(0.35);
     const diag = !fast && !trot && !done0 && chance(0.15);
-    const gait = fast ? { cycle: seq('gallop', 6), ms: 75, speed: 140 } : trot ? { cycle: seq('trot', 6), ms: 95, speed: 70 }
-      : diag ? { cycle: seq(left ? 'diagl' : 'diagr', 4), ms: 190, speed: 30 } : { cycle: seq('stride', 8), ms: 115, speed: 34 };
+    const gait = fast ? pick([{ cycle: seq('gallop', 6), ms: 75, speed: 140 }, { cycle: seq('run', 8), ms: 70, speed: 135 }])
+      : trot ? { cycle: seq('trot', 6), ms: 95, speed: 70 }
+      : diag ? { cycle: seq(left ? 'diagl' : 'diagr', 4), ms: 190, speed: 30 }
+      : chance(0.7) ? { cycle: seq('stride', 8), ms: 115, speed: 34 } : { cycle: seq('walk', 6), ms: 150, speed: 32 };
     const turn = flip !== left && !diag;
     strolling = true; busy = true;
     const begin = () => {
@@ -681,7 +694,7 @@ const Pet = (() => {
           for (const [n, ms] of pseq) { gagTimers.push(setTimeout(() => g === gen && strolling && show(n), t)); t += ms; }
           pausedUntil = now + t;
         } else if (now >= pausedUntil) {
-          show(accel ? seq('accel', 4, 5)[Math.min(3, Math.floor((now - t00) / 90))] : gait.cycle[Math.floor(now / gait.ms) % gait.cycle.length]);
+          show(accel ? seq('accel', 8)[Math.min(7, Math.floor((now - t00) / 45))] : gait.cycle[Math.floor(now / gait.ms) % gait.cycle.length]);
         }
         const done = dir > 0 ? x >= to : x <= to;
         if (done) x = to;
@@ -692,9 +705,12 @@ const Pet = (() => {
           if (done0) { busy = true; done0(); return; }
           const sit = () => { setFlip(false); back(); };
           // Галоп — тормозит с заносом и иногда переводит дух; рысь и шаг — плавно останавливается.
-          if (fast) play([['brake_1', 110], ['brake_2', 160], ['brake_3', 220], ...(chance(0.4) ? [['pant_1', 700], ['pant_2', 900]] : [])], 0, sit);
+          if (fast) play([...pick([[['brake_1', 110], ['brake_2', 160], ['brake_3', 220]],
+            [...seq('runstop', 4).map(n => [n, 110]), ['skid_1', 220]],
+            seq('slide', 4).map(n => [n, 140])]), ...(chance(0.4) ? [['pant_1', 700], ['pant_2', 900]] : [])], 0, sit);
           else if (trot) play(seq('stop', 5).map(n => [n, 120]), 0, sit);
-          else if (chance(0.4)) play([['sitdown_2', 160], ['sitdown_3', 180], ['sitdown_4', 220]], 0, sit);
+          else if (chance(0.3)) play([['sitdown_1', 140], ['sitdown_2', 160], ['sitdown_3', 180], ['sitdown_4', 220]], 0, sit);
+          else if (chance(0.3)) play(seq('tosit', 5).map(n => [n, 150]), 0, sit);
           else play([['stop_3', 140], ['stop_4', 150], ['stop_5', 200]], 0, sit);
           return;
         }
@@ -703,8 +719,14 @@ const Pet = (() => {
       strollRaf = requestAnimationFrame(step);
     };
     // Встаёт (в пути — сразу трогается) и разворачивается на месте через «лицом к нам».
-    const pre = done0 ? [['start_6', 90]] : [['start_3', 110], ['start_4', 110], ['start_5', 110]];
-    if (turn) pre.push(['turnin_1', 110], ['turnin_2', 110], ['turnin_3', 130], [() => setFlip(left), 0], ['turnin_2', 110], ['start_6', 100]);
+    const pre = done0 ? [['start_6', 90]] : chance(0.5) ? seq('start', 5).map(n => [n, 100]) : [['stand_3', 140], ['stand_4b', 140]];
+    if (turn) {
+      // Разворот: на месте через «лицом к нам», на бегу — пробегом по дуге, иногда прежним разворотом.
+      if (fast) pre.push(['turnrun_1', 90], ['turnrun_2', 90], [() => setFlip(left), 0], ['turnrun_3', 100]);
+      else if (chance(0.3)) pre.push(['turn_2', 160], [() => setFlip(left), 0], ['turn_1', 120]);
+      else pre.push(['turnin_1', 110], ['turnin_2', 110], ['turnin_3', 130], [() => setFlip(left), 0], ['turnin_2', 110], ['start_6', 100]);
+    }
+    if (!done0) pre.push(['start_7', 90]);
     stopAnim(); busy = true;
     let i = 0;
     const steps = () => {
@@ -736,8 +758,10 @@ const Pet = (() => {
   function lookFrame(dx, dy, dist) {
     const ax = dx / dist, ay = dy / dist;
     if (ay < -0.6) return ax < -0.3 ? 'headturn_5' : ax > 0.3 ? 'lookeye_4' : 'lookeye_5';
+    if (ax < -0.8) return 'headturn_4';
     if (ax < -0.6) return 'headturn_3';
-    if (ax < -0.2) return 'headturn_2';
+    if (ax < -0.35) return 'headturn_2';
+    if (ax < -0.2) return 'headturn_1';
     if (ax > 0.6) return 'lookeye_3';
     if (ax > 0.2) return 'lookeye_2';
     return 'lookeye_1';
@@ -839,7 +863,7 @@ const Pet = (() => {
       if (!root || !hovering || held || press || inAir() || state !== 'on' || napping) return;
       halt(); watching = false;
       const begging = performance.now() - lastPetAt > 600e3 && chance(0.5);
-      loop(() => begging ? [...seq('beg', 4), 'beg_3', 'beg_4'] : pick([['rub_1', 'rub_2', 'rub_1', 'rub_5'], ['bonk_1', 'bonk_2', 'bonk_1'], ['rub_5', 'rub_2', 'rub_4']]), 380);
+      loop(() => begging ? [...seq('beg', 4), 'beg_3', 'beg_4'] : pick([['rub_1', 'rub_2', 'rub_3', 'rub_2', 'rub_5'], ['bonk_1', 'bonk_2', 'bonk_1'], ['rub_5', 'rub_3', 'rub_4']]), 380);
       busy = true;
     }, 1200);
   }
@@ -953,7 +977,7 @@ const Pet = (() => {
     const hr = home && home.getBoundingClientRect();
     if (hr && e.clientX >= hr.left && e.clientX <= hr.right && e.clientY >= hr.top - 40 && e.clientY <= hr.bottom) { goHome(); return; }
     vx = Math.max(-1500, Math.min(1500, h.vx)); vy = Math.max(-900, Math.min(900, h.vy));
-    const thrown = Math.abs(vx) > 900 || Math.abs(vy) > 700;
+    const thrown = Math.abs(vx) > 900 || Math.abs(vy) > 700, hard = Math.abs(vx) > 1300 || Math.abs(vy) > 850; // hard — кубарем
     const byTail = h.zone === 'tail' && now - h.since > 1200;
     // Что будет после приземления: головокружение, обида, испуг — или просто отряхнётся.
     afterLand = () => {
@@ -964,13 +988,13 @@ const Pet = (() => {
         setTimeout(() => talk(byTail ? 'Шшш! За хвост нельзя!' : 'Хмф!', 1800), 300);
         return;
       }
-      if (thrown) { play([...seq('tumble', 3, 5).map(n => [n, 160]), ...seq('getup', 4).map(n => [n, 170]), ['alert_1', 400]], 0, back); return; }
+      if (thrown) { play([...(hard ? seq('tumble', 7) : seq('tumble', 3, 5)).map(n => [n, 150]), ...seq('getup', 4).map(n => [n, 170]), ['alert_1', 400]], 0, back); return; }
       play(chance(0.5) ? [['touch_1', 200], ['touch_3', 150], ...seq('shakefull', 4).map(n => [n, 120])] : [['touch_3', 160], ['touch_5', 200]], 0, back);
     };
     support = null;
     // Швырнули — кувыркается в воздухе; просто отпустили — летит лапами вниз.
     const t0 = performance.now();
-    fall(thrown ? () => seq('flip', 3)[Math.floor((performance.now() - t0) / 90) % 3] : v => v < 0 ? 'spook_2' : 'fallhigh_2');
+    fall(thrown ? () => seq('flip', 4)[Math.floor((performance.now() - t0) / 90) % 4] : v => v < 0 ? 'spook_2' : 'fallhigh_2');
   }
 
   // ---------- гравитация ----------

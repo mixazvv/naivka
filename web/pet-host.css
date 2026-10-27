@@ -1,0 +1,4 @@
+/* Котёнок на панели задач (pet.html): прозрачная страница, полоса над панелью задач, кот гуляет по её низу. */
+html, body.pet-host { background: transparent !important; margin: 0; overflow: hidden; height: 100%; }
+.pet-floor { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; justify-content: flex-end; }
+.pet-floor .pet { margin: 0 0 -6px 8px; }

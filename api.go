@@ -538,6 +538,9 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 		}
 		a.scheduleAutoApply()
 	}()
+	if p, ok := a.ui.(petHost); ok && (prev.Mascot != ns.Mascot || prev.PetTaskbar != ns.PetTaskbar || prev.MascotBeta != ns.MascotBeta) {
+		go p.SyncPet()
+	}
 	if err := a.applyAutostart(prev, ns); err != nil {
 		return nil, err
 	}
