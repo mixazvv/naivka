@@ -80,7 +80,7 @@ func main() {
 	if err != nil {
 		fatal("Не удалось открыть папку данных: " + err.Error())
 	}
-	// Запуск из RunOnce после сбоя или выключения: только вернуть системный прокси и выйти.
+	// Запуск из RunOnce, записанного версиями до 2.16.1: только вернуть системный прокси и выйти.
 	if args["--restore-proxy"] {
 		if inst, ok := readInstance(dir); !ok || !pingInstance(inst) {
 			restoreSystemProxy(dir)
