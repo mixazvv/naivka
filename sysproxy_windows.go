@@ -144,16 +144,9 @@ func setSystemProxy(dir string, port int) error {
 	}
 	notifyProxyChanged()
 
-	// Страховка: если компьютер выключат или Naivka упадёт, при следующем входе Windows
-	// один раз запустит Naivka с ключом --restore-proxy, и та вернёт прокси как было
-	// (RunOnce выполняется один раз и удаляется). Раньше здесь была команда cmd.exe с reg add —
-	// антивирусы принимали её за закрепление вредоносной программы.
-	if rk, err := createKey(runOnceKey); err == nil {
-		if cmd := restoreCommand(); cmd != "" {
-			_ = setString(rk, runOnceName, cmd)
-		}
-		syscall.RegCloseKey(rk)
-	}
+	// Если компьютер выключат или Naivka упадёт, прокси вернётся при следующем запуске Naivka
+	// (restoreSystemProxy при старте). Себя в RunOnce больше не прописываем: Защитник Windows
+	// принимал это за закрепление трояна (Trojan:Win32/Bearfoos.A!ml) и удалял Naivka.exe.
 	return nil
 }
 
@@ -184,15 +177,8 @@ func loadBackup(dir string) proxyBackup {
 	return b
 }
 
-func restoreCommand() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	return `"` + exe + `" --restore-proxy`
-}
-
 func restoreSystemProxy(dir string) {
+	// Запись прежних версий (до 2.16.1) — убираем, если осталась.
 	if rk, err := openKey(runOnceKey, syscall.KEY_READ|syscall.KEY_WRITE); err == nil {
 		deleteValue(rk, runOnceName)
 		syscall.RegCloseKey(rk)
