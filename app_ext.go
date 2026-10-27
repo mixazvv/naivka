@@ -17,6 +17,9 @@ type uiHost interface {
 	Close()
 }
 
+// petHost — у интерфейса есть котёнок на панели задач (только своё окно Windows на WebView2, ui_pet_windows.go).
+type petHost interface{ SyncPet() }
+
 func (a *App) settingsCopy() *Settings {
 	a.mu.Lock()
 	defer a.mu.Unlock()

@@ -105,6 +105,7 @@ type webWindow struct {
 	frame bool // своя строка заголовка (Windows 11): системная убрана, кнопки рисует страница
 	mica  bool // фон Mica (Windows 11 22H2+): страница прозрачная, сквозь неё виден фон окна
 	mini  bool // мини-окно из трея
+	pet   bool // котёнок на панели задач (ui_pet_windows.go)
 }
 
 // nativeUI — своё окно на WebView2 (движок Edge, встроенный в Windows 10/11), мини-окно и значок в трее.
@@ -113,6 +114,9 @@ type nativeUI struct {
 	t        *tray
 	main     *webWindow
 	mini     *webWindow
+	pet      *webWindow // котёнок на панели задач
+	petSt    petState
+	petTicks int
 	fallback bool
 	creating bool
 	hinted   bool
@@ -140,6 +144,7 @@ func (u *nativeUI) Run(show bool) {
 	if show {
 		u.Show()
 	}
+	go u.SyncPet()
 	u.t.Run()
 }
 
@@ -250,8 +255,8 @@ func (u *nativeUI) setPageBackground(w *webWindow) {
 	u.mu.Lock()
 	col, _ := pageBackground(u.dark)
 	u.mu.Unlock()
-	if w.mica {
-		col = edge.COREWEBVIEW2_COLOR{} // прозрачный: под страницей фон Mica
+	if w.mica || w.pet {
+		col = edge.COREWEBVIEW2_COLOR{} // прозрачный: под страницей фон Mica или (котёнок) рабочий стол
 	}
 	_ = c2.PutDefaultBackgroundColor(col)
 }
@@ -262,7 +267,7 @@ func (w *webWindow) hostFlags() string {
 	for _, x := range []struct {
 		on   bool
 		name string
-	}{{w.frame, "frame"}, {w.mica, "mica"}, {w.mini, "mini"}} {
+	}{{w.frame, "frame"}, {w.mica, "mica"}, {w.mini, "mini"}, {w.pet, "pet"}} {
 		if x.on {
 			f = append(f, x.name)
 		}
@@ -451,6 +456,10 @@ func (u *nativeUI) mainProc(hwnd, msg, wp, lp uintptr) uintptr {
 
 // onMessage — команды страницы (window.chrome.webview.postMessage). Приходят в потоке интерфейса.
 func (u *nativeUI) onMessage(w *webWindow, raw string) {
+	if w.pet {
+		u.onPetMessage(raw)
+		return
+	}
 	var m struct {
 		Cmd  string `json:"cmd"`
 		Edge string `json:"edge"`
