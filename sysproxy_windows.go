@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -29,7 +30,63 @@ var (
 	procRegCreateKeyExW = advapi32.NewProc("RegCreateKeyExW")
 	wininet             = syscall.NewLazyDLL("wininet.dll")
 	procInternetSetOpt  = wininet.NewProc("InternetSetOptionW")
+	procInternetQryOpt  = wininet.NewProc("InternetQueryOptionW")
 )
+
+// Настройки подключения через WinINet (INTERNET_OPTION_PER_CONNECTION_OPTION): так их меняют
+// «Параметры» Windows. Значения в реестре пишем тоже — их читают программы, которые смотрят только туда.
+const (
+	optPerConn      = 75 // INTERNET_OPTION_PER_CONNECTION_OPTION
+	connFlags       = 1  // INTERNET_PER_CONN_FLAGS
+	connProxyServer = 2
+	connBypass      = 3
+	connAutoURL     = 4
+	typeDirect      = 1 // PROXY_TYPE_DIRECT
+	typeProxy       = 2
+	typeAutoURL     = 4
+	typeAutoDetect  = 8
+)
+
+// Value — объединение DWORD / указатель / FILETIME, 8 байт: uint64 даёт верную раскладку и на 64-,
+// и на 32-битной Windows (там структура 12 байт, выравнивание по 4).
+type perConnOption struct {
+	Option uint32
+	Value  uint64 // DWORD или указатель на строку UTF-16
+}
+
+type perConnList struct {
+	Size       uint32
+	Connection *uint16 // nil — подключение по локальной сети (как и ключ реестра)
+	Count      uint32
+	Error      uint32
+	Options    *perConnOption
+}
+
+// setPerConn применяет настройки; strs — строки, на которые указывают значения (держим их живыми до вызова).
+func setPerConn(opts []perConnOption, strs ...[]uint16) bool {
+	l := perConnList{Count: uint32(len(opts)), Options: &opts[0]}
+	l.Size = uint32(unsafe.Sizeof(l))
+	r, _, _ := procInternetSetOpt.Call(0, optPerConn, uintptr(unsafe.Pointer(&l)), uintptr(l.Size))
+	runtime.KeepAlive(opts)
+	runtime.KeepAlive(strs)
+	return r != 0
+}
+
+// strOpt — строковый параметр подключения; строку s нужно передать в setPerConn.
+func strOpt(option uint32, v string) (perConnOption, []uint16) {
+	s, _ := syscall.UTF16FromString(v)
+	return perConnOption{Option: option, Value: uint64(uintptr(unsafe.Pointer(&s[0])))}, s
+}
+
+// queryConnFlags — текущие флаги подключения (PROXY_TYPE_*); ok=false — не удалось узнать.
+func queryConnFlags() (uint32, bool) {
+	opts := []perConnOption{{Option: connFlags}}
+	l := perConnList{Count: 1, Options: &opts[0]}
+	l.Size = uint32(unsafe.Sizeof(l))
+	n := l.Size
+	r, _, _ := procInternetQryOpt.Call(0, optPerConn, uintptr(unsafe.Pointer(&l)), uintptr(unsafe.Pointer(&n)))
+	return uint32(opts[0].Value), r != 0
+}
 
 // proxyBackup — как было до нас. Хранится в файле, пока прокси включён.
 type proxyBackup struct {
@@ -38,6 +95,16 @@ type proxyBackup struct {
 	HasServer   bool   `json:"hasServer"`
 	Override    string `json:"override"`
 	HasOverride bool   `json:"hasOverride"`
+	Auto        string `json:"auto,omitempty"` // AutoConfigURL (свой PAC-скрипт пользователя)
+	HasAuto     bool   `json:"hasAuto,omitempty"`
+	Flags       uint32 `json:"flags,omitempty"` // флаги WinINet (0 — не знаем, файл прежних версий)
+}
+
+const autoKey = "AutoConfigURL"
+
+// ourPAC — адрес похож на скрипт Naivka (в том числе от прошлого запуска, с другим портом).
+func ourPAC(u string) bool {
+	return strings.HasPrefix(u, "http://127.0.0.1:") && strings.Contains(u, "/naivka-")
 }
 
 func backupPath(dir string) string { return filepath.Join(dir, "proxy-backup.json") }
@@ -129,24 +196,36 @@ func setSystemProxy(dir string, port int) error {
 		b.Enable, _ = readDWORD(k, "ProxyEnable")
 		b.Server, b.HasServer = readString(k, "ProxyServer")
 		b.Override, b.HasOverride = readString(k, "ProxyOverride")
+		b.Auto, b.HasAuto = readString(k, autoKey)
+		if ourPAC(b.Auto) { // остался от сбоя прежнего запуска — это не настройка пользователя
+			b.Auto, b.HasAuto = "", false
+		}
+		if f, ok := queryConnFlags(); ok {
+			b.Flags = f | typeDirect
+		}
 		data, _ := json.Marshal(b)
 		if err := os.WriteFile(backupPath(dir), data, 0o600); err != nil {
 			return err
 		}
 	}
 
-	if err := setString(k, "ProxyServer", fmt.Sprintf("127.0.0.1:%d", port)); err != nil {
+	// Прокси — PAC-скриптом, который раздаёт Naivka (pac.go): выключили компьютер или Naivka упала —
+	// скрипта нет, и всё идёт напрямую, а не в никуда. Прямой адрес прокси выключаем, иначе Windows
+	// откатилась бы на него, не получив скрипт. Себя в автозапуск (RunOnce) не прописываем: Защитник
+	// Windows принимал это за троян (Trojan:Win32/Bearfoos.A!ml) и удалял Naivka.exe.
+	u, err := pacURL(port)
+	if err != nil {
 		return err
 	}
-	_ = setString(k, "ProxyOverride", bypassList())
-	if err := setDWORD(k, "ProxyEnable", 1); err != nil {
+	if err := setString(k, autoKey, u); err != nil {
 		return err
 	}
+	if err := setDWORD(k, "ProxyEnable", 0); err != nil {
+		return err
+	}
+	ao, as := strOpt(connAutoURL, u)
+	_ = setPerConn([]perConnOption{{Option: connFlags, Value: typeDirect | typeAutoURL}, ao}, as)
 	notifyProxyChanged()
-
-	// Если компьютер выключат или Naivka упадёт, прокси вернётся при следующем запуске Naivka
-	// (restoreSystemProxy при старте). Себя в RunOnce больше не прописываем: Защитник Windows
-	// принимал это за закрепление трояна (Trojan:Win32/Bearfoos.A!ml) и удалял Naivka.exe.
 	return nil
 }
 
@@ -157,13 +236,20 @@ func systemProxyOurs(port int) (ours bool, current string) {
 		return true, "" // не смогли прочитать — не поднимаем тревогу
 	}
 	defer syscall.RegCloseKey(k)
+	auto, _ := readString(k, autoKey)
+	pacSrv.mu.Lock()
+	mine := pacSrv.url
+	pacSrv.mu.Unlock()
+	if mine != "" && auto == mine {
+		return true, auto
+	}
+	if auto != "" {
+		return false, auto
+	}
 	en, _ := readDWORD(k, "ProxyEnable")
 	srv, _ := readString(k, "ProxyServer")
 	if en != 1 {
 		return false, ""
-	}
-	if srv == fmt.Sprintf("127.0.0.1:%d", port) {
-		return true, srv
 	}
 	return false, srv
 }
@@ -202,6 +288,47 @@ func restoreSystemProxy(dir string) {
 		_ = setString(k, "ProxyOverride", b.Override)
 	} else {
 		deleteValue(k, "ProxyOverride")
+	}
+	// Скрипт: свой у пользователя — вернуть; наш (этого или прошлого запуска) — убрать.
+	auto, _ := readString(k, autoKey)
+	if b.HasAuto {
+		_ = setString(k, autoKey, b.Auto)
+	} else if ourPAC(auto) {
+		deleteValue(k, autoKey)
+		auto = ""
+	}
+	if b.HasAuto {
+		auto = b.Auto
+	}
+	// Флаги WinINet — как были (с «Автоматически определять параметры»). Файл прежних версий их
+	// не хранит — тогда берём нынешние и правим только прокси и скрипт.
+	base := b.Flags
+	if base == 0 {
+		base, _ = queryConnFlags()
+	}
+	if base != 0 {
+		flags := (base | typeDirect) &^ (typeProxy | typeAutoURL)
+		if b.Enable == 1 {
+			flags |= typeProxy
+		}
+		if auto != "" {
+			flags |= typeAutoURL
+		}
+		opts := []perConnOption{{Option: connFlags, Value: uint64(flags)}}
+		var strs [][]uint16
+		add := func(option uint32, v string) {
+			o, s := strOpt(option, v)
+			opts = append(opts, o)
+			strs = append(strs, s)
+		}
+		add(connAutoURL, auto)
+		if b.HasServer {
+			add(connProxyServer, b.Server)
+		}
+		if b.HasOverride {
+			add(connBypass, b.Override)
+		}
+		_ = setPerConn(opts, strs...)
 	}
 	notifyProxyChanged()
 	_ = os.Remove(backupPath(dir))
