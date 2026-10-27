@@ -15,7 +15,7 @@ const Pet = (() => {
   let ATL = PET_ATLAS, FR = ATL.frames, IMG = 'cat-atlas.webp', beta = false;
   const K = 64 / 120; // единиц SVG на пиксель атласа: сидящий кот ростом 113 px — около 60 единиц
   let root = null, svg = null, bubble = null, body = null, home = null, sprite = null, clipRect = null;
-  let state = '', prev = '', say = () => '', onPurr = null, onMove = null;
+  let state = '', prev = '', say = () => '', onPurr = null, onMove = null, exit = null;
 
   const el = (tag, attrs = {}, ...kids) => {
     const e = document.createElementNS(NS, tag);
@@ -120,7 +120,7 @@ const Pet = (() => {
   }
 
   // ---------- состояния ----------
-  const inAir = () => !!(held || falling || hanging || leaping);
+  const inAir = () => !!(held || falling || hanging || leaping || gone);
   const sitting = () => !busy && !strolling && !inAir() && !watching && !napping;
   const canAct = () => root && !REDUCE.matches && !inAir() && !strolling;
   let side = 0, grumpyUntil = 0, napping = false;
@@ -291,6 +291,8 @@ const Pet = (() => {
     [2, () => free, () => roam(true), 'move'],
     [8, () => !free && !exploreUntil, () => explore(), 'move'],
     [2, () => !free && !exploreUntil, () => explore(null, true), 'move'],
+    // Спрыгивает из окна на панель задач Windows (окно Naivka над ней, см. exit).
+    [4, () => !!(exit && exit.ok()) && (!free || (!support && feet() >= innerHeight - 3)), () => exitDown(), 'move'],
   ];
   let idleTimer = 0, lastMeow = performance.now(), recent = [], lastMove = 0;
   function idleLoop() {
@@ -462,7 +464,7 @@ const Pet = (() => {
       fx += vx * dt; fy += vy * dt;
       if (fx < 0) { fx = 0; vx = Math.abs(vx) * 0.5; }
       if (fx > innerWidth - w) { fx = innerWidth - w; vx = -Math.abs(vx) * 0.5; }
-      if (fy < 0) { fy = 0; vy = Math.abs(vy) * 0.3; }
+      if (fy < 0 && vy < 0) { fy = 0; vy = Math.abs(vy) * 0.3; } // сверху (из соседнего окна) — влетает
       // Опору ищем ниже, чем начали падать: с той, откуда упал, не «приземляется» обратно.
       const hit = vy > 0 && feet() > startFeet + 2 ? landing(Math.max(f0, startFeet + 3), feet()) : null;
       if (hit) {
@@ -643,13 +645,16 @@ const Pet = (() => {
   // opt.fast — бегом (по умолчанию — как выйдет), opt.done — что делать на месте вместо «сесть».
   // false — идти некуда (опоры нет или она слишком узкая).
   function stroll(target, opt = {}) {
+    if (gone) return false;
     const w = root.offsetWidth, done0 = opt.done;
     let lo, hi, cur0;
     if (free) {
       if (support && support.isConnected) {
         const r = support.getBoundingClientRect();
         lo = Math.max(0, r.left - w * 0.2); hi = Math.min(innerWidth - w, r.right - w * 0.8);
-      } else if (!support && feet() >= innerHeight - 3) { lo = 0; hi = innerWidth - w; } // по низу окна
+      } else if (!support && feet() >= innerHeight - 3) { // по низу окна (на панели задач — под окном Naivka)
+        lo = bounds ? Math.max(0, bounds[0]) : 0; hi = bounds ? Math.min(innerWidth, bounds[1]) - w : innerWidth - w;
+      }
       else return false;
       cur0 = fx;
     } else {
@@ -974,6 +979,12 @@ const Pet = (() => {
     root.classList.remove('held');
     root.style.setProperty('--pet-tilt', '0deg');
     try { root.releasePointerCapture(e.pointerId); } catch (_) { /* уже отпущен */ }
+    // Отпустили над соседним окном (за низом окна Naivka или над окном Naivka с панели задач) — кот там.
+    if (exit && exit.drop(e.clientX, e.clientY)) {
+      hide();
+      exit.go(e.clientX - h.dx, e.clientY - h.dy, Math.max(-1500, Math.min(1500, h.vx)), Math.max(-900, Math.min(900, h.vy)));
+      return;
+    }
     const hr = home && home.getBoundingClientRect();
     if (hr && e.clientX >= hr.left && e.clientX <= hr.right && e.clientY >= hr.top - 40 && e.clientY <= hr.bottom) { goHome(); return; }
     vx = Math.max(-1500, Math.min(1500, h.vx)); vy = Math.max(-900, Math.min(900, h.vy));
@@ -995,6 +1006,82 @@ const Pet = (() => {
     // Швырнули — кувыркается в воздухе; просто отпустили — летит лапами вниз.
     const t0 = performance.now();
     fall(thrown ? () => seq('flip', 4)[Math.floor((performance.now() - t0) / 90) % 4] : v => v < 0 ? 'spook_2' : 'fallhigh_2');
+  }
+
+  // ---------- в соседнее окно: панель задач Windows ----------
+  // Кот может уйти из окна Naivka на панель задач и обратно. Переход бесшовный: пока летит, exit.cross
+  // говорит, долетел ли он до соседнего окна; тогда здесь он пропадает (gone), а там появляется в той же
+  // точке с той же скоростью (appear). exit: { ok() — можно уйти сейчас, cross(x, y, w, h) — уже над
+  // соседним окном, drop(cx, cy) — отпустили над соседним окном, go(x, y, vx, vy) — передать туда }.
+  let gone = false, outRaf = 0, bounds = null;
+  function hide() {
+    cancelAnimationFrame(outRaf); stopFall(); halt(); stopAnim();
+    gone = true; free || makeFree();
+    if (root) root.style.visibility = 'hidden';
+    if (bubble) bubble.hidden = true;
+  }
+  // Летит без опор, пока cross не скажет, что он уже в соседнем окне; потом done(x, y, vx, vy).
+  function flyOut(v0x, v0y, frame, cross, done) {
+    makeFree(); stopFall(); halt(); stopAnim();
+    gone = true; support = null;
+    let ax = v0x, ay = v0y, t0 = performance.now();
+    const step = now => {
+      if (!root || !gone) return;
+      const dt = Math.min(0.04, (now - t0) / 1000); t0 = now;
+      ay = Math.min(1600, ay + 2200 * dt);
+      fx += ax * dt; fy += ay * dt;
+      show(frame(ay)); place();
+      const w = root.offsetWidth, h = root.offsetHeight;
+      if (cross(fx, fy, w, h)) { hide(); done(fx, fy, ax, ay); return; }
+      if (fy > innerHeight + 4000) { recall(); return; } // не долетел (окна не стало) — домой
+      outRaf = requestAnimationFrame(step);
+    };
+    outRaf = requestAnimationFrame(step);
+  }
+  // Спрыгивает с низа окна вниз — на панель задач.
+  function exitDown() {
+    if (!root || !exit) return;
+    makeFree(); halt(); stopAnim();
+    const dir = chance(0.5) ? 1 : -1;
+    setFlip(dir < 0);
+    leaping = true;
+    play([['lookdown_1', 400], ['lookdown_2', 500], ['lookdown_3', 300], ['leap_1', 220]], 0, () => {
+      if (!root || held || !exit) { leaping = false; return; }
+      flyOut(dir * rnd(60, 160), -420, v => v < 0 ? 'leap_3' : 'hopdown_2', exit.cross, exit.go);
+    });
+  }
+  // Запрыгивает вверх — в окно Naivka (line — где его низ, в своих координатах; null — окна над ним нет,
+  // просто выпрыгивает за верх).
+  function leaveUp(line) {
+    if (!root || gone || held || !exit) return false;
+    makeFree(); halt(); stopAnim();
+    const h = root.offsetHeight, top = line == null ? -h * 0.6 : line;
+    const rise = Math.max(80, fy + h * 0.5 - top + 90);
+    const v0 = -Math.min(2600, Math.sqrt(2 * 2200 * rise));
+    leaping = true;
+    play([['highjump_1', 320], ['highjump_2', 120]], 0, () => {
+      if (!root || held) { leaping = false; return; }
+      flyOut(rnd(-60, 60), v0, v => v < -300 ? 'highjump_3' : v < 0 ? 'highjump_4' : 'leap_5', (x, y, w, hh) => y + hh * 0.5 < top, exit.go);
+    });
+    return true;
+  }
+  // Появляется из соседнего окна в точке (x, y) со скоростью (vx, vy) и долетает до опоры.
+  function appear(x, y, v0x, v0y) {
+    if (!root) return;
+    cancelAnimationFrame(outRaf); stopFall(); halt(); stopAnim();
+    makeFree();
+    gone = false; root.style.visibility = '';
+    fx = x; fy = y; vx = v0x; vy = v0y; support = null;
+    place();
+    fall(v => v < -300 ? 'highjump_3' : v < 0 ? 'leap_3' : v < 500 ? 'hopdown_2' : 'fallhigh_2');
+  }
+  // Вернуть домой сразу (окно свернули, некуда идти).
+  function recall() {
+    if (!root) return;
+    cancelAnimationFrame(outRaf);
+    const was = gone;
+    gone = false; root.style.visibility = '';
+    if (was || free) goHome(true);
   }
 
   // ---------- гравитация ----------
@@ -1042,6 +1129,7 @@ const Pet = (() => {
     say = opts.say || say;
     onPurr = opts.onPurr || onPurr;
     onMove = opts.onMove || onMove;
+    exit = opts.exit || exit;
     home = container;
     root = document.createElement('div');
     root.className = 'pet';
@@ -1096,6 +1184,7 @@ const Pet = (() => {
     root.remove();
     root = svg = bubble = body = sprite = clipRect = home = support = null;
     state = prev = ''; free = false; held = press = null; exploreUntil = 0; napping = false;
+    cancelAnimationFrame(outRaf); gone = false; bounds = null;
     hot = false; hotSince = 0;
   }
 
@@ -1153,7 +1242,10 @@ const Pet = (() => {
 
   return {
     mount, unmount, update, talk, startle, press: pressBtn,
-    home: () => { if (root && free) goHome(); },
+    home: () => { if (root && free && !gone) goHome(); },
+    appear, recall, hide, leave: leaveUp,
+    bounds: b => { bounds = b; },
+    isGone: () => gone, isHeld: () => !!(held || press),
     cheer: (t) => { flash('hop', 650); joy(); talk(t, 3600); },
   };
 })();

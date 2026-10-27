@@ -606,6 +606,24 @@ function currentServer() {
   return serverById(S.selected) || { name: 'Автовыбор', host: '' };
 }
 
+// Котёнок спрыгивает из окна на панель задач Windows и возвращается (ui_pet_windows.go). Где начинается
+// полоса котёнка над панелью, сообщает Naivka: window.naivkaPetZone = {top} в пикселях страницы
+// (null — полосы нет: окно не на том мониторе, выключено в настройках). Не чаще раза в 3 минуты.
+let petExitAt = Date.now();
+const PET_EXIT = {
+  ok: () => !!(window.NAIVKA_HOST && S && S.petHopOff !== true && window.naivkaPetZone && Date.now() - petExitAt > 180e3),
+  cross: (x, y, w, h) => !!window.naivkaPetZone && y + h * 0.5 > window.naivkaPetZone.top,
+  drop: (cx, cy) => !!(window.NAIVKA_HOST && S && S.petHopOff !== true && window.naivkaPetZone) && cy > innerHeight,
+  go: (x, y, vx, vy) => { petExitAt = Date.now(); window.chrome.webview.postMessage(JSON.stringify({ cmd: 'petout', x, y, vx, vy })); },
+};
+// Кот вернулся с панели задач: в точку (x, y) со скоростью (vx, vy); 'jump' — выпрыгивает снизу окна
+// (был на другом мониторе); null — сразу домой (окно свернули, перейти некуда).
+window.naivkaPetBack = (x, y, vx, vy) => {
+  if (x === 'jump') Pet.appear(innerWidth * (0.3 + Math.random() * 0.4), innerHeight + 10, 0, -1300);
+  else if (x == null) Pet.recall();
+  else Pet.appear(x, y, vx, vy);
+};
+
 function updateStatus() { guard(updateStatusNow, 'updateStatus'); }
 function updateStatusNow() {
   if (!ST || !S) return;
@@ -619,7 +637,7 @@ function updateStatusNow() {
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
   // Котёнок переселён на панель задач (своё окно Windows) — в меню его нет.
-  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { beta: S.mascotBeta === true, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); } }); Pet.update(p, kb * 1024); }
+  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { beta: S.mascotBeta === true, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -3813,7 +3831,10 @@ function viewSettings() {
     accentPicker(),
     h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme)),
     check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить. По умолчанию выключен.', updateStatus),
-    window.NAIVKA_HOST ? check('petTaskbar', 'Котёнок на панели задач', 'Котёнок переселяется из меню на панель задач Windows: гуляет вдоль неё поверх всех окон и прячется, когда открыта игра или видео во весь экран. Его можно гладить и переносить мышью; щелчки мимо кота проходят к окнам как обычно. Работает, когда талисман включён.', updateStatus) : null,
+    window.NAIVKA_HOST ? h('label', { class: 'check' },
+      h('input', { type: 'checkbox', checked: S.petHopOff !== true, onchange: e => { S.petHopOff = !e.target.checked; save(); } }),
+      h('span', null, h('b', null, 'Котёнок спрыгивает на панель задач'), h('small', null, 'Пока окно Naivka открыто, котёнок иногда спрыгивает с его низа на панель задач Windows, бегает там под окном и запрыгивает обратно. Его можно унести мышью на панель задач другого монитора, а отпустить над окном Naivka — вернуть домой.'))) : null,
+    window.NAIVKA_HOST ? check('petTaskbar', 'Котёнок живёт на панели задач', 'Котёнок переселяется из меню на панель задач Windows насовсем: гуляет вдоль неё поверх всех окон, даже когда окно Naivka закрыто, и прячется, когда открыта игра или видео во весь экран. Его можно гладить и переносить мышью, в том числе на другой монитор; щелчки мимо кота проходят к окнам как обычно. Работает, когда талисман включён.', updateStatus) : null,
     check('mascotBeta', 'Новый котёнок (бета)', 'Котёнок из нового набора анимаций: ходит и бегает по-новому, играет с мячиком, прячется в коробку, ест и пьёт. Пока бета — что-то может выглядеть непривычно. Работает, когда талисман включён.', updateStatus),
     check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'),
     h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
