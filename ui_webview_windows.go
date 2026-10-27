@@ -469,6 +469,8 @@ func (u *nativeUI) onMessage(w *webWindow, raw string) {
 		return
 	}
 	switch m.Cmd {
+	case "petout":
+		u.onMainPet(raw)
 	case "drag":
 		if w.frame {
 			startNCDrag(w.hwnd, htCaption)
