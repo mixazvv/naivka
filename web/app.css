@@ -121,14 +121,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :root:not([data-nav="wheel"]) .petal { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--faint); background: var(--nav); transition: background .2s, border-color .2s; }
 :root.mica[data-theme="dark"]:not([data-solid]):not([data-nav="wheel"]) .petal { background: #1B1D20; }
 :root:not([data-nav="wheel"]) .nav-key { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px;
-  border: 1px solid var(--line); border-radius: 5px; font: 600 10.5px/1 var(--font); color: var(--faint); opacity: .7; }
+  border: 1px solid var(--line); border-radius: 5px; font: 600 10.5px/1 var(--font); color: var(--faint); opacity: 0; transition: opacity .15s; }
+/* Номер — клавиша раздела, а не счётчик: виден, только когда мышь над меню или фокус в нём. */
+:root:not([data-nav="wheel"]) .sidebar:is(:hover, :focus-within) .nav-key { opacity: .7; }
 :root:not([data-nav="wheel"]) .nav-key:empty { display: none; }
 :root:not([data-nav="wheel"]) .nav-item:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
 :root:not([data-nav="wheel"]) .nav-item:hover .petal { border-color: var(--ink); }
 :root:not([data-nav="wheel"]) .nav-item.passed .petal { border-color: var(--tunnel); }
 :root:not([data-nav="wheel"]) .nav-item[aria-current="page"] { color: var(--ink); background: linear-gradient(90deg, var(--tunnel-soft), transparent 90%); }
 :root:not([data-nav="wheel"]) .nav-item[aria-current="page"] .petal { background: var(--tunnel); border-color: var(--tunnel); }
-:root:not([data-nav="wheel"]) .nav-item[aria-current="page"] .nav-key { color: var(--ink); opacity: 1; }
+:root:not([data-nav="wheel"]) .sidebar:is(:hover, :focus-within) .nav-item[aria-current="page"] .nav-key { color: var(--ink); opacity: 1; }
 .nav-label { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 .pill { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--state-soft); border: 1px solid color-mix(in srgb, var(--state) 22%, var(--line)); color: var(--ink); font-size: 13px; line-height: 1.35; min-width: 0; transition: background .3s, border-color .3s; }
@@ -169,7 +171,8 @@ body[data-state="wait"] .ambient, body[data-state="revive"] .ambient { animation
 :root[data-skin="blocks"] .toc { background: #17181B; }
 :root[data-skin="blocks"] .toc button { border-radius: 0; clip-path: var(--px-r); border: 0; background: #26282D; }
 :root[data-skin="blocks"] .toc button[aria-current="true"] { background: var(--tunnel); }
-.drawer { z-index: 3; justify-self: end; width: min(860px, calc(100% - 80px)); height: 100%; overflow: hidden; display: flex; flex-direction: column; position: relative;
+/* Раздел — почти на всю ширину: слева остаётся узкая полоска главного экрана (щелчок по ней — назад). */
+.drawer { z-index: 3; justify-self: end; width: calc(100% - 28px); height: 100%; overflow: hidden; display: flex; flex-direction: column; position: relative;
   background: var(--bg); border-left: 1px solid var(--line); box-shadow: -24px 0 60px -20px rgba(0, 0, 0, .55);
   transform: translateX(40px); opacity: 0; transition: transform .26s cubic-bezier(.2, .8, .2, 1), opacity .2s; }
 .drawer.open { transform: none; opacity: 1; }
@@ -180,6 +183,7 @@ body[data-state="wait"] .ambient, body[data-state="revive"] .ambient { animation
 .drawer .title-row { padding-right: 46px; }
 @keyframes fadeIn { from { opacity: 0; } }
 .view { max-width: 1100px; padding: 26px 34px 48px; }
+.drawer .view { margin: 0 auto; }
 
 /* Заголовки, текст и ряды кнопок внутри разделов. */
 h1 { font: 600 28px/1.15 var(--display); letter-spacing: -.015em; margin: 0; }
@@ -204,6 +208,15 @@ p { margin: 0 0 10px; }
 .stage-status .sub { margin: 8px 0 0; }
 .sysline { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 80%, transparent); border: 1px solid var(--line); font-size: 13px; }
 .sl-key { color: var(--muted); }
+.ico { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sl-ico { display: inline-grid; color: var(--muted); }
+.sl-ico.on { color: var(--direct); } .sl-ico.err, .sl-ico.blocked { color: var(--danger); } .sl-ico.wait, .sl-ico.revive { color: var(--warn); }
+.sl-val.revive { color: var(--warn); }
+/* Значок «DNS не зашифрован»: щелчок открывает пояснение и кнопку «Зашифровать». */
+.sl-warn { display: inline-flex; align-items: center; gap: 4px; margin-left: 2px; padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); font: 600 11.5px/1.4 var(--font); cursor: pointer; }
+.sl-warn .ico { width: 13px; height: 13px; }
+.sl-warn:hover { background: color-mix(in srgb, var(--warn) 22%, transparent); }
 .sl-val.on { color: var(--direct); } .sl-val.off { color: var(--ink); } .sl-val.wait { color: var(--warn); } .sl-val.err, .sl-val.blocked { color: var(--danger); }
 .sl-ms { color: var(--muted); }
 .stage-notices:empty { display: none; }
@@ -236,10 +249,10 @@ button.br-node:hover .br-disc { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c
   box-shadow: 0 6px 16px -10px rgba(0, 0, 0, .5); transition: box-shadow .2s; }
 .br-disc svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .br-disc .flag { width: 26px; height: 17px; margin: 0; vertical-align: 0; border-radius: 2px; }
-.br-txt { display: grid; gap: 1px; }
+.br-txt { display: grid; gap: 1px; text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 10px rgba(0, 0, 0, .75); }
 .br-node.side .br-txt { padding-top: 4px; }
 .br-txt b { font-weight: 600; font-size: 13px; white-space: nowrap; }
-.br-txt small { font-size: 11px; color: var(--muted); white-space: nowrap; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.br-txt small { font-size: 11px; color: color-mix(in srgb, var(--ink) 72%, transparent); white-space: nowrap; max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
 .br-leaf { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: auto; border: 1px solid var(--line); background: var(--raised); color: var(--ink);
   border-radius: 14px 14px 14px 3px; padding: 4px 10px 4px 6px; font: 500 12px/1.3 var(--font); display: inline-flex; align-items: center; gap: 6px;
   white-space: nowrap; cursor: grab; box-shadow: 0 6px 14px -10px rgba(0, 0, 0, .55); touch-action: none;
@@ -258,14 +271,28 @@ button.br-node:hover .br-disc { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c
 @media (prefers-reduced-motion: reduce) { .br-leaf { transition: opacity .2s; } }
 .lane-node.clickable { cursor: pointer; }
 .lane-node.clickable:hover { stroke-width: 4; }
-.stage-controls { display: flex; gap: 10px 26px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 8px; }
-.stage-controls label { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; }
+.stage-controls { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 8px; }
+.stage-controls .stage-help { font-size: 13px; }
+/* Меню «Путь»: перехват и маршрут во всплывающей панели над кнопкой. */
+.path-menu { position: relative; }
+.path-menu > summary { list-style: none; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+.path-menu > summary::-webkit-details-marker { display: none; }
+.path-menu > summary .caret { color: var(--faint); font-size: 10px; transition: transform .15s; }
+.path-menu[open] > summary .caret { transform: rotate(180deg); }
+.path-pop { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); z-index: 5; display: grid; gap: 12px; padding: 14px 16px; min-width: max-content;
+  border-radius: 14px; border: 1px solid var(--line); background: var(--raised); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .7); animation: fadeIn .15s ease both; }
+.path-pop label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+body.zapret-only .path-menu { display: none; }
 .stage-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
 /* Пока не подключено, вместо плиток с нулями — полоса «готово к подключению». */
 .stage-ready { display: none; align-items: center; gap: 18px; margin-top: 22px; padding: 16px 18px 16px 20px; border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--tunnel) 30%, var(--line)); background: linear-gradient(100deg, var(--tunnel-soft), transparent 70%), var(--surface); }
 body[data-state="off"] .stage-tiles { display: none; }
 body[data-state="off"] .stage-ready { display: flex; }
+/* Сервер есть — это не призыв, а строка состояния: подключают кнопкой «Компьютер». */
+.stage-ready.slim { padding: 10px 16px; margin-top: 16px; background: color-mix(in srgb, var(--surface) 70%, transparent); border-color: var(--line); }
+.stage-ready.slim .ready-text { flex-direction: row; align-items: baseline; gap: 10px; }
+.stage-ready.slim .ready-text b { font: 600 13.5px/1.3 var(--font); flex: none; }
 .ready-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .ready-text b { font: 600 16px/1.3 var(--display); }
 .ready-text span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -729,7 +756,7 @@ body[data-state="blocked"] .pw-core { fill: var(--danger-soft); }
 
 /* ---------- серверы: карточки ---------- */
 .scards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
-.scard { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 12px; border-radius: 14px; border: 1px solid var(--line);
+.scard { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 10px; border-radius: 14px; border: 1px solid var(--line);
   background: var(--surface); cursor: pointer; min-width: 0; transition: border-color .2s, box-shadow .25s, transform .2s, background .2s; }
 .scard:hover { border-color: var(--faint); transform: translateY(-1px); }
 .scard:focus-visible { outline: 2px solid var(--tunnel); outline-offset: 2px; }
@@ -758,6 +785,8 @@ body[data-state="blocked"] .pw-core { fill: var(--danger-soft); }
 
 .scard-tools { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .15s; }
 .scard:hover .scard-tools, .scard:focus-within .scard-tools { opacity: 1; }
+/* Пока значки скрыты, они не занимают места — название сервера видно целиком. */
+@media (hover: hover) { .scard:not(:hover):not(:focus-within) .scard-tools { width: 0; overflow: hidden; } }
 .tool { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 .tool:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .tool .bi { width: 16px; height: 16px; opacity: 1; }
@@ -1278,8 +1307,8 @@ body.zapret-only .lanes-box.branches .pw-ring { stroke: var(--warn); }
 .set-empty { text-align: center; padding: 30px 0; }
 @media (prefers-reduced-motion: reduce) { .set-card { animation: none; } }
 .stage-help { display: flex; justify-content: center; margin-top: 2px; }
-.stage-help .btn.link { color: var(--muted); font-size: 13px; }
-.stage-help .btn.link:hover { color: var(--ink); }
+.btn.link.stage-help { color: var(--muted); font-size: 13px; margin: 0; }
+.btn.link.stage-help:hover { color: var(--ink); }
 .check-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 
 /* ---------- 2.4: первый запуск ---------- */
@@ -1717,3 +1746,9 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 :root[data-skin="blocks"] .achv, :root[data-skin="blocks"] .achv-pop, :root[data-skin="blocks"] .achv-medal { border-radius: 0; }
 :root[data-skin="gold"] .achv, :root[data-skin="gold"] .achv-pop { border-radius: 0; }
 @media (prefers-reduced-motion: reduce) { .achv-pop, .achv-pop * { animation: none !important; } }
+
+/* Длинные пояснения у флажков: две строки и «подробнее». */
+.check .long { display: block; }
+.check small.clamp:not(.open) { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.more-link { border: 0; background: none; padding: 0; margin-top: 2px; color: var(--tunnel); font: 500 12px/1.4 var(--font); cursor: pointer; }
+.more-link:hover { text-decoration: underline; }

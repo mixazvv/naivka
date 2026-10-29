@@ -194,7 +194,7 @@ document.addEventListener('contextmenu', e => {
 // ---------- тема ----------
 let themeSent = '';
 function applyTheme() {
-  // Тема одна — тёмная; «Никогда не проси об этом» и «Пиксели» — стили поверх неё со своей палитрой.
+  // Тема одна — тёмная; «Чёрное с золотом» и «Пиксели» — стили поверх неё со своей палитрой.
   const gold = !!S && S.theme === 'gold';
   const blocks = !!S && S.theme === 'blocks';
   const root = document.documentElement;
@@ -630,9 +630,9 @@ function updateStatusNow() {
   const p = phase();
   document.body.dataset.state = p;
   document.body.classList.toggle('zapret-only', zapretOnly());
-  $('#navTitle').textContent = TITLES[p];
+  const nt = $('#navTitle'); if (nt) nt.textContent = TITLES[p];
   const cs = currentServer();
-  $('#navSub').textContent = p === 'on' ? (cs.auto ? `${cs.name}, авто` : cs.name) : (ST.mode === 'tun' || S.mode === 'tun' ? 'режим TUN' : '');
+  const ns = $('#navSub'); if (ns) ns.textContent = p === 'on' ? (cs.auto ? `${cs.name}, авто` : cs.name) : (ST.mode === 'tun' || S.mode === 'tun' ? 'режим TUN' : '');
   navCounts();
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
@@ -697,6 +697,19 @@ function decodeTitle(el) {
   requestAnimationFrame(step);
 }
 
+// DNS для сайтов «напрямую» не зашифрован — значок у строки состояния (не плашка на весь экран).
+const dnsNag = () => S.servers.length && !zapretOnly() && S.routing !== 'global' && !dnsEncrypted(S.dnsDirect) && !sessionStorage.getItem('naivka-dns-ok');
+function dnsDialog() {
+  const dlg = openDialog(h('h3', null, 'DNS не зашифрован'),
+    h('p', { class: 'hint mt' }, 'Для сайтов «напрямую» адреса ищутся обычным DNS: провайдер видит, какие сайты вы открываете (сами страницы — нет). Зашифрованный DNS это скрывает.'),
+    h('div', { class: 'row end mt' },
+      h('button', { class: 'btn', onclick: () => { sessionStorage.setItem('naivka-dns-ok', '1'); dlg.close(); updateStatus(); } }, 'Не сейчас'),
+      h('button', { class: 'btn primary', onclick: () => {
+        S.dnsDirect = DNS_DIRECT[0][0]; save(0); dlg.close(); updateStatus();
+        toast('Включён зашифрованный DNS Яндекса — переподключитесь, чтобы применить');
+      } }, 'Зашифровать')));
+}
+
 function notice(kind, text, action) {
   return h('div', { class: 'notice ' + kind }, h('div', { class: 'grow' }, text), action);
 }
@@ -711,15 +724,6 @@ function buildNotices() {
     out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать серверы остальных протоколов (Reality, Hysteria2 и другие).'));
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
-  if (S.servers.length && !zapretOnly() && S.routing !== 'global' && !dnsEncrypted(S.dnsDirect) && !sessionStorage.getItem('naivka-dns-ok')) {
-    out.push(notice('info', 'DNS для сайтов «напрямую» не зашифрован: провайдер видит, какие сайты вы открываете.',
-      h('div', { class: 'row', style: 'flex-wrap:nowrap' },
-        h('button', { class: 'btn small', onclick: () => {
-          S.dnsDirect = DNS_DIRECT[0][0]; save(0);
-          toast('Включён зашифрованный DNS Яндекса — переподключитесь, чтобы применить');
-        } }, 'Зашифровать'),
-        h('button', { class: 'btn small', onclick: () => { sessionStorage.setItem('naivka-dns-ok', '1'); updateStatus(); } }, 'Не сейчас'))));
-  }
   if (ST.failover) out.push(notice('warn', `Сервер «${ST.failover.from}» не отвечает — временно работаю через «${ST.failover.to}». Вернусь, когда он оживёт.`));
   for (const c of ST.conflicts || []) out.push(notice('warn', h('span', null, h('b', null, `Запущен ${c.name}. `), c.hint)));
   if (ST.needsRestart) out.push(S.autoApply
@@ -896,7 +900,7 @@ function refreshView(v = view) {
   if (v === 'own') renderOwn();
   if (v === 'rules') { renderRules(); renderLists(); renderSmart(); }
   if (v === 'bypass') refreshAddons();
-  if (v === 'settings') { buildToc(); shareBox(); renderCustomEditor(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); }
+  if (v === 'settings') { buildToc(); shareBox(); renderCustomEditor(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); refreshAddons(); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
 }
 
@@ -944,7 +948,21 @@ function ask(msg) { return S.confirm === false || confirm(msg); }
 function check(key, title, desc, after) {
   return h('label', { class: 'check' },
     h('input', { type: 'checkbox', checked: S[key], onchange: e => { S[key] = e.target.checked; save(); if (after) after(); } }),
-    h('span', null, h('b', null, title), desc && h('small', null, desc)));
+    h('span', null, h('b', null, title), desc && longText(desc)));
+}
+
+// Длинное пояснение — две строки и «подробнее»: раздел читается, подробности под рукой.
+function longText(desc) {
+  if (typeof desc !== 'string' || desc.length <= 150) return h('small', null, desc);
+  const sm = h('small', { class: 'clamp' }, desc);
+  const btn = h('button', { class: 'more-link', type: 'button', onclick: e => {
+    e.preventDefault(); e.stopPropagation();
+    const open = sm.classList.toggle('open');
+    btn.textContent = open ? 'свернуть' : 'подробнее';
+  } }, 'подробнее');
+  // Широкое окно — текст и так влезает в две строки: тогда «подробнее» не нужно.
+  requestAnimationFrame(() => { if (sm.isConnected && sm.scrollHeight <= sm.clientHeight + 1) btn.hidden = true; });
+  return h('span', { class: 'long' }, sm, btn);
 }
 
 function field(key, label, opts = {}) {
@@ -1065,11 +1083,11 @@ function viewOverview() {
       h('div', { class: 'lanes-box', id: 'lanesBox' }, h('div', { id: 'lanesSvg' }), powerButton('connectBtn')),
       h('div', { class: 'lanes-legend', id: 'lanesLegend' }),
       h('div', { class: 'proc-shelf', id: 'procShelf' })),
+    // Главный выбор — режим; как перехватывать и куда вести трафик — в меню «Путь» (меняют редко).
     h('div', { class: 'stage-controls' },
-      h('label', null, 'Режим', segmented([['srv', 'Сервер + zapret'], ['zap', 'Только zapret']], () => zapretOnly() ? 'zap' : 'srv', setZapretOnly, 'Режим')),
-      h('label', { class: 'srv-only' }, 'Перехват', segmented([['proxy', 'Системный прокси'], ['tun', 'Весь трафик (TUN)']], () => S.mode, v => { S.mode = v; save(); updateStatus(); }, 'Перехват')),
-      h('label', { class: 'srv-only' }, 'Маршрут', segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); updateStatus(); }, 'Маршрут'))),
-    h('div', { class: 'stage-help' }, h('button', { class: 'btn link', type: 'button', onclick: () => openDiag('check') }, 'Сайт не открывается?')),
+      segmented([['srv', 'Сервер + zapret'], ['zap', 'Только zapret']], () => zapretOnly() ? 'zap' : 'srv', setZapretOnly, 'Режим'),
+      pathMenu(),
+      h('button', { class: 'btn link stage-help', type: 'button', onclick: () => openDiag('check') }, 'Сайт не открывается?')),
     h('div', { class: 'stage-tiles' },
       h('button', { class: 'tile', type: 'button', id: 'tileSpeed', onclick: () => openDiag('now'), title: 'График скорости и активные сайты' }),
       h('button', { class: 'tile', type: 'button', id: 'tileIp', onclick: () => openDiag('now'), title: 'Как вас видят сайты и карта' }),
@@ -1080,6 +1098,25 @@ function viewOverview() {
     h('aside', { class: 'live-col', id: 'liveCol', 'aria-label': 'Сейчас' }));
 }
 
+// Меню «Путь»: перехват (прокси или TUN) и маршрут (Россия напрямую или всё через сервер).
+// На кнопке — что выбрано сейчас.
+function pathMenu() {
+  const summary = h('summary', { class: 'btn small', title: 'Как перехватывать трафик и куда его вести' });
+  const label = () => summary.replaceChildren(svgIcon('route'), h('span', null, S.mode === 'tun' ? 'TUN' : 'Прокси'), h('span', { class: 'hint' }, '·'), h('span', null, ROUTING[S.routing] || ''), h('span', { class: 'caret', 'aria-hidden': 'true' }, '▾'));
+  const d = h('details', { class: 'path-menu srv-only' }, summary,
+    h('div', { class: 'path-pop' },
+      h('label', null, h('span', null, 'Перехват'), segmented([['proxy', 'Системный прокси'], ['tun', 'Весь трафик (TUN)']], () => S.mode, v => { S.mode = v; save(); label(); updateStatus(); }, 'Перехват')),
+      h('label', null, h('span', null, 'Маршрут'), segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); label(); updateStatus(); }, 'Маршрут'))));
+  label();
+  // Щелчок мимо или Esc закрывают меню.
+  const close = e => { if (d.open && (e.type === 'keydown' ? e.key === 'Escape' : !d.contains(e.target))) d.open = false; };
+  d.addEventListener('toggle', () => {
+    if (d.open) { document.addEventListener('pointerdown', close, true); document.addEventListener('keydown', close, true); }
+    else { document.removeEventListener('pointerdown', close, true); document.removeEventListener('keydown', close, true); }
+  });
+  return d;
+}
+
 function renderReady() {
   const box = $('#stageReady');
   if (!box || !S || !ST) return;
@@ -1087,24 +1124,24 @@ function renderReady() {
   const none = !S.servers.length && !(S.wl && S.wl.enabled);
   if (zapretOnly()) {
     const have = !!(AD && AD.zapret && AD.zapret.installed);
+    box.classList.toggle('slim', have);
     patch('stageReady', ['z', have, AD && AD.zapret && AD.zapret.strategy].join('|'), () => [
       h('div', { class: 'ready-text' },
         h('b', null, have ? 'Только zapret — без сервера' : 'Сначала установите zapret'),
         h('span', null, have ? 'Замедленные YouTube, Discord и другие сайты из списков zapret откроются без сервера. Заблокированные сайты без сервера не откроются.'
           : 'zapret скачивается в разделе «Обход» за минуту.')),
-      have ? h('button', { class: 'btn primary', onclick: toggleConnect }, 'Включить zapret')
+      have ? h('span', { class: 'ready-keys' }, 'кнопка слева или ', h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'Enter'))
         : h('button', { class: 'btn primary', onclick: () => go('bypass') }, 'Открыть «Обход»')]);
     return;
   }
+  box.classList.toggle('slim', !none);
   patch('stageReady', [none, cs.name, cs.host, S.routing, S.mode, ST.core.present].join('|'), () => [
     h('div', { class: 'ready-text' },
       h('b', null, none ? 'Добавьте сервер, чтобы подключиться' : 'Готово к подключению'),
       h('span', null, none ? 'Вставьте ссылку vless://, hysteria2:// или naive+https:// — или поставьте свой сервер.'
         : `${cs.name}${cs.host ? ' · ' + cs.host : ''} · ${ROUTING[S.routing] || ''}`)),
     none ? h('button', { class: 'btn primary', onclick: () => go('servers') }, 'Добавить сервер')
-      : h('div', { class: 'ready-act' },
-        h('span', { class: 'ready-keys' }, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'Enter')),
-        h('button', { class: 'btn primary', onclick: toggleConnect, disabled: !ST.core.present }, 'Подключить'))]);
+      : h('span', { class: 'ready-keys' }, 'кнопка слева или ', h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'Enter'))]);
 }
 
 // Плитки под схемой: скорость, как вас видят сайты, сеанс. Щелчок открывает подробности.
@@ -1135,9 +1172,15 @@ function renderTiles() {
     h('span', { class: 'tile-sub' }, on ? `через сервер ${fmtBytes(t[0] + t[1])}` : 'щёлкните, чтобы открыть историю трафика'));
   const sl = $('#sysLine');
   if (sl) {
-    const word = { on: 'защищён', off: 'открыт', wait: 'синхронизация…', err: 'сбой', blocked: 'заблокирован' }[p];
-    sl.replaceChildren(h('span', { class: 'sl-key' }, 'Канал /'), h('b', { class: 'sl-val ' + p }, word),
-      on && d && d.ms ? h('span', { class: 'sl-ms' }, `· ${cs.name} · ${d.ms} мс`) : on ? h('span', { class: 'sl-ms' }, `· ${cs.name}`) : null);
+    // Защищён ли трафик: замок и слово; при наведении — что это значит.
+    const word = { on: 'Защищено', off: 'Без защиты', wait: 'Подключаюсь…', revive: 'Восстанавливаю…', err: 'Сбой', blocked: 'Заблокировано' }[p] || '';
+    const tip = { on: 'Трафик к заблокированным сайтам идёт через сервер в шифрованном канале', off: 'Naivka выключена: трафик идёт как обычно, без сервера' }[p] || '';
+    sl.title = tip;
+    const ms = on ? (d && d.ms ? `· ${cs.name} · ${d.ms} мс` : `· ${cs.name}`) : '';
+    const nag = !!dnsNag();
+    patch('sysLine', [p, ms, nag].join('|'), () => [h('span', { class: 'sl-ico ' + p }, svgIcon(on ? 'lock' : 'unlock')), h('b', { class: 'sl-val ' + p }, word),
+      ms ? h('span', { class: 'sl-ms' }, ms) : null,
+      nag ? h('button', { class: 'sl-warn', type: 'button', title: 'DNS для сайтов «напрямую» не зашифрован — подробнее', onclick: dnsDialog }, svgIcon('warn'), 'DNS') : null]);
   }
 }
 
@@ -1159,7 +1202,13 @@ const ICONS = {
   server: 'M5 4h14a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM5 14h14a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zM8 7h.01M8 17h.01',
   shield: 'M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3zM9 12l2 2 4-4',
   tg: 'M21 4L3 11.5l6.5 2.2M21 4l-3 16-8.5-6.3M21 4L9.5 13.7v5.8l3.2-3.7',
+  route: 'M6 19a2 2 0 1 0 0-4a2 2 0 1 0 0 4zM18 9a2 2 0 1 0 0-4a2 2 0 1 0 0 4zM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7',
+  lock: 'M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V8a4 4 0 0 1 8 0v3',
+  unlock: 'M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V8a4 4 0 0 1 7.7-1.5',
+  warn: 'M12 4l9 16H3l9-16zM12 10v4M12 17v.01',
 };
+// Значок для кнопок и подписей (линией, цветом текста).
+const svgIcon = name => s('svg', { viewBox: '0 0 24 24', class: 'ico', 'aria-hidden': 'true' }, s('path', { d: ICONS[name] }));
 function icon(name, cx, cy, size, color) {
   const sc = size / 24;
   return s('g', { transform: `translate(${cx - 12 * sc} ${cy - 12 * sc}) scale(${sc})`, class: 'lane-icon', style: `stroke:${color}` },
@@ -2280,6 +2329,23 @@ function delayFor(id) {
   return null;
 }
 
+// Страна сервера по его названию — пока нет данных о его IP: флаг в начале названия или название страны.
+const COUNTRY_NAMES = { NL: 'нидерланд|голланд|netherland|holland|amsterdam', FI: 'финлянд|finland|helsinki', DE: 'германи|germany|frankfurt|berlin', PL: 'польш|poland|warsaw',
+  LV: 'латви|latvia|riga', LT: 'литв|lithuania|vilnius', EE: 'эстони|estonia|tallinn', SE: 'швеци|sweden|stockholm', NO: 'норвеги|norway|oslo', US: 'сша|америк|usa|united states|new york',
+  FR: 'франци|france|paris', GB: 'великобритан|англи|britain|england|london|united kingdom|\\buk\\b', TR: 'турци|turkey|türkiye|istanbul', KZ: 'казахстан|kazakhstan|almaty',
+  JP: 'япони|japan|tokyo', SG: 'сингапур|singapore', CH: 'швейцари|switzerland|zurich', AT: 'австри|austria|vienna', CZ: 'чехия|czech|prague', IT: 'итали|italy|milan',
+  ES: 'испани|spain|madrid', CA: 'канад|canada|toronto', RO: 'румыни|romania', BG: 'болгари|bulgaria', HU: 'венгри|hungary', MD: 'молдов|moldova', AM: 'армени|armenia',
+  GE: 'грузия|georgia|tbilisi', RS: 'серби|serbia', IL: 'израил|israel', AE: 'оаэ|эмират|emirates|dubai', HK: 'гонконг|hong kong', RU: 'росси|russia|москв|moscow',
+  IE: 'ирланди|ireland|dublin', PT: 'португали|portugal|lisbon', DK: 'дания|denmark|copenhagen', BE: 'бельги|belgium', IS: 'исланди|iceland', CY: 'кипр|cyprus', GR: 'греци|greece',
+  IN: 'индия|india', BR: 'бразили|brazil', AU: 'австрали|australia', KR: 'корея|korea|seoul', UA: 'украин|ukraine', BY: 'беларус|belarus' };
+function nameCountry(name) {
+  const f = splitFlag(name || '');
+  if (f.cc) return f.cc;
+  const n = (name || '').toLowerCase();
+  for (const [cc, re] of Object.entries(COUNTRY_NAMES)) if (new RegExp(re).test(n)) return cc;
+  return '';
+}
+
 function delayEl(id) {
   const d = delayFor(id);
   if (!d) return null;
@@ -2293,12 +2359,11 @@ function viewServers() {
   return h('div', { class: 'view' },
     h('div', { class: 'title-row' }, h('h1', null, 'Серверы'),
       h('div', { class: 'row' },
+        h('button', { class: 'btn', id: 'testAll', onclick: () => testServers(''), title: 'Проверить пинг всех серверов' }, 'Проверить все'),
         h('button', { class: 'btn', onclick: importLinksDialog }, 'Вставить ссылки'),
         h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
     h('div', { class: 'scards', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
-    h('div', { class: 'row mt' },
-      h('button', { class: 'btn small', id: 'testAll', onclick: () => testServers('') }, 'Проверить все'),
-      h('span', { class: 'hint' }, 'Карточки можно перетаскивать, звёздочка поднимает сервер наверх.')),
+    h('p', { class: 'hint mt' }, 'Карточки можно перетаскивать, звёздочка поднимает сервер наверх.'),
     h('div', { id: 'wlBox' }));
 }
 
@@ -2385,12 +2450,13 @@ function renderServers(force) {
     }
     for (const sv of serverOrder()) {
       const geo = srvGeo[sv.id] && srvGeo[sv.id].info;
+      const cc = (geo && geo.countryCode) || nameCountry(sv.name);
       const where = geo ? [geo.city || geo.country, geo.isp].filter(Boolean).join(', ') : '';
       const hist = STATS && STATS.delays && STATS.delays[sv.id];
       const off = noNaive && sv.type === 'naive';
       const d = delayFor(sv.id);
       const note = off ? 'Naive не поддерживается этим ядром'
-        : sv.transport === 'xhttp' && !xr ? 'нужен Xray — установите его в «Обходе» → «Версии»' : where;
+        : sv.transport === 'xhttp' && !xr ? 'нужен Xray — установите его в «Настройках» → «О программе»' : where;
       const star = h('button', {
         class: 'star' + (sv.fav ? ' on' : ''), type: 'button', title: sv.fav ? 'Убрать из избранного' : 'В избранное',
         'aria-label': sv.fav ? 'Убрать из избранного' : 'В избранное', 'aria-pressed': sv.fav ? 'true' : 'false',
@@ -2399,9 +2465,9 @@ function renderServers(force) {
       cards.push(srvCardBase(sv.id, '', [
         h('span', { class: 'scard-grip', title: 'Перетащите, чтобы поменять порядок', 'aria-hidden': 'true' }, '⋮⋮'),
         h('div', { class: 'scard-top' },
-          h('span', { class: 'scard-flag' }, geo && geo.countryCode ? flag(geo.countryCode, true) : h('span', { class: 'scard-ico' }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: ICONS.globe })))),
+          h('span', { class: 'scard-flag' }, cc ? flag(cc, true) : h('span', { class: 'scard-ico' }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: ICONS.globe })))),
           h('div', { class: 'scard-title' }, h('b', { title: sv.name }, sv.name),
-            h('small', { title: `${sv.host}:${sv.port}` }, h('span', { class: 'proto' + (sv.type !== 'naive' ? ' vless' : '') }, protoName(sv)))),
+            h('small', { title: `${sv.host}:${sv.port}` }, h('span', { class: 'proto' }, protoName(sv)))),
           // Действия — значками, появляются при наведении: карточка компактнее, адрес — во всплывающей подсказке.
           h('div', { class: 'scard-tools' },
             h('button', { class: 'tool', type: 'button', title: 'Проверить', 'aria-label': 'Проверить', onclick: () => testServers(sv.id) }, btnIcon('test')),
@@ -2409,7 +2475,7 @@ function renderServers(force) {
             h('button', { class: 'tool', type: 'button', title: 'Изменить', 'aria-label': 'Изменить', onclick: () => editServer(sv) }, btnIcon('edit'))),
           star),
         h('div', { class: 'scard-mid' },
-          h('div', { class: 'scard-delay' }, pingBars(d), delayEl(sv.id)),
+          h('div', { class: 'scard-delay' }, pingBars(d), delayEl(sv.id) || h('span', { class: 'delay cell-sub' }, 'не проверен')),
           nowTag === 's-' + sv.id ? h('span', { class: 'live-tag' }, 'сейчас') : null,
           h('div', { class: 'scard-spark' }, spark(hist, 130, 26))),
         note ? h('div', { class: 'scard-sub trunc', title: note }, note) : null],
@@ -3594,7 +3660,7 @@ function buildCoreBox() {
 }
 
 // Темы — плитками с маленьким видом каждой: длинное название не переносится внутри переключателя.
-const THEMES = [['dark', 'Обычная', 'Спокойная, с вашим акцентом'], ['gold', 'Никогда не проси об этом', 'Чёрное с золотом'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт'], ['custom', 'Своя', 'Ваши цвета и шрифт']];
+const THEMES = [['dark', 'Обычная', 'Спокойная, с вашим акцентом'], ['gold', 'Чёрное с золотом', 'Тонкие заглавные буквы, огни от трафика'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт'], ['custom', 'Своя', 'Ваши цвета и шрифт']];
 function themeTiles() {
   const box = h('div', { class: 'theme-tiles', role: 'radiogroup', 'aria-label': 'Тема' });
   const paint = () => box.querySelectorAll('.theme-tile').forEach(b => b.setAttribute('aria-checked', b.dataset.theme === (S.theme || 'dark') ? 'true' : 'false'));
@@ -3807,12 +3873,6 @@ function viewSettings() {
     h('div', { class: 'set-search' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('circle', { cx: 11, cy: 11, r: 7 }), s('path', { d: 'M20 20l-4-4' })),
       h('input', { type: 'search', id: 'setSearch', placeholder: 'Найти настройку: dns, запуск, утечки…', 'aria-label': 'Найти настройку', oninput: e => filterSettings(e.target.value) })),
 
-    h('h2', null, 'О программе'),
-    h('div', { id: 'selfBox' }),
-    h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: openGuide }, 'Как пользоваться'),
-      h('button', { class: 'btn', onclick: openFeedback }, 'Написать автору в Telegram'),
-      h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
-
     h('h2', null, 'Язык · Language'),
     segmented([['ru', 'Русский'], ['en', 'English']], () => S.lang === 'en' ? 'en' : 'ru', async v => {
       S.lang = v;
@@ -3915,6 +3975,14 @@ function viewSettings() {
           try { await navigator.clipboard.writeText(cfgOut.value); toast('Конфиг скопирован'); } catch (_) { toast('Не удалось скопировать', true); }
         } }, 'Скопировать')),
       cfgOut),
+
+    // «О программе» — в конце: сюда заглядывают редко. Здесь же версии компонентов (раньше были в «Обходе»).
+    h('h2', null, 'О программе'),
+    h('div', { id: 'selfBox' }),
+    h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: openGuide }, 'Как пользоваться'),
+      h('button', { class: 'btn', onclick: openFeedback }, 'Написать автору в Telegram'),
+      h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
+    h('div', { id: 'versionsBox' }, AD ? versionsCard(AD.updates) : null),
 
     h('div', { class: 'exit-row' },
       h('span', { class: 'hint' }, 'Отключит соединение, вернёт настройки прокси Windows и закроет приложение.'),
@@ -4163,6 +4231,7 @@ async function refreshAddons() {
   const badge = $('#navBadge');
   if (badge) badge.hidden = !(newer(u.zapret) || newer(u.telegram) || newer(u.core) || (AD.zapret.degraded));
   if (view === 'bypass') renderBypass();
+  if (view === 'settings') renderVersions();
 }
 
 function verLabel(st) {
@@ -4208,8 +4277,11 @@ function renderBypass() {
     AD.conflict ? notice('error', AD.conflict) : null,
     zapretCard(z),
     telegramCard(t),
-    versionsCard(AD.updates),
   ]);
+}
+
+function renderVersions() {
+  if (AD) patch('versionsBox', JSON.stringify(AD.updates), () => [versionsCard(AD.updates)]);
 }
 
 function zapretCard(z) {
@@ -4305,9 +4377,9 @@ function telegramCard(t) {
 function versionsCard(u) {
   const row = (name, st) => h('tr', null, h('td', null, name), h('td', { class: 'num' }, st.installed || '—'),
     h('td', { class: 'num ' + (st.latest && st.installed && st.latest !== st.installed ? 'delay mid' : 'cell-sub') }, st.latest || '—'));
-  return h('section', { class: 'card addon' },
-    h('div', { class: 'addon-head' }, h('div', null, h('h3', null, 'Версии'),
-      h('p', null, u.checked ? 'Проверено в ' + fmtTime(u.checked) + '. Ядро обновляется в «Настройках».' : 'Ещё не проверялось.')),
+  return h('div', { class: 'versions-box mt' },
+    h('div', { class: 'addon-head' }, h('div', null, h('h3', null, 'Версии компонентов'),
+      h('p', { class: 'hint' }, u.checked ? 'Проверено в ' + fmtTime(u.checked) + '. Ядро обновляется в «Ядре sing-box», zapret и tg-ws-proxy — в «Обходе».' : 'Ещё не проверялось.')),
       h('button', { class: 'btn', onclick: async () => { toast('Проверяю…'); try { await api('/api/addons/check', {}); } catch (e) { toast(e.message, true); } refreshAddons(); } }, 'Проверить сейчас')),
     h('table', { class: 'table versions mt' },
       h('thead', null, h('tr', null, h('th', null, 'Компонент'), h('th', null, 'Установлено'), h('th', null, 'Последняя'))),
