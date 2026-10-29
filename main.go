@@ -138,6 +138,7 @@ func main() {
 	restoreSystemProxy(dir)
 
 	a := &App{dir: dir, settings: s, token: randHex(24)}
+	usePAC = func() bool { return a.settingsCopy().ProxyPAC }
 	a.core = NewCore(dir)
 	a.mon = newMonitor(a)
 	a.core.OnCrash = a.onCrash

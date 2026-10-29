@@ -209,10 +209,14 @@ func setSystemProxy(dir string, port int) error {
 		}
 	}
 
+	// Себя в автозапуск (RunOnce) не прописываем: Защитник Windows принимал это за троян
+	// (Trojan:Win32/Bearfoos.A!ml) и удалял Naivka.exe. Прокси вернётся при следующем запуске Naivka.
+	if !usePAC() {
+		return setDirectProxy(k, port)
+	}
 	// Прокси — PAC-скриптом, который раздаёт Naivka (pac.go): выключили компьютер или Naivka упала —
 	// скрипта нет, и всё идёт напрямую, а не в никуда. Прямой адрес прокси выключаем, иначе Windows
-	// откатилась бы на него, не получив скрипт. Себя в автозапуск (RunOnce) не прописываем: Защитник
-	// Windows принимал это за троян (Trojan:Win32/Bearfoos.A!ml) и удалял Naivka.exe.
+	// откатилась бы на него, не получив скрипт.
 	u, err := pacURL(port)
 	if err != nil {
 		return err
@@ -229,6 +233,28 @@ func setSystemProxy(dir string, port int) error {
 	return nil
 }
 
+// setDirectProxy — прямой адрес 127.0.0.1:port (как до 2.16.2); наш скрипт, если остался, убираем:
+// Windows сперва смотрит на скрипт.
+func setDirectProxy(k syscall.Handle, port int) error {
+	if a, _ := readString(k, autoKey); ourPAC(a) {
+		deleteValue(k, autoKey)
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	if err := setString(k, "ProxyServer", addr); err != nil {
+		return err
+	}
+	_ = setString(k, "ProxyOverride", bypassList())
+	if err := setDWORD(k, "ProxyEnable", 1); err != nil {
+		return err
+	}
+	so, ss := strOpt(connProxyServer, addr)
+	bo, bs := strOpt(connBypass, bypassList())
+	ao, as := strOpt(connAutoURL, "")
+	_ = setPerConn([]perConnOption{{Option: connFlags, Value: typeDirect | typeProxy}, so, bo, ao}, ss, bs, as)
+	notifyProxyChanged()
+	return nil
+}
+
 // systemProxyOurs — указывает ли системный прокси Windows на Naivka; current — что там сейчас.
 func systemProxyOurs(port int) (ours bool, current string) {
 	k, err := openKey(inetKey, syscall.KEY_READ)
@@ -237,6 +263,20 @@ func systemProxyOurs(port int) (ours bool, current string) {
 	}
 	defer syscall.RegCloseKey(k)
 	auto, _ := readString(k, autoKey)
+	if !usePAC() {
+		en, _ := readDWORD(k, "ProxyEnable")
+		srv, _ := readString(k, "ProxyServer")
+		if auto != "" && !ourPAC(auto) {
+			return false, auto // чужой скрипт главнее прямого адреса
+		}
+		if en == 1 && srv == fmt.Sprintf("127.0.0.1:%d", port) {
+			return true, srv
+		}
+		if en != 1 {
+			return false, ""
+		}
+		return false, srv
+	}
 	pacSrv.mu.Lock()
 	mine := pacSrv.url
 	pacSrv.mu.Unlock()

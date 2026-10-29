@@ -341,17 +341,11 @@ func (u *nativeUI) petTick() {
 
 	mi, _ := monitorOf(st.mon)
 	full := !st.held && fullscreenApp(mi.Monitor)
-	show := !full && (st.mode == petModeLive || open || st.held)
-	if show != st.shown {
-		st.shown = show
-		if show {
-			procShowWindow.Call(w.hwnd, 4) // SW_SHOWNOACTIVATE
-			u.placePet(true)
-		} else {
-			procShowWindow.Call(w.hwnd, swHide)
-		}
-	}
-	u.petZones(show)
+	// «Спрыгивает»: полоса над панелью видна, только пока кот снаружи (или его держат). Всё остальное время
+	// окно спрятано и его страница спит — прозрачное окно поверх всех на всю ширину экрана не грузит систему.
+	show := !full && (st.mode == petModeLive || st.out || st.held)
+	u.showPet(show)
+	u.petZones()
 	if !show {
 		return
 	}
@@ -378,10 +372,30 @@ func (u *nativeUI) petTick() {
 // petZones сообщает страницам, где соседнее окно (в их CSS-пикселях): окну Naivka — где начинается
 // полоса котёнка (туда кот спрыгивает), полосе — где окно Naivka (туда кот запрыгивает и где его
 // можно отпустить «домой»). Кот на другом мониторе — окна над ним нет.
-func (u *nativeUI) petZones(show bool) {
+func (u *nativeUI) showPet(show bool) {
+	st, w := &u.petSt, u.pet
+	if show == st.shown || w == nil {
+		return
+	}
+	st.shown = show
+	if show {
+		procShowWindow.Call(w.hwnd, 4) // SW_SHOWNOACTIVATE
+		if w.wv != nil {
+			_ = w.wv.Show()
+		}
+		u.placePet(true)
+	} else {
+		procShowWindow.Call(w.hwnd, swHide)
+		if w.wv != nil {
+			_ = w.wv.Hide()
+		}
+	}
+}
+
+func (u *nativeUI) petZones() {
 	st := &u.petSt
 	zm, zh := "null", "null"
-	if st.mode == petModeHop && show && u.mainOpen() && st.mon == u.mainMonitor() {
+	if st.mode == petModeHop && u.mainOpen() && st.mon == u.mainMonitor() {
 		pr, _ := u.petRect()
 		if st.expanded { // полоса растянута — граница всё равно по обычной полосе
 			pr.T = pr.B - int32(petHeightCSS*dpiOfMonitor(st.mon)/96)
@@ -414,7 +428,7 @@ func (u *nativeUI) onMainPet(raw string) {
 	}
 	x, y, vx, vy := m.X, m.Y, m.VX, m.VY
 	st := &u.petSt
-	if u.pet == nil || st.mode != petModeHop || !st.shown || u.main == nil {
+	if u.pet == nil || st.mode != petModeHop || u.main == nil || !u.mainOpen() {
 		u.evalMain("window.naivkaPetBack&&naivkaPetBack(null)") // некуда — домой
 		return
 	}
@@ -426,6 +440,7 @@ func (u *nativeUI) onMainPet(raw string) {
 	px := (float64(mc.L) + x*dm/96 - float64(wr.L)) * 96 / dp
 	py := (float64(mc.T) + y*dm/96 - float64(wr.T)) * 96 / dp
 	st.out = true
+	u.showPet(true) // полоса показывается прямо к прыжку
 	u.evalPet(fmt.Sprintf("window.petHost&&petHost.arrive(%.1f,%.1f,%.1f,%.1f)", px, py, vx*k, vy*k))
 }
 

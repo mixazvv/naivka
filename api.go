@@ -538,6 +538,13 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 		}
 		a.scheduleAutoApply()
 	}()
+	// Сменили способ системного прокси, пока он включён, — переставляем сразу (иначе защита прокси
+	// сочла бы это чужой правкой).
+	if prev.ProxyPAC != ns.ProxyPAC {
+		if port := a.core.SystemProxyPort(); port > 0 {
+			go func() { _ = setSystemProxy(a.dir, port) }()
+		}
+	}
 	if p, ok := a.ui.(petHost); ok && (prev.Mascot != ns.Mascot || prev.PetTaskbar != ns.PetTaskbar || prev.PetHopOff != ns.PetHopOff || prev.MascotBeta != ns.MascotBeta) {
 		go p.SyncPet()
 	}
