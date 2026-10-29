@@ -283,6 +283,7 @@ async function miniRefresh(full) {
       ST = await api('/api/state');
       if (ST.running) { PX = await api('/api/proxies'); if (PX && PX.running === false) PX = null; } else PX = null;
       STATS = await api('/api/stats?n=40');
+      if (full) { try { AD = await api('/api/addons'); } catch (_) { /* zapret в мини-окне просто не покажется */ } }
       if (full && S.showIp && S.servers.length) { try { srvGeo = await api('/api/geo/servers'); } catch (_) { /* не важно */ } }
       applyTheme();
       renderMini();
@@ -306,7 +307,9 @@ function renderMini() {
   const sp = lastSpeeds();
   const on = p === 'on';
   const d = cs.id ? delayFor(cs.id) : null;
-  const sig = JSON.stringify([p, S.selected, S.servers.map(x => [x.id, x.name, x.fav, x.type]), PX && PX.delays, PX && PX.autoNow, PX && PX.selected, Object.keys(srvGeo).length]);
+  const zapInstalled = !!(AD && AD.zapret && AD.zapret.installed);
+  const sig = JSON.stringify([p, S.selected, S.servers.map(x => [x.id, x.name, x.fav, x.type]), PX && PX.delays, PX && PX.autoNow, PX && PX.selected, Object.keys(srvGeo).length,
+    S.routing, S.zapret && S.zapret.enabled, zapInstalled]);
   patch('miniBody', sig, () => {
     const sel = id => async () => {
       S.selected = id;
@@ -330,6 +333,14 @@ function renderMini() {
           h('div', { class: 'mini-title', id: 'miniTitle' }),
           h('div', { class: 'mini-sub', id: 'miniSub' }))),
       h('div', { class: 'mini-speed', id: 'miniSpeed' }),
+      // Пульт: маршрут и zapret — без большого окна.
+      h('div', { class: 'mini-quick' },
+        segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(0); }, 'Маршрут'),
+        zapInstalled ? h('label', { class: 'mini-zap', title: 'Обход замедления YouTube, Discord и сайтов из ваших правил — без сервера' },
+          h('input', { type: 'checkbox', checked: !!(S.zapret && S.zapret.enabled), onchange: e => {
+            S.zapret.enabled = e.target.checked; save(0);
+            if (e.target.checked && typeof needElevation === 'function' && needElevation()) elevateFor('zapret');
+          } }), h('span', null, 'zapret')) : null),
       list.length ? h('div', { class: 'mini-list', role: 'group', 'aria-label': 'Сервер' }, ...list)
         : h('div', { class: 'empty' }, 'Серверов пока нет.'),
       h('div', { class: 'mini-foot' },

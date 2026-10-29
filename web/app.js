@@ -631,6 +631,7 @@ function updateStatusNow() {
   document.body.dataset.state = p;
   document.body.classList.toggle('zapret-only', zapretOnly());
   const nt = $('#navTitle'); if (nt) nt.textContent = TITLES[p];
+  const ab = $('#achvBtn'); if (ab) ab.hidden = S.achievements === false;
   const cs = currentServer();
   const ns = $('#navSub'); if (ns) ns.textContent = p === 'on' ? (cs.auto ? `${cs.name}, авто` : cs.name) : (ST.mode === 'tun' || S.mode === 'tun' ? 'режим TUN' : '');
   navCounts();
@@ -1076,7 +1077,9 @@ function viewOverview() {
     h('div', { class: 'stage-head' },
       h('div', { class: 'stage-status' },
         h('div', { class: 'status-title', id: 'statusTitle' }, '…'),
-        h('div', { class: 'sub', id: 'statusSub' })),
+        h('div', { class: 'sub', id: 'statusSub' }),
+        // Подключено — крупная живая скорость под заголовком (подробности — в «Сводке»).
+        h('button', { class: 'live-speed', id: 'liveSpeed', type: 'button', title: 'График скорости и активные сайты', onclick: () => openDiag('now') })),
       h('div', { class: 'sysline', id: 'sysLine' })),
     h('div', { id: 'notices', class: 'stage-notices' }),
     h('div', { class: 'lanes-stage', id: 'lanesCard' },
@@ -1170,6 +1173,11 @@ function renderTiles() {
   t3.replaceChildren(h('span', { class: 'tile-k' }, 'Сеанс'),
     h('span', { class: 'tile-v' }, on ? fmtDur(Date.now() / 1000 - ST.startedAt) : 'не подключено'),
     h('span', { class: 'tile-sub' }, on ? `через сервер ${fmtBytes(t[0] + t[1])}` : 'щёлкните, чтобы открыть историю трафика'));
+  const ls = $('#liveSpeed');
+  if (ls) ls.replaceChildren(
+    h('span', { class: 'ls-n' }, h('span', { class: 'ls-arrow' }, '↓'), tnum('ls-down', on ? sp.pd + sp.dd + sp.zd + sp.td : 0, fmtSpeed)),
+    h('span', { class: 'ls-n up' }, h('span', { class: 'ls-arrow' }, '↑'), tnum('ls-up', on ? sp.pu + sp.du + sp.zu + sp.tu : 0, fmtSpeed)),
+    h('span', { class: 'ls-spark' }, speedSpark()));
   const sl = $('#sysLine');
   if (sl) {
     // Защищён ли трафик: замок и слово; при наведении — что это значит.
@@ -1206,6 +1214,8 @@ const ICONS = {
   lock: 'M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V8a4 4 0 0 1 8 0v3',
   unlock: 'M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V8a4 4 0 0 1 7.7-1.5',
   warn: 'M12 4l9 16H3l9-16zM12 10v4M12 17v.01',
+  doc: 'M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5',
+  gauge: 'M4 16a8 8 0 1 1 16 0M12 16l4-5M12 16h.01',
 };
 // Значок для кнопок и подписей (линией, цветом текста).
 const svgIcon = name => s('svg', { viewBox: '0 0 24 24', class: 'ico', 'aria-hidden': 'true' }, s('path', { d: ICONS[name] }));
@@ -2182,12 +2192,16 @@ function viewDiag() {
       refreshLogs();
     }
   };
-  const tabs = segmented([['now', 'Сейчас'], ['conns', 'Соединения'], ['traffic', 'Трафик'], ['check', 'Проверить сайт'], ['speed', 'Скорость'], ['logs', 'Журнал'],
-    ...(S.achievements !== false ? [['achv', 'Достижения']] : [])], () => diagTab, v => {
-    diagTab = v; sessionStorage.setItem('naivka-diag', v); render();
-  }, 'Раздел диагностики');
-  render();
-  return h('div', { class: 'view', style: 'max-width:none' }, h('div', { class: 'title-row' }, h('h1', null, 'Сводка'), tabs), body);
+  // Пять вкладок; журнал — кнопкой справа (нужен при сбоях), достижения — кнопкой в меню слева.
+  const title = h('h1', null, '');
+  const pick = v => { diagTab = v; sessionStorage.setItem('naivka-diag', v); render(); mark(); };
+  const tabs = segmented([['now', 'Сейчас'], ['conns', 'Соединения'], ['traffic', 'Трафик'], ['check', 'Проверить сайт'], ['speed', 'Скорость']],
+    () => diagTab, pick, 'Раздел диагностики');
+  const logBtn = h('button', { class: 'btn small diag-log', type: 'button', title: 'Журнал Naivka и ядра; там же — «Собрать отчёт»', onclick: () => pick('logs') }, svgIcon('doc'), 'Журнал');
+  const mark = () => { logBtn.setAttribute('aria-pressed', String(diagTab === 'logs')); title.textContent = diagTab === 'achv' ? 'Достижения' : 'Сводка'; };
+  render(); mark();
+  return h('div', { class: 'view', style: 'max-width:none' }, h('div', { class: 'title-row' }, title,
+    h('div', { class: 'row' }, tabs, logBtn)), body);
 }
 
 function viewCheck() {
@@ -4147,6 +4161,7 @@ async function boot() {
   $('#drawerClose').addEventListener('click', () => go('overview'));
   $('#scrim').addEventListener('click', () => go('overview'));
   $('#feedbackBtn').addEventListener('click', openFeedback);
+  $('#achvBtn').addEventListener('click', () => openDiag('achv'));
   $('#helpBtn').addEventListener('click', openGuide);
   try { S = await api('/api/settings'); }
   catch (e) { setOffline(true); setOffline(true); setOffline(true); return; }
@@ -4552,7 +4567,8 @@ function viewTraffic() {
       h('div', { class: 'skel', style: 'width:180px;height:12px' }),
       h('div', { class: 'skel', style: 'width:240px;height:30px;margin-top:8px' }),
       h('div', { class: 'skel', style: 'width:100%;height:180px;margin-top:18px;border-radius:12px' })),
-    h('h2', { class: 'mt-lg' }, 'Лимит'),
+    // Сколько израсходовано — полоской вверху; здесь только настройка, свёрнутая.
+    h('div', { class: 'mt' }, more('Настроить лимит', S.trafficLimitGB ? `${S.trafficLimitGB} ГБ в месяц` : 'без лимита',
     h('p', { class: 'hint' }, 'Naivka предупредит, когда израсходуете 80% и 100% лимита.'),
     h('div', { class: 'grid2' },
       h('label', { class: 'field' }, h('span', null, 'Лимит в месяц, ГБ'),
@@ -4560,7 +4576,7 @@ function viewTraffic() {
       h('label', { class: 'field' }, h('span', null, 'Месяц начинается'),
         h('select', { onchange: e => { S.trafficResetDay = parseInt(e.target.value, 10); save(0); setTimeout(refreshTraffic, 500); } },
           Array.from({ length: 28 }, (_, i) => h('option', { value: i + 1, selected: (S.trafficResetDay || 1) === i + 1 }, `${i + 1}-го числа`))),
-        h('small', { class: 'hint' }, 'Как у тарифа: например, в день оплаты сервера.'))));
+        h('small', { class: 'hint' }, 'Как у тарифа: например, в день оплаты сервера.'))))));
 }
 
 function renderTraffic() {
@@ -4676,7 +4692,16 @@ function renderSpeed() {
   const btn = $('#speedBtn');
   if (btn) { btn.disabled = !!(SPEED && SPEED.active); btn.textContent = SPEED && SPEED.active ? 'Идёт замер…' : 'Запустить тест'; }
   const rows = (SPEED && SPEED.rows) || [];
-  if (!rows.length) { body.replaceChildren(h('tr', null, h('td', { class: 'empty', colspan: 4 }, 'Ещё не запускали.'))); return; }
+  const note = $('#speedNote');
+  if (note && SPEED && SPEED.at && rows.length) note.textContent = (SPEED.active ? 'Замер начат в ' : 'Последний замер — в ') + fmtTime(SPEED.at);
+  if (!rows.length) {
+    body.replaceChildren(h('tr', null, h('td', { class: 'speed-empty', colspan: 4 },
+      svgIcon('gauge'),
+      h('b', null, 'Какой путь быстрее?'),
+      h('span', { class: 'hint' }, 'За минуту Naivka измерит задержку и скорость загрузки напрямую и через каждый ваш сервер — и покажет, насколько каждый медленнее прямого.'),
+      h('button', { class: 'btn primary', onclick: () => $('#speedBtn') && $('#speedBtn').click() }, 'Запустить тест'))));
+    return;
+  }
   const max = Math.max(1, ...rows.map(r => r.mbps || 0));
   const direct = rows.find(r => r.kind === 'direct');
   body.replaceChildren(...rows.map(r => {
@@ -4912,6 +4937,10 @@ function openOnboarding() {
       box.replaceChildren(dots(2), h('h2', null, 'Готово'),
         h('p', null, 'Сервер добавлен. Нажмите кнопку — и всё заработает.'),
         h('div', { class: 'onb-srv' }, h('b', null, sv.name || 'Сервер'), h('small', null, sv.type || '')),
+        // Маршрут — сразу здесь: по умолчанию российские сайты напрямую, остальное через сервер.
+        h('div', { class: 'onb-route' }, h('span', { class: 'hint' }, 'Что пускать через сервер'),
+          segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(0); }, 'Маршрут'),
+          h('small', { class: 'hint' }, 'Можно поменять потом: меню «Путь» на главной.')),
         h('button', { class: 'btn primary onb-go', disabled: !coreReady(), onclick: () => { close(); toggleConnect(); } }, coreReady() ? 'Подключить' : 'Скачиваю ядро…'));
       coreSig = '';
     }
