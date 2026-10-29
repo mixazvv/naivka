@@ -1,6 +1,6 @@
 // Талисман — серый котёнок. Кадры — в атласе web/cat-atlas.webp, их места и точки опоры — в pet-atlas.js.
-// Живёт сам по себе: моргает, умывается, чешет ухо, потягивается, прислушивается, играет с клубком
-// и хвостом, охотится на муху, ходит и бегает. Уходит из меню гулять по окну: перепрыгивает с карточки
+// Живёт сам по себе: моргает, умывается, чешет ухо, потягивается, прислушивается, играет с хвостом,
+// охотится на муху, ходит и бегает. Уходит из меню гулять по окну: перепрыгивает с карточки
 // на карточку, спрыгивает с краёв, бегает по низу окна и карабкается наверх; иногда бежит туда, где щёлкнули. Следит за курсором, ловит его лапой и охотится; если курсор задержать на нём —
 // ластится; гладят по голове, чешут подбородок, трогают живот — каждое по-своему. Взяли мышью — висит
 // по-разному: за холку, хвост, лапу или туловище; трясут — кружится голова; швырнули — обижается.
@@ -36,8 +36,9 @@ const Pet = (() => {
     const f = FR[name];
     if (!f || !sprite) return;
     cur = name;
-    const [x, y, w, h, ax, top] = f;
-    const left = 32 - ax * K, tp = top ? 4 : 80 - h * K;
+    // below — сколько пикселей кадра ниже опоры (хвост или лапа свисают с края карточки).
+    const [x, y, w, h, ax, top, below = 0] = f;
+    const left = 32 - ax * K, tp = top ? 4 : 80 - (h - below) * K;
     box = { x: left, y: tp, w: w * K, h: h * K };
     sprite.setAttribute('x', left - x * K);
     sprite.setAttribute('y', tp - y * K);
@@ -134,7 +135,6 @@ const Pet = (() => {
     if (side) return ['sleep_4', 'sleep_5'];
     return r < 0.2 ? ['sleep_1', 'sleep_2', ['sleep_3', 500], 'sleep_1'] : r < 0.35 ? [['sleepb_4', 2600]] : ['sleep_1', 'sleep_2'];
   };
-  let boxSleep = false;
   const runMs = () => Math.max(60, Math.min(160, parseFloat(getComputedStyle(root).getPropertyValue('--pet-step')) * 1000 / 3 || 140));
 
   // enter включает состояние s: из сна — встаёт, зевает и потягивается; в сон — ложится и засыпает.
@@ -146,13 +146,11 @@ const Pet = (() => {
       return;
     }
     if (from === 'off' && s !== 'off') {
-      boxSleep = false;
       play([['lieyawn_1', 700], 'liedown_2', 'liedown_1', ['stretchb_1', 700], ['stretchb_3', 300], ['yawnsit_2', 500], 'yawnsit_3'], 260, () => enterNow(s));
       return;
     }
     if (s === 'off' && from && from !== 'off') {
-      boxSleep = chance(0.2);
-      play(boxSleep ? [['box_1', 500], ['box_2', 1200]] : seq('sleepb', 4), 450, () => enterNow(s));
+      play(seq('sleepb', 4), 450, () => enterNow(s));
       return;
     }
     enterNow(s);
@@ -163,11 +161,11 @@ const Pet = (() => {
     root.classList.remove('nap');
     if (napping && (s === 'on' || s === 'sad')) {
       root.classList.add('nap');
-      loop(() => boxSleep ? [['box_3', 3000], ['box_2', 400]] : sleepSeq(), 1400);
+      loop(sleepSeq, 1400);
       return;
     }
     switch (s) {
-      case 'off': loop(() => boxSleep ? [['box_3', 3000], ['box_2', 500], ['box_3', 4000]] : sleepSeq(), 1400); break;
+      case 'off': loop(sleepSeq, 1400); break;
       case 'wait': loop(() => pick([['alert_1', 'alert_2', 'alert_3'], seq('listen', 4), ['scan_1', 'scan_2', 'scan_3', 'scan_4'], ['earmove_1', 'earmove_2', 'earmove_1']]), 600); break;
       case 'run': runAbout(); break;
       case 'err': loop(() => chance(0.15) ? [['hiss_1', 300], ['hiss_2', 400]] : ['scared_1', 'scared_2'], 170); break;
@@ -266,7 +264,6 @@ const Pet = (() => {
     [3, null, () => play(['earmove_1', 'earmove_2', 'earmove_3', 'earmove_2', 'earmove_4', 'earmove_1'], 350, back)],
     [3, null, () => play(seq('sniff', 4).concat(['sniff_2', 'sniff_3']), 300, back)],
     [2, null, () => play([pick(['tiltb_1', 'tiltb_2', 'tiltb_3', 'tiltb_4', 'tilt_1']), 'idle_1'], 900, back)],
-    [3, null, () => play([['ball_1', 600], ['ball_2', 250], ['ball_3', 400], ['ball_2', 250], ['ball_3', 400], ['ball_4', 700], ['ball_1', 400]], 0, back)],
     [2, null, () => play([...seq('tailplay', 4), ...seq('tailplay', 4), ['tailplay_4', 400]], 150, back)],
     [1, null, () => play(['tail_1', 'tail_2', 'tail_3', 'tail_4', 'tail_1', 'tail_2', 'tail_3', 'tail_4'], 140, back)],
     [2, null, () => play(['scratch_1', 'scratch_2', 'scratch_3', 'scratch_2', 'scratch_3', 'scratch_1'], 210, back)],
@@ -278,11 +275,7 @@ const Pet = (() => {
     [2, null, () => play([...seq('backroll', 4), 'backroll_3', 'backroll_4', 'backroll_1'], 320, back)],
     [1, null, () => play([...seq('playbow', 4), 'playbow_3', 'playbow_4'], 260, back)],
     [2, null, bugHunt],
-    [1, null, () => play([['eat_1', 500], ['eat_2', 500], ['eat_1', 500], ['eat_2', 500], ['eat_1', 500], ['happy_1', 800]], 0, back)],
-    [1, null, () => play([['box_1', 500], ['box_2', 3000], ['box_3', 2500], ['box_2', 800], ['box_1', 400]], 0, back)],
-    [1, null, () => play([['mouse_1', 1600], ['mouse_2', 1200], ['happy_1', 700]], 0, back)],
     [2, () => nearEdge() !== 0, () => { setFlip(nearEdge() < 0); play([['ledge_1', 1600], ['ledge_2', 1600], ['ledge_1', 1600], ['ledge_2', 1600]], 0, back); }],
-    [1, () => nearEdge() !== 0, () => { setFlip(nearEdge() < 0); play([['knock_1', 900], ['knock_2', 700], ['knock_3', 500], ['wink_1', 900]], 0, () => { talk('Упс…', 1400); back(); }); }],
     [1, () => free, () => play([['peek_1', 1400], ['peek_2', 1200], ['peek_1', 1000]], 0, back)],
     // Перемещения: дома — прогулка по меню и вылазки в окно; в окне — ходит, перепрыгивает, путешествует.
     [8, null, () => stroll(), 'move'],
@@ -302,8 +295,8 @@ const Pet = (() => {
       if (!REDUCE.matches && !busy && !strolling && !inAir() && !watching && !hovering) {
         const idleFor = performance.now() - lastInput;
         if ((state === 'on' || state === 'sad') && !napping && idleFor > (night() ? 60e3 : 180e3)) {
-          napping = true; boxSleep = chance(0.25);
-          play(boxSleep ? [['box_1', 500], ['box_2', 1500]] : [['loaf_1', 2500], ['loaf_2', 3000], ...seq('sleepb', 4).map(n => [n, 450])], 0, back);
+          napping = true;
+          play([['loaf_1', 2500], ['loaf_2', 3000], ...seq('sleepb', 4).map(n => [n, 450])], 0, back);
         } else if (napping) {
           // спит дальше
         } else if (exploreUntil && performance.now() > exploreUntil && state !== 'run') {
@@ -633,8 +626,7 @@ const Pet = (() => {
   }
 
   // ---------- ходьба ----------
-  // Встал — развернулся, если нужно, — шагом или бегом — остановился — сел. Иногда по пути натыкается
-  // на коробочку и обходит её.
+  // Встал — развернулся, если нужно, — шагом или бегом — остановился — сел. Иногда по пути спотыкается.
   let strolling = false, strollRaf = 0;
   let gagTimers = [];
   function stopStroll() {
@@ -682,8 +674,8 @@ const Pet = (() => {
       setFlip(diag ? false : left);
       const t00 = performance.now();
       let t0 = t00, x = cur0, pausedUntil = 0;
-      // По пути (шагом, далеко): иногда коробочка на дороге, иногда спотыкается.
-      let gag = !fast && !done0 && dist > 120 && chance(0.2) ? pick(['box', 'trip']) : null;
+      // По пути (шагом, далеко): иногда спотыкается.
+      let gag = !fast && !done0 && dist > 120 && chance(0.1) ? 'trip' : null;
       const gagAt = (cur0 + to) / 2;
       const step = now => {
         if (!root || !strolling) return;
@@ -691,8 +683,7 @@ const Pet = (() => {
         const accel = fast && now - t00 < 360; // разгон: первые шаги медленнее
         x += dir * (accel ? 80 : gait.speed) * Math.min(0.05, (now - t0) / 1000); t0 = now;
         if (gag && (dir > 0 ? x >= gagAt : x <= gagAt)) {
-          const pseq = gag === 'box' ? [...seq('obstop', 4), ...seq('obgo', 4)].map(n => [n, 260])
-            : [['trip_1', 130], ['trip_2', 150], ['trip_3', 200], ['trip_4', 450], ['getup_3', 180], ['getup_4', 180]];
+          const pseq = [['trip_1', 130], ['trip_2', 150], ['trip_3', 200], ['trip_4', 450], ['getup_3', 180], ['getup_4', 180]];
           gag = null;
           let t = 0;
           const g = gen;
@@ -755,8 +746,7 @@ const Pet = (() => {
     if (root) root.classList.remove('nap');
     if (!root || inAir() || (state !== 'on' && state !== 'sad')) return;
     halt();
-    play(boxSleep ? [['box_2', 400], ['box_1', 400], ['shakefull_1', 120], ['shakefull_2', 120]]
-      : [['lieyawn_1', 700], ...seq('wakestretch', 4).map(n => [n, 450]), ['yawnsit_2', 600]], 260, back);
+    play([['lieyawn_1', 700], ...seq('wakestretch', 4).map(n => [n, 450]), ['yawnsit_2', 600]], 260, back);
   }
   function onKey() { lastInput = performance.now(); wake(); }
   // Куда смотреть: голова и глаза поворачиваются к курсору.
@@ -832,8 +822,8 @@ const Pet = (() => {
     setTimeout(() => g === gen && flash('pounce', 700), pre);
     play([...bow, ['sneak_1', 180], ['sneak_2', 180], ['sneak_3', 180], ['sneak_4', 180], ['leap_2', 150], ['leap_3', 150], ['leap_5', 150], ['touch_3', 300]], 0, () => {
       setFlip(false);
-      // Поймал — гордо сидит с «добычей».
-      if (ptr && Math.abs(ptr.x - (root.getBoundingClientRect().left + w / 2)) < 50 && chance(0.4)) play([['mouse_1', 1300], ['happy_1', 600]], 0, back);
+      // Поймал — довольный.
+      if (ptr && Math.abs(ptr.x - (root.getBoundingClientRect().left + w / 2)) < 50 && chance(0.4)) play([['happy_1', 1200]], 0, back);
       else back();
     });
     const from = cur0, t0 = performance.now() + pre;
