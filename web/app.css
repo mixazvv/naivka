@@ -118,7 +118,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :root:not([data-nav="wheel"]) .rail::before, :root:not([data-nav="wheel"]) .rail::after { content: ""; position: absolute; left: var(--track); top: calc(var(--row) / 2); width: 2px; border-radius: 2px; pointer-events: none; }
 :root:not([data-nav="wheel"]) .rail::before { bottom: calc(var(--row) / 2); background: var(--line); }
 :root:not([data-nav="wheel"]) .rail::after { height: calc(var(--nav-i, 0) * (var(--row) + var(--gap))); background: var(--tunnel); transition: height .35s cubic-bezier(.2, .8, .2, 1); }
-:root:not([data-nav="wheel"]) .nav-item { position: relative; z-index: 1; display: grid; grid-template-columns: 10px minmax(0, 1fr); align-items: center; gap: 13px; height: var(--row); padding: 0 34px 0 13px;
+:root:not([data-nav="wheel"]) .nav-item { position: relative; z-index: 1; display: grid; grid-template-columns: 10px 18px minmax(0, 1fr); align-items: center; gap: 11px; height: var(--row); padding: 0 34px 0 13px;
   background: none; border: 0; border-radius: 10px; cursor: pointer; color: var(--muted); font-weight: 500; text-align: left; white-space: nowrap; }
 :root:not([data-nav="wheel"]) .petal { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--faint); background: var(--nav); transition: background .2s, border-color .2s; }
 :root.mica[data-theme="dark"]:not([data-solid]):not([data-nav="wheel"]) .petal { background: #1B1D20; }
@@ -541,7 +541,11 @@ dialog h2 { margin-top: 0; }
   :root[data-nav="wheel"] .rail { --cx: -150px; --R: 186px; }
   :root[data-nav="wheel"] .nav-item { gap: 0; }
   :root:not([data-nav="wheel"]) .nav-key { display: none; }
-  :root:not([data-nav="wheel"]) .nav-item { grid-template-columns: 10px; padding-right: 0; }
+  /* Узкое меню: вместо точек на линии — значки разделов (по ним видно, где что). */
+  :root:not([data-nav="wheel"]) .rail::before, :root:not([data-nav="wheel"]) .rail::after { display: none; }
+  :root:not([data-nav="wheel"]) .petal { display: none; }
+  :root:not([data-nav="wheel"]) .nav-item { grid-template-columns: 1fr; justify-items: center; padding: 0; }
+  :root:not([data-nav="wheel"]) .nav-ic { width: 20px; height: 20px; }
   .pill { justify-content: center; padding: 10px 0; }
   .pill .led { margin: 0; }
   .feedback { padding: 0; }
@@ -1718,7 +1722,9 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 
 /* ---------- достижения ---------- */
 .achv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
-.achv { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
+.achv-grid { grid-auto-rows: 1fr; } /* все карточки — высотой с самую высокую */
+.achv { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); }
+.achv.got { border-color: color-mix(in srgb, var(--tunnel) 35%, var(--line)); background: linear-gradient(150deg, var(--tunnel-soft), transparent 60%), var(--surface); }
 .achv-medal { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--raised); border: 2px dashed var(--line); }
 .achv-ic { width: 24px; height: 24px; fill: none; stroke: var(--faint); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .achv.got .achv-medal { border: 2px solid var(--tunnel); background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--tunnel) 45%, transparent), color-mix(in srgb, var(--tunnel) 12%, transparent) 70%);
@@ -1767,3 +1773,40 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 }
 /* Узкое меню (64 px): котёнок дома помещается в него целиком. */
 @media (max-width: 900px) { .side-foot > .pet:not(.free) { width: 56px; height: 74px; margin-left: 0; } }
+
+/* Значки разделов в меню. */
+.nav-ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.nav-item[aria-current="page"] .nav-ic { color: var(--tunnel); opacity: 1; }
+:root[data-nav="wheel"] .nav-ic { display: none; }
+:root[data-skin="gold"]:not([data-nav="wheel"]) .nav-item[aria-current="page"] .nav-ic { color: inherit; }
+.diag-log { display: inline-flex; align-items: center; gap: 6px; }
+.diag-log[aria-pressed="true"] { border-color: var(--tunnel); color: var(--ink); }
+/* Тест скорости ещё не запускали: что он покажет и кнопка посередине. */
+.speed-empty { text-align: center; padding: 34px 20px !important; }
+.speed-empty > * { display: block; margin: 0 auto 8px; max-width: 460px; }
+.speed-empty .ico { width: 34px; height: 34px; color: var(--tunnel); stroke-width: 1.6; }
+.speed-empty b { font: 600 16px/1.3 var(--display); }
+.speed-empty .btn { display: inline-flex; margin-top: 6px; }
+/* Подключено: крупная скорость под заголовком главной. */
+.live-speed { display: none; align-items: center; gap: 18px; margin-top: 12px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; font: inherit; text-align: left; }
+body[data-state="on"] .live-speed { display: flex; }
+.ls-n { display: inline-flex; align-items: baseline; gap: 6px; font: 600 28px/1 var(--display); letter-spacing: -.01em; text-shadow: 0 1px 8px rgba(0, 0, 0, .55); }
+.ls-n.up { font-size: 18px; color: var(--muted); }
+.ls-arrow { font-size: .6em; color: var(--tunnel); }
+.ls-n.up .ls-arrow { color: var(--muted); }
+.ls-spark { width: 140px; height: 30px; display: block; opacity: .9; }
+.ls-spark svg { width: 100%; height: 100%; }
+.live-speed:hover .ls-n:not(.up) { color: var(--tunnel); }
+@media (max-height: 640px), (max-width: 820px) { .ls-n { font-size: 22px; } .ls-spark { display: none; } }
+.onb-route { display: grid; justify-items: center; gap: 8px; margin: 4px 0 6px; }
+/* Мини-окно — пульт: маршрут и zapret под скоростью. */
+.mini-quick { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.mini-quick .seg button { font-size: 12px; padding: 5px 9px; }
+.mini-zap { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
+/* Низкое окно: пункты меню и кнопки внизу плотнее — всё помещается без обрезки. */
+@media (max-height: 640px) {
+  :root:not([data-nav="wheel"]) .rail { --row: 34px; }
+  .side-foot { gap: 6px; }
+  .feedback { height: 30px; }
+  .side-foot > .pet:not(.free) { width: 50px; height: 66px; }
+}
