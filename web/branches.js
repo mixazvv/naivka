@@ -314,6 +314,12 @@ const Branches = (() => {
       if (nb) moveTo(lf, nb.k, nb.t, y); else layout();
     };
     el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    // Захват мыши потерян без «отпустили» (окно ушло в фон и т. п.) — лист возвращается на место, а не висит.
+    el.addEventListener('lostpointercapture', () => {
+      if (id === null) return;
+      id = null;
+      if (moved) { el.classList.remove('drag'); dragging = false; dragOver = null; layout(); }
+    });
     el.addEventListener('keydown', e => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
