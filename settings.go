@@ -170,8 +170,11 @@ type Settings struct {
 	Servers  []Server `json:"servers"`
 	Selected string   `json:"selected"` // "auto" или ID сервера
 
-	Mode    string `json:"mode"`    // proxy | tun
-	Routing string `json:"routing"` // ru-direct | global
+	Mode string `json:"mode"` // proxy | tun
+	// ProxyPAC — системный прокси через PAC-скрипт: без Naivka (сбой, выключение) интернет идёт напрямую.
+	// По умолчанию — прямой адрес 127.0.0.1:порт, как раньше: с ним меньше сюрпризов у программ.
+	ProxyPAC bool   `json:"proxyPac,omitempty"`
+	Routing  string `json:"routing"` // ru-direct | global
 
 	RuInsideDirect bool `json:"ruInsideDirect"` // сайты, работающие только из РФ, — напрямую
 	BlockQUIC      bool `json:"blockQuic"`      // отклонять UDP/443

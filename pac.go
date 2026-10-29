@@ -15,6 +15,9 @@ import (
 // формально включён. Пока Naivka жива, скрипт велит «только через прокси» (без запасного DIRECT):
 // упало ядро — трафик упирается в закрытый порт, а не идёт мимо сервера.
 
+// usePAC — включать ли системный прокси через скрипт (настройка «ProxyPAC»); main подставляет свою.
+var usePAC = func() bool { return false }
+
 // pacScript — скрипт для прокси 127.0.0.1:port; локальные адреса — напрямую (как bypassList).
 func pacScript(port int) string {
 	var b strings.Builder
