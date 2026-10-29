@@ -204,7 +204,7 @@ function powerButton(id, size) {
       s('circle', { class: 'pw-track pw-c', cx: 60, cy: 60, r: 52 }),
       s('circle', { class: 'pw-ring pw-c', cx: 60, cy: 60, r: 52, pathLength: 100 }),
       s('circle', { class: 'pw-core pw-c', cx: 60, cy: 60, r: 45 }),
-      // Квадратный вариант — для тем «Никогда не проси об этом» и «Блоки» (круги там спрятаны).
+      // Квадратный вариант — для тем «Чёрное с золотом» и «Блоки» (круги там спрятаны).
       s('rect', { class: 'pw-track pw-h', x: 9, y: 9, width: 102, height: 102 }),
       s('rect', { class: 'pw-ring pw-h', x: 9, y: 9, width: 102, height: 102, pathLength: 100 }),
       s('rect', { class: 'pw-core pw-h', x: 18, y: 18, width: 84, height: 84 }),
