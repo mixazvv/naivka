@@ -1621,6 +1621,7 @@ function renderProcShelf(force) {
   const list = phase() === 'on' && !zapretOnly() ? procList() : [];
   const sig = JSON.stringify(list.map(x => [x.exe, (procRule(x.exe) || {}).action]));
   if (!force && box.dataset.sig === sig) return;
+  if (liveDrag) return; // тащат программу с полки — не пересоздаём её из-под курсора
   box.dataset.sig = sig;
   if (!list.length) { box.replaceChildren(); return; }
   box.replaceChildren(h('span', { class: 'proc-title' }, 'Программы'),
@@ -1634,24 +1635,52 @@ function procChip(x) {
   const el = h('button', { class: 'proc-chip' + (rule ? ' ruled' : ''), type: 'button', style: col ? `--c:${col}` : '',
     'aria-label': `${name}: ${rule ? ROUTE_SAY[rule.action] : 'как решит Naivka'}. Нажмите, чтобы выбрать путь` },
     h('span', { class: 'svc' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: ic }))), name);
+  ghostDrag(el, () => { const g = el.cloneNode(true); g.classList.add('proc-ghost'); return g; },
+    () => routePicker(el, { title: name, sub: 'Вся программа целиком', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
+    k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); });
+  return el;
+}
+
+// Перетаскивание программы или сайта на ветку схемы: короткое нажатие — tap(), перетаскивание — призрак
+// под курсором и drop(ветка). Призрак убирается при любом исходе: отпустили, отменили, элемент
+// пересоздали или окно потеряло фокус — иначе он «зависал» над схемой, а ветки оставались дорожками.
+let liveDrag = 0;
+// Страховка: отпустили мышь, а тащить уже нечего (строку убрали вместе с разделом) — убираем осиротевший призрак.
+addEventListener('pointerup', () => setTimeout(() => {
+  if (!document.querySelector('.proc-ghost') || document.querySelector('.lifted')) return;
+  document.querySelectorAll('.proc-ghost').forEach(g => g.remove());
+  liveDrag = 0; Branches.endHover();
+}), true);
+function ghostDrag(el, makeGhost, tap, drop) {
   let sx, sy, ghost = null, id = null;
+  const finish = () => {
+    id = null;
+    if (!ghost) return null;
+    ghost.remove(); ghost = null; el.classList.remove('lifted');
+    liveDrag = Math.max(0, liveDrag - 1);
+    removeEventListener('blur', cancel);
+    return Branches.endHover();
+  };
+  const cancel = () => { if (id !== null || ghost) finish(); };
   el.addEventListener('pointerdown', e => { if (e.button !== 0) return; id = e.pointerId; el.setPointerCapture(id); sx = e.clientX; sy = e.clientY; });
   el.addEventListener('pointermove', e => {
     if (e.pointerId !== id) return;
     if (!ghost && Math.hypot(e.clientX - sx, e.clientY - sy) < 6) return;
-    if (!ghost) { ghost = el.cloneNode(true); ghost.classList.add('proc-ghost'); document.body.append(ghost); el.classList.add('lifted'); }
+    if (!ghost) {
+      ghost = makeGhost(); document.body.append(ghost); el.classList.add('lifted');
+      liveDrag++; addEventListener('blur', cancel);
+    }
     ghost.style.left = (e.clientX - 20) + 'px'; ghost.style.top = (e.clientY - 14) + 'px';
     Branches.hoverAt(e.clientX, e.clientY);
   });
-  const end = e => {
-    if (e.pointerId !== id) return; id = null;
-    if (!ghost) { routePicker(el, { title: name, sub: 'Вся программа целиком', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }); return; }
-    ghost.remove(); ghost = null; el.classList.remove('lifted');
-    const k = Branches.endHover();
-    if (k && k !== (rule && rule.action)) setProcRoute(x.exe, k);
-  };
-  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
-  return el;
+  el.addEventListener('pointerup', e => {
+    if (e.pointerId !== id) return;
+    if (!ghost) { id = null; tap(); return; }
+    const k = finish();
+    if (k) drop(k);
+  });
+  el.addEventListener('pointercancel', e => { if (e.pointerId === id) finish(); });
+  el.addEventListener('lostpointercapture', cancel);
 }
 
 // ---------- колонка «Сейчас» (широкая главная) ----------
@@ -1671,7 +1700,7 @@ function renderLive() {
   const procs = on && !zapretOnly() ? procList() : [];
   // Перерисовываем по смыслу, а скорость обновляем в уже стоящих строках — без мигания и сброса перетаскивания.
   const sig = JSON.stringify([on, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action])]);
-  if (box.dataset.sig !== sig) {
+  if (box.dataset.sig !== sig && !liveDrag) { // тащат строку — пересоберём после того, как отпустят
     box.dataset.sig = sig;
     box.replaceChildren(
       h('div', { class: 'live-head' }, h('b', null, 'Сейчас'), h('small', null, on ? 'что качается и каким путём' : 'появится после подключения')),
@@ -1887,23 +1916,7 @@ function liveRow({ key, label, icon, route, rule, sub, pick, drop }) {
     h('span', { class: 'live-name' }, h('b', null, label), h('small', null, h('i', { class: 'live-dot' }), say + (rule ? ' · правило' : '') + (sub ? ' · ' + sub : ''))),
     h('span', { class: 'live-speed num' }));
   // Как у программ на полке: короткое нажатие — меню, перетаскивание — на ветку схемы.
-  let sx, sy, ghost = null, id = null;
-  el.addEventListener('pointerdown', e => { if (e.button !== 0) return; id = e.pointerId; el.setPointerCapture(id); sx = e.clientX; sy = e.clientY; });
-  el.addEventListener('pointermove', e => {
-    if (e.pointerId !== id) return;
-    if (!ghost && Math.hypot(e.clientX - sx, e.clientY - sy) < 6) return;
-    if (!ghost) { ghost = h('div', { class: 'proc-chip proc-ghost' }, label); document.body.append(ghost); el.classList.add('lifted'); }
-    ghost.style.left = (e.clientX - 20) + 'px'; ghost.style.top = (e.clientY - 14) + 'px';
-    Branches.hoverAt(e.clientX, e.clientY);
-  });
-  const end = e => {
-    if (e.pointerId !== id) return; id = null;
-    if (!ghost) { pick(el); return; }
-    ghost.remove(); ghost = null; el.classList.remove('lifted');
-    const k = Branches.endHover();
-    if (k) drop(k);
-  };
-  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  ghostDrag(el, () => h('div', { class: 'proc-chip proc-ghost' }, label), () => pick(el), drop);
   return el;
 }
 
