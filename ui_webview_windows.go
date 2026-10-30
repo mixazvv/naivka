@@ -135,7 +135,7 @@ func newUI(a *App) uiHost {
 	if v := windows.RtlGetVersion(); v != nil {
 		u.build = v.BuildNumber
 	}
-	u.t = newTray(u.trayClick, a.trayMenu, a.trayCommand, u.logo)
+	u.t = newTray(u.trayClick, u.Show, a.trayMenu, a.trayCommand, u.logo)
 	go a.trayLoop(u.t)
 	return u
 }

@@ -27,6 +27,16 @@ func listProcesses() []procEntry {
 	return out
 }
 
+func killImage(path string) {
+	for _, p := range listProcesses() {
+		if p.PID != os.Getpid() && p.Path == path {
+			if pr, err := os.FindProcess(p.PID); err == nil {
+				pr.Kill()
+			}
+		}
+	}
+}
+
 func envOr(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v

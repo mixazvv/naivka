@@ -1103,7 +1103,25 @@ const Pet = (() => {
         el('path', { d: 'M4 20c-2-3 2-5 3-2 1-3 5-1 3 2l-3 3z' }),
         el('path', { d: 'M54 10c-2-3 2-5 3-2 1-3 5-1 3 2l-3 3z' })),
       el('g', { class: 'pet-spark' }, el('path', { d: 'M4 40l2-1-2-1-1-2-1 2-2 1 2 1 1 2zM62 48l2-1-2-1-1-2-1 2-2 1 2 1 1 2z' })),
-      el('path', { class: 'pet-dust', d: 'M2 76h4M0 72h3M1 80h3' }));
+      el('path', { class: 'pet-dust', d: 'M2 76h4M0 72h3M1 80h3' }),
+      el('g', { class: 'pet-snow' }, ...[6, 20, 40, 56, 30, 62].map((x, i) => el('circle', { cx: x, cy: 0, r: i % 2 ? 1.2 : 1.6 }))));
+  }
+
+  // Праздники: в новогодние дни вокруг котёнка идёт снег; в сам праздник он поздравляет (раз в день).
+  function holiday(d = new Date()) {
+    const md = (d.getMonth() + 1) * 100 + d.getDate();
+    return {
+      snow: md >= 1220 || md <= 110,
+      hi: md === 1231 || md === 101 ? 'С Новым годом!' : md === 1031 ? 'Мяу-у! С Хэллоуином!' : md === 301 ? 'Сегодня День кошек!' : '',
+    };
+  }
+  function greet() {
+    const h = holiday();
+    root.classList.toggle('snowy', h.snow && !REDUCE.matches);
+    if (!h.hi) return;
+    const day = new Date().toDateString();
+    try { if (localStorage.getItem('naivka-pet-hi') === day) return; localStorage.setItem('naivka-pet-hi', day); } catch (_) { return; }
+    setTimeout(() => { if (root) { joy(); talk(h.hi, 4200); } }, 3500);
   }
 
   // opts: say(state) — реплика по щелчку, onPurr — погладили, spot — сохранённое место ([доля x, доля y]
@@ -1134,6 +1152,7 @@ const Pet = (() => {
     root.append(svg, bubble);
     container.prepend(root);
     posX = 0;
+    greet();
     root.addEventListener('click', poke);
     root.addEventListener('dblclick', () => { if (free) goHome(); });
     root.addEventListener('pointerdown', down);
@@ -1207,8 +1226,11 @@ const Pet = (() => {
 
   // update — фаза подключения (off | wait | on | revive | err | blocked) и скорость в байтах/с.
   let hot = false, hotSince = 0;
-  function update(phase, bps) {
+  // net — здоровье связи из сводки: 'offline' — пропал сам интернет (котёнок грустит, пока не вернётся).
+  function update(phase, bps, net) {
     if (!root) return;
+    const lost = phase === 'on' && net === 'offline';
+    if (lost) phase = 'blocked';
     // «Носится» — с запасом в обе стороны: включается, когда трафик больше 180 КБ/с три секунды подряд,
     // выключается, когда меньше 90 КБ/с пять секунд подряд. Колебания у порога кота не дёргают.
     const now = performance.now();
@@ -1228,6 +1250,7 @@ const Pet = (() => {
     prev = state; state = s; root.dataset.mood = s;
     enter(s, prev);
     if (revived && prev !== 'wait') { joy(); talk('Ура, связь вернулась!'); }
+    else if (lost && (prev === 'on' || prev === 'run')) talk('Интернет пропал… подожду', 3600);
   }
 
   return {

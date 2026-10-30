@@ -477,6 +477,16 @@ func readZapretDomains(root string) []string {
 	return out
 }
 
+// Since — когда zapret запущен (Unix-секунды), 0 — не работает.
+func (z *Zapret) Since() int64 {
+	z.pmu.Lock()
+	defer z.pmu.Unlock()
+	if !z.running {
+		return 0
+	}
+	return z.startedAt.Unix()
+}
+
 func (z *Zapret) Running() bool {
 	z.pmu.Lock()
 	defer z.pmu.Unlock()

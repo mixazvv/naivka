@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -80,5 +81,22 @@ func TestPortOwner(t *testing.T) {
 	}
 	if p := pickFreePort(port); p == port || !portFree(p) {
 		t.Errorf("pickFreePort вернул %d", p)
+	}
+}
+
+func TestReplaceExe(t *testing.T) {
+	dir := t.TempDir()
+	exe, tmp := filepath.Join(dir, "TgWsProxy.exe"), filepath.Join(dir, "TgWsProxy.exe.new")
+	os.WriteFile(exe, []byte("old"), 0o755)
+	os.WriteFile(exe+".old", []byte("stale"), 0o755)
+	os.WriteFile(tmp, []byte("new"), 0o755)
+	if err := replaceExe(tmp, exe); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "new" {
+		t.Fatalf("exe = %q", b)
+	}
+	if fileExists(tmp) || fileExists(exe+".old") {
+		t.Fatal("остались временные файлы")
 	}
 }

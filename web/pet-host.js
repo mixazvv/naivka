@@ -36,7 +36,7 @@ const petHost = (() => {
       const smp = (stats && stats.samples) || [];
       const l = smp[smp.length - 1];
       const bps = phase === 'on' && l && Date.now() / 1000 - l.t < 4 ? (l.pd || 0) + (l.pu || 0) : 0;
-      Pet.update(phase, bps);
+      Pet.update(phase, bps, stats && stats.health);
     } catch (_) { /* Naivka перезапускается — следующий опрос */ }
   }
 

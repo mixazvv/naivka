@@ -104,9 +104,12 @@ func (t *TgWs) install() error {
 	}
 	wasRunning := t.Running()
 	t.Stop()
-	if err := os.Rename(tmp, t.exePath()); err != nil {
+	if err := replaceExe(tmp, t.exePath()); err != nil {
 		os.Remove(tmp)
-		return fmt.Errorf("не удалось заменить программу (она занята?): %v", err)
+		if wasRunning { // прежняя версия на месте — пусть работает дальше
+			t.Start(t.a.settingsCopy())
+		}
+		return fmt.Errorf("не удалось заменить программу: %v", err)
 	}
 	_ = os.Chmod(t.exePath(), 0o755)
 	if err := os.WriteFile(filepath.Join(t.dir(), "version.txt"), []byte(tag), 0o644); err != nil {
@@ -118,6 +121,25 @@ func (t *TgWs) install() error {
 	if wasRunning {
 		return t.Start(t.a.settingsCopy())
 	}
+	return nil
+}
+
+// replaceExe ставит tmp на место exe. Занятый exe Windows не даёт перезаписать или удалить,
+// но даёт переименовать: старый уходит в .old и удаляется, когда его отпустят.
+func replaceExe(tmp, exe string) error {
+	old := exe + ".old"
+	os.Remove(old)
+	if err := os.Rename(tmp, exe); err == nil {
+		return nil
+	}
+	if err := os.Rename(exe, old); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(tmp, exe); err != nil {
+		os.Rename(old, exe)
+		return err
+	}
+	os.Remove(old)
 	return nil
 }
 
@@ -159,6 +181,8 @@ func (t *TgWs) Start(s *Settings) error {
 		return errors.New("tg-ws-proxy ещё не установлен")
 	}
 	t.Stop()
+	killImage(t.exePath()) // осиротевшие копии: от прошлого запуска или дочерние PyInstaller
+	os.Remove(t.exePath() + ".old")
 	inner, err := freePort()
 	if err != nil {
 		return err
@@ -239,6 +263,7 @@ func (t *TgWs) Stop() {
 	t.stopping = true
 	t.pmu.Unlock()
 	_ = cmd.Process.Kill()
+	killImage(t.exePath())
 	t.stopRelay()
 	deadline := time.Now().Add(3 * time.Second)
 	for t.Running() && time.Now().Before(deadline) {

@@ -12,7 +12,7 @@ type browserUI struct {
 func newUI(a *App) uiHost {
 	enableDPIAwareness()
 	u := &browserUI{a: a}
-	u.t = newTray(func() { u.Show() }, a.trayMenu, a.trayCommand, defaultLogoColors(a.settingsCopy()))
+	u.t = newTray(u.Show, u.Show, a.trayMenu, a.trayCommand, defaultLogoColors(a.settingsCopy()))
 	go a.trayLoop(u.t)
 	return u
 }

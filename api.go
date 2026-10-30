@@ -428,6 +428,7 @@ type stateResp struct {
 	Legacy       bool   `json:"legacy"`    // Windows 7/8
 	Install      bool   `json:"install"`   // есть установка своего сервера по SSH
 	ZapretOn     bool   `json:"zapretOn"`  // zapret работает (для режима «Только zapret»)
+	ZapretSince  int64  `json:"zapretSince"`
 
 	Conflicts []ConflictInfo `json:"conflicts"`          // мешающие программы
 	Reviving  bool           `json:"reviving"`           // ядро упало, сторож поднимает его снова
@@ -454,6 +455,7 @@ func (a *App) apiState(*http.Request) (any, error) {
 	}
 	reviving := a.life.trying.Load() > 0 && !st.Running
 	zapretOn := a.zapret.Running()
+	zapretSince := a.zapret.Since()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return stateResp{
@@ -473,6 +475,7 @@ func (a *App) apiState(*http.Request) (any, error) {
 		Legacy:       legacyWindows(),
 		Install:      serverInstallSupported,
 		ZapretOn:     zapretOn,
+		ZapretSince:  zapretSince,
 	}, nil
 }
 
