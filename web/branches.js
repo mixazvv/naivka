@@ -28,10 +28,12 @@ const Branches = (() => {
       case 'proxy': return [c, [W * 0.3, top - 44], [W * 0.7, top - 44], n];
       case 'direct': return [c, [W * 0.38, H * 0.6], [W * 0.62, H * 0.4], n];
       case 'zapret': return [c, [W * 0.3, bot + 30], [W * 0.7, bot + 30], n];
-      // Telegram — короткая веточка вверх-влево, над веткой сервера: не задевает подписи «Компьютер».
-      case 'tg': return [c, [c[0] - 14, H * 0.22], [c[0] + 4, H * 0.1], [c[0] + 64, H * 0.09]];
+      // Telegram — дуга над веткой сервера до «Интернета»: tg-ws-proxy тоже ведёт в интернет.
+      // Вершина у верхнего края (y ≈ 26), узел — на ней слева, над веткой сервера.
+      case 'tg': { const y = (26 - 0.125 * H) / 0.75; return [c, [c[0] - 10, y], [n[0] + 10, y], n]; }
     }
   }
+  const TG_T = .3; // где на дуге Telegram стоит его узел
   const bez = (p, t) => { const u = 1 - t; return [0, 1].map(i => u*u*u*p[0][i] + 3*u*u*t*p[1][i] + 3*u*t*t*p[2][i] + t*t*t*p[3][i]); };
   const tan = (p, t) => { const u = 1 - t; return [0, 1].map(i => 3*u*u*(p[1][i]-p[0][i]) + 6*u*t*(p[2][i]-p[1][i]) + 3*t*t*(p[3][i]-p[2][i])); };
   const norm = (p, t) => { const d = tan(p, t), l = Math.hypot(d[0], d[1]) || 1; return [-d[1] / l, d[0] / l]; };
@@ -99,7 +101,7 @@ const Branches = (() => {
     for (const l of d.lanes) {
       if (!l.node) continue;
       const flag = l.node.cc && d.flag ? d.flag(l.node.cc) : null;
-      const el = mk(l.key, l.key === 'tg' ? 'side' : '', ICONS[l.node.icon], l.node.title, l.node.sub, flag, () => d.onNode(l.key));
+      const el = mk(l.key, l.key === 'tg' ? 'west' : '', ICONS[l.node.icon], l.node.title, l.node.sub, flag, () => d.onNode(l.key));
       if (d.phase !== 'on' || !l.active) el.dataset.off = '';
       out.push(el);
     }
@@ -126,7 +128,7 @@ const Branches = (() => {
       let p;
       if (k === 'comp') p = [cx0(), H * 0.5 + (narrow() ? 44 : 60)]; // подпись под кнопкой
       else if (k === 'net') p = [cx1(), H * 0.5];
-      else if (k === 'tg') p = geom('tg')[3];
+      else if (k === 'tg') p = bez(geom('tg'), TG_T);
       else p = bez(geom(k), .5);
       el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px';
     }

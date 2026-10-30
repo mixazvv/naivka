@@ -582,6 +582,8 @@ function phase() {
 }
 
 const zapretOnly = () => !!(S && S.zapretOnly);
+// Начало сеанса: в «Только zapret» ядро не работает — считаем от запуска zapret.
+const sessionStart = () => (zapretOnly() ? ST.zapretSince : ST.startedAt) || Date.now() / 1000;
 const TITLES = { on: 'Подключено', off: 'Отключено', wait: 'Подключение…', err: 'Не удалось подключиться', blocked: 'Трафик заблокирован', revive: 'Восстанавливаю соединение…' };
 const ROUTING = { 'ru-direct': 'Россия напрямую', 'global': 'Всё через сервер' };
 
@@ -638,7 +640,7 @@ function updateStatusNow() {
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
   // Котёнок переселён на панель задач (своё окно Windows) — в меню его нет.
-  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { beta: S.mascotBeta === true, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024); }
+  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { beta: S.mascotBeta === true, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024, STATS && STATS.health); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -649,7 +651,7 @@ function updateStatusNow() {
     $('#statusTitle').textContent = zapretOnly() && p === 'on' ? 'zapret работает' : TITLES[p];
     let sub = zapretOnly() ? 'Режим «Только zapret»: нажмите на кнопку, чтобы включить zapret.' : 'Трафик идёт как обычно, без сервера.';
     if (p === 'on' && zapretOnly()) sub = 'Без сервера: YouTube, Discord и другие сайты из списков zapret. Остальное — как обычно.';
-    else if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - ST.startedAt)}`;
+    else if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - sessionStart())}`;
     else if (p === 'wait') sub = 'Запускаю sing-box и проверяю конфиг.';
     else if (p === 'err') sub = 'Подробности ниже и в журнале.';
     else if (p === 'revive') sub = 'Связь пропала. Naivka подключится снова сама, как только получится.';
@@ -1171,8 +1173,8 @@ function renderTiles() {
   const t = (STATS && STATS.totals) || [0, 0];
   const t3 = $('#tileSession');
   t3.replaceChildren(h('span', { class: 'tile-k' }, 'Сеанс'),
-    h('span', { class: 'tile-v' }, on ? fmtDur(Date.now() / 1000 - ST.startedAt) : 'не подключено'),
-    h('span', { class: 'tile-sub' }, on ? `через сервер ${fmtBytes(t[0] + t[1])}` : 'щёлкните, чтобы открыть историю трафика'));
+    h('span', { class: 'tile-v' }, on ? fmtDur(Date.now() / 1000 - sessionStart()) : 'не подключено'),
+    h('span', { class: 'tile-sub' }, on ? (zapretOnly() ? 'zapret, без сервера' : `через сервер ${fmtBytes(t[0] + t[1])}`) : 'щёлкните, чтобы открыть историю трафика'));
   const ls = $('#liveSpeed');
   if (ls) ls.replaceChildren(
     h('span', { class: 'ls-n' }, h('span', { class: 'ls-arrow' }, '↓'), tnum('ls-down', on ? sp.pd + sp.dd + sp.zd + sp.td : 0, fmtSpeed)),
@@ -1759,6 +1761,8 @@ const ACHV = [
   ['friend', 'Не жадина', 'Пригласить друга на свой сервер.', 'M8 11a3.5 3.5 0 1 0 0-7a3.5 3.5 0 0 0 0 7zM2 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 8h6M19 5v6', null],
   ['style', 'Стилист', 'Своя тема или свой фон окна.', 'M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8zM7.5 11h.01M10 7h.01M15 7h.01', c => c.style],
   ['globe', 'Картограф', 'Покрутить глобус трафика.', 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12h18M12 3c3 3 3 15 0 18', null],
+  ['tg', 'Почтальон', 'Telegram через tg-ws-proxy — без сервера.', 'M21 4L3 11l6 2 2 6 3-4 5 4zM9 13l12-9', c => c.tg],
+  ['marathon', 'Марафон', 'Сутки на связи без перерыва.', 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18', c => [c.session, 86400]],
   ['pet', 'Лучший друг', 'Погладить талисмана.', 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z', null],
 ];
 let achvTraffic = null, achvTrafficAt = 0, sessionCountries = new Set(), bestSpeed = 0, achvQueue = [], achvShowing = false, achvBoot = true;
@@ -1775,6 +1779,7 @@ function achvCtx() {
   return {
     on, proxy: sum('proxy'), direct: sum('direct') + sum('zapret'), streak: (achvTraffic && achvTraffic.streak) || 0, speed: bestSpeed,
     countries: sessionCountries.size, night: on && sp.pd + sp.pu > 1024 && hr >= 3 && hr < 5, zapret: !!zapretOn(),
+    tg: !!(tgOn() && AD.telegram.conns > 0), session: on ? Date.now() / 1000 - sessionStart() : 0,
     own: !!((S.ownHosts || []).length || (S.panels || []).length), style: S.theme === 'custom' || !!(S.wall && S.wall.kind),
   };
 }

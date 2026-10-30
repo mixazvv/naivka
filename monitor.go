@@ -502,7 +502,7 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 		if m.health != "offline" {
 			m.health = "offline"
 			m.mu.Unlock()
-			m.Event("warn", "Нет интернета — жду, когда он вернётся", false)
+			m.Event("warn", "Нет интернета — жду, когда он вернётся", true)
 			return
 		}
 		m.mu.Unlock()

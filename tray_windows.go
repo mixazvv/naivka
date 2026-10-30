@@ -42,13 +42,14 @@ var (
 )
 
 const (
-	wmNull     = 0x0000
-	wmApp      = 0x8000
-	wmTray     = wmApp + 1
-	wmRun      = wmApp + 2
-	wmLButtonU = 0x0202
-	wmRButtonU = 0x0205
-	wmContext  = 0x007B
+	wmNull          = 0x0000
+	wmApp           = 0x8000
+	wmTray          = wmApp + 1
+	wmRun           = wmApp + 2
+	wmLButtonU      = 0x0202
+	ninBalloonClick = 0x0405 // NIN_BALLOONUSERCLICK: щёлкнули по уведомлению
+	wmRButtonU      = 0x0205
+	wmContext       = 0x007B
 
 	nimAdd    = 0
 	nimModify = 1
@@ -119,6 +120,7 @@ type tray struct {
 	connected  bool
 	taskbarMsg uint32
 	onOpen     func()
+	onBalloon  func()
 	onMenu     func() []menuItem
 	onCommand  func(id int)
 	mu         sync.Mutex
@@ -189,9 +191,9 @@ func setTip(dst []uint16, s string) {
 	copy(dst, u)
 }
 
-func newTray(onOpen func(), onMenu func() []menuItem, onCommand func(int), logo logoColors) *tray {
+func newTray(onOpen, onBalloon func(), onMenu func() []menuItem, onCommand func(int), logo logoColors) *tray {
 	runtime.LockOSThread()
-	t := &tray{onOpen: onOpen, onMenu: onMenu, onCommand: onCommand}
+	t := &tray{onOpen: onOpen, onBalloon: onBalloon, onMenu: onMenu, onCommand: onCommand}
 	theTray = t
 	hinst, _, _ := procGetModuleHandleW.Call(0)
 	cls := u16("NaivkaTray")
@@ -342,6 +344,8 @@ func trayProc(hwnd, msg, wp, lp uintptr) uintptr {
 		switch lp & 0xFFFF {
 		case wmLButtonU:
 			t.onOpen()
+		case ninBalloonClick:
+			t.onBalloon()
 		case wmRButtonU, wmContext:
 			t.showMenu()
 		}

@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -49,6 +50,20 @@ func listProcesses() []procEntry {
 		}
 	}
 	return out
+}
+
+// killImage закрывает все процессы, запущенные из файла path. Нужна программам, которые
+// запускают копию самих себя (tg-ws-proxy собран PyInstaller): дочерняя копия держит exe.
+func killImage(path string) {
+	for _, p := range listProcesses() {
+		if p.PID == os.Getpid() || !strings.EqualFold(p.Path, path) {
+			continue
+		}
+		if h, err := syscall.OpenProcess(0x0001 /* PROCESS_TERMINATE */, false, uint32(p.PID)); err == nil {
+			syscall.TerminateProcess(h, 1)
+			syscall.CloseHandle(h)
+		}
+	}
 }
 
 func envOr(k, d string) string {

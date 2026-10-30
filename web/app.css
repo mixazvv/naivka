@@ -244,6 +244,8 @@ button.br-node:hover .br-disc { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c
 .br-node[data-key="tg"] { --c: var(--tg); }
 .br-node.side { transform: translate(-22px, -22px); align-items: start; grid-auto-flow: column; align-items: center; gap: 10px; text-align: left; justify-items: start; }
 .br-node.comp { transform: translate(-50%, 0); }
+/* Telegram на дуге сверху: подпись слева от кружка, над кнопкой — справа и снизу идут ветки. */
+.br-node.west { transform: translate(calc(-100% + 22px), -22px); display: flex; flex-direction: row-reverse; align-items: center; gap: 10px; text-align: right; }
 .br-node[data-off] { opacity: .45; }
 .br-node.end { transform: translate(calc(-100% + 22px), -22px); justify-items: end; text-align: right; }
 .br-node[data-off] .br-disc { border-color: var(--line); }
@@ -1669,6 +1671,11 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .pet-shadow { fill: rgba(0, 0, 0, .35); transform-origin: 32px 80px; }
 .pet-jump { transform-origin: 32px 80px; }
 .pet-fx > * { opacity: 0; transition: opacity .3s; }
+.pet.snowy .pet-snow { opacity: 1; }
+.pet-snow circle { fill: #fff; opacity: .85; animation: pet-snow 4s linear infinite; }
+.pet-snow circle:nth-child(2) { animation-delay: -1.4s; } .pet-snow circle:nth-child(3) { animation-delay: -.6s; animation-duration: 5s; }
+.pet-snow circle:nth-child(4) { animation-delay: -2s; } .pet-snow circle:nth-child(5) { animation-delay: -2.8s; animation-duration: 5s; } .pet-snow circle:nth-child(6) { animation-delay: -3.4s; }
+@keyframes pet-snow { from { transform: translate(0, -6px); opacity: 0; } 15% { opacity: .85; } to { transform: translate(-6px, 82px); opacity: 0; } }
 .pet-zzz text { font: 700 9px/1 var(--font); fill: var(--muted); }
 .pet-sweat { fill: #7CC8FF; }
 .pet-hearts path { fill: #FF6B8B; }
