@@ -4156,6 +4156,7 @@ function filterSettings(q, root = drawerBody) {
   const has = t => stems.some(x => t.includes(x));
   const grid = root.querySelector('.set-grid');
   if (!grid) return;
+  grid.scrollTop = 0;
   root.querySelectorAll('.settings-categories button').forEach(b => {
     b.setAttribute('aria-current', String(b.dataset.category === (q ? '' : settingsCategory)));
   });
@@ -4298,10 +4299,12 @@ async function boot() {
       // Раздел пересобираем с новыми настройками (раскрытые блоки и прокрутка сохраняются),
       // иначе его кнопки меняли бы уже ненужную копию настроек.
       if (view !== 'overview' && VIEWS[view] && !drawerBody.contains(document.activeElement)) {
-        const top = drawerBody.scrollTop;
+        const scrollTarget = view === 'settings' ? drawerBody.querySelector('.set-grid') : drawerBody;
+        const top = scrollTarget ? scrollTarget.scrollTop : 0;
         Object.keys(sigs).forEach(k => delete sigs[k]);
         drawerBody.replaceChildren(VIEWS[view]());
-        drawerBody.scrollTop = top;
+        const restoredTarget = view === 'settings' ? drawerBody.querySelector('.set-grid') : drawerBody;
+        if (restoredTarget) restoredTarget.scrollTop = top;
         refreshView();
       }
     } catch (_) { /* не важно */ }
