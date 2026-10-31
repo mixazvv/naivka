@@ -61,6 +61,10 @@ body[data-state="err"], body[data-state="blocked"] { --glow: color-mix(in srgb, 
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
   --state: var(--faint);
   --state-soft: transparent;
+  --control-height: 36px;
+  --control-small: 32px;
+  --control-line: 20px;
+  --control-radius: 9px;
 }
 body[data-state="on"] { --state: var(--tunnel); --state-soft: var(--tunnel-soft); }
 body[data-state="wait"], body[data-state="revive"] { --state: var(--warn); --state-soft: var(--warn-soft); }
@@ -179,7 +183,7 @@ body[data-state="wait"] .ambient, body[data-state="revive"] .ambient { animation
   transform: translateX(40px); opacity: 0; transition: transform .26s cubic-bezier(.2, .8, .2, 1), opacity .2s; }
 .drawer.open { transform: none; opacity: 1; }
 .drawer-body { overflow: auto; flex: 1; }
-.drawer-close { position: absolute; top: 18px; right: 20px; z-index: 2; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; border: 1px solid var(--line); background: var(--raised); color: var(--muted); cursor: pointer; }
+.drawer-close { position: absolute; top: 18px; right: 20px; z-index: 2; width: var(--control-height); height: var(--control-height); padding: 0; display: grid; place-items: center; border-radius: var(--control-radius); border: 1px solid var(--line); background: var(--raised); color: var(--muted); cursor: pointer; }
 .drawer-close svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .drawer-close:hover { color: var(--ink); border-color: var(--faint); }
 .drawer .title-row { padding-right: 46px; }
@@ -318,34 +322,34 @@ body[data-state="off"] .lanes-box .power::after { content: ""; position: absolut
 .tile-spark { align-self: end; }
 .tile-spark .mspark { height: 26px; }
 /* ---------- кнопки и поля ---------- */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 7px; cursor: pointer; border: 1px solid var(--line); background: var(--raised); white-space: nowrap; }
-.btn:hover { border-color: var(--faint); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: auto; min-height: var(--control-height); padding: 7px 14px; border-radius: var(--control-radius); font-size: 14px; line-height: var(--control-line); cursor: pointer; border: 1px solid var(--line); background: var(--raised); white-space: nowrap; vertical-align: middle; }
+.btn:hover:not(:disabled) { border-color: var(--faint); }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.primary { background: var(--tunnel); border-color: var(--tunnel); color: var(--on-accent); font-weight: 600; }
 .btn.danger { color: var(--danger); }
-.btn.small { height: 28px; padding: 0 10px; font-size: 13px; }
-.btn.link { border: 0; background: none; padding: 0 4px; height: auto; color: var(--tunnel); }
+.btn.small { min-height: var(--control-small); padding: 5px 10px; font-size: 13px; }
+.btn.link { border: 0; background: none; padding: 6px; height: auto; min-height: var(--control-small); color: var(--tunnel); }
 .btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.icon-btn { width: 28px; height: 28px; border: 0; background: none; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; }
+.icon-btn { display: inline-grid; place-items: center; flex: none; width: var(--control-small); height: var(--control-small); padding: 0; border: 0; background: none; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; vertical-align: middle; }
 .icon-btn:hover { background: var(--danger-soft); color: var(--danger); }
 
-input[type=text], input[type=number], input[type=password], select, textarea { background: var(--raised); border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; min-height: 34px; }
+input[type=text], input[type=search], input[type=number], input[type=password], input[type=url], select, textarea { background: var(--raised); border: 1px solid var(--line); border-radius: var(--control-radius); padding: 7px 10px; min-height: var(--control-height); line-height: var(--control-line); }
 input:hover, select:hover, textarea:hover { border-color: var(--faint); }
 textarea { width: 100%; font: 12.5px/1.5 var(--mono); resize: vertical; min-height: 110px; }
 label.field { display: grid; gap: 4px; align-content: start; }
 label.field > span { font-size: 13px; color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
 .check { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
-.check input { margin-top: 3px; accent-color: var(--tunnel); width: 16px; height: 16px; flex: none; }
+.check input { margin: 2px 0 0; accent-color: var(--tunnel); width: 18px; height: 18px; flex: none; }
 .check b { font-weight: 600; display: block; }
 .check small { color: var(--muted); font-size: 13px; display: block; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--surface); flex-wrap: wrap; }
-.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; color: var(--muted); }
+.seg button { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-small); border: 0; background: none; padding: 6px 12px; border-radius: 6px; line-height: var(--control-line); cursor: pointer; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--line); }
 .choices { display: grid; gap: 8px; }
-.choice { display: grid; grid-template-columns: 20px 1fr; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); cursor: pointer; background: var(--surface); }
+.choice { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); cursor: pointer; background: var(--surface); }
 .choice:has(input:checked) { border-color: var(--tunnel); box-shadow: inset 3px 0 0 var(--tunnel); }
-.choice input { margin-top: 3px; accent-color: var(--tunnel); }
+.choice input { margin: 2px 0 0; width: 18px; height: 18px; accent-color: var(--tunnel); }
 .choice small { color: var(--muted); display: block; }
 
 /* ---------- карточки ---------- */

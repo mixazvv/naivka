@@ -35,22 +35,27 @@
 :root:not([data-skin]) .feedback:hover { background: var(--raised); border-color: transparent; color: var(--ink); }
 :root:not([data-skin]) .scrim { background: rgba(0, 0, 0, .2); backdrop-filter: none; }
 :root:not([data-skin]) .drawer { width: 100%; background: var(--bg); border: 0; border-radius: 0; box-shadow: none; }
+:root.mica:not([data-solid]):not([data-wall]) .drawer {
+  --bg: #141619; --surface: #202327; --raised: #2A2E33;
+  background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none;
+}
 :root:not([data-skin]) .view { max-width: 1180px; padding: 30px 32px 44px; }
 :root:not([data-skin]) h1 { font-size: 28px; line-height: 1.25; font-weight: 650; letter-spacing: -.035em; }
 :root:not([data-skin]) h2 { font-size: 18px; font-weight: 600; letter-spacing: -.015em; }
 :root:not([data-skin]) .title-row { margin-bottom: 24px; }
 :root:not([data-skin]) .drawer-close { top: 30px; right: 24px; border-color: transparent; background: var(--surface); }
 :root:not([data-skin]) :is(.panel, .card, .set-card, .tile) { border-radius: var(--r-lg); box-shadow: none; }
-:root:not([data-skin]) .btn { min-height: 36px; padding: 8px 14px; border-radius: 9px; font-weight: 550; box-shadow: none; }
-:root:not([data-skin]) .btn.small { min-height: 30px; padding: 5px 10px; }
+:root:not([data-skin]) .btn { border-radius: var(--control-radius); font-weight: 550; box-shadow: none; }
 :root:not([data-skin]) .btn.primary { background: var(--tunnel); color: var(--on-accent); border-color: transparent; }
 :root:not([data-skin]) .btn.link { background: none; border-color: transparent; }
+:root:not([data-skin]) .btn:disabled { opacity: 1; color: var(--faint); border-color: var(--line); background: transparent; }
+:root:not([data-skin]) .btn:active:not(:disabled) { transform: none; }
 :root:not([data-skin]) :is(input[type="text"], input[type="search"], input[type="password"], input[type="number"], input[type="url"], select, textarea) {
   border-radius: 9px; border-color: var(--line); background: var(--bg); box-shadow: none;
 }
 :root:not([data-skin]) :is(input, select, textarea):focus-visible { outline: 2px solid var(--tunnel); outline-offset: 2px; }
 :root:not([data-skin]) .seg { padding: 3px; border-radius: 10px; background: var(--bg); gap: 3px; }
-:root:not([data-skin]) .seg button { border-radius: 7px; padding: 6px 12px; }
+:root:not([data-skin]) .seg button { border-radius: 7px; }
 :root:not([data-skin]) .seg button[aria-pressed="true"] { box-shadow: none; }
 :root:not([data-skin]) .check { padding: 12px 0; }
 :root:not([data-skin]) .check small { line-height: 1.6; max-width: 70ch; }
@@ -76,22 +81,22 @@
 :root:not([data-skin]) .table td { padding: 14px; border-color: var(--line); }
 /* Настройки без длинной страницы: категории, небольшие экраны и навигация по страницам. */
 .settings-view { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
-.settings-topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex: none; padding-right: 28px; }
+.settings-topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex: none; padding-right: 48px; }
 .settings-topbar h1 { margin: 0 0 4px; }
 .settings-topbar p { margin: 0; }
 .settings-view .set-search { position: relative; margin: 0; padding: 0; flex: 0 1 320px; background: none; }
 .settings-view .set-search svg { left: 12px; }
-.settings-view .set-search input { padding: 10px 12px 10px 36px; }
+.settings-view .set-search input { padding-left: 36px; }
 .settings-layout { display: grid; grid-template-columns: 178px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; gap: 24px; }
 .settings-categories { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
-.settings-categories button { padding: 10px 12px; border: 0; border-radius: 9px; background: none; color: var(--muted); text-align: left; cursor: pointer; font: 500 13px/1.4 var(--font); }
+.settings-categories button { min-height: 40px; padding: 10px 12px; border: 0; border-radius: var(--control-radius); background: none; color: var(--muted); text-align: left; cursor: pointer; font: 500 13px/20px var(--font); }
 .settings-categories button:hover { background: var(--raised); color: var(--ink); }
 .settings-categories button[aria-current="true"] { color: var(--ink); background: var(--tunnel-soft); }
 .settings-category-select, .settings-tab-select { display: none; width: 100%; flex: none; }
 .settings-layout .settings-workspace { display: flex; flex-direction: column; gap: 16px; min-height: 0; margin: 0; padding: 22px; animation: none; }
 .settings-workspace > h2 { margin: 0; flex: none; font-size: 20px; line-height: 1.3; }
 .settings-tabs { display: flex; flex-wrap: wrap; gap: 5px; flex: none; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-.settings-tabs button { border: 0; border-radius: 7px; padding: 7px 11px; color: var(--muted); background: none; font: 500 13px/1.35 var(--font); cursor: pointer; }
+.settings-tabs button { min-height: var(--control-small); border: 0; border-radius: 7px; padding: 6px 12px; color: var(--muted); background: none; font: 500 13px/var(--control-line) var(--font); cursor: pointer; }
 .settings-tabs button:hover { color: var(--ink); background: var(--raised); }
 .settings-tabs button[aria-pressed="true"] { color: var(--ink); background: var(--tunnel-soft); }
 .settings-body { display: flex; flex-direction: column; gap: 12px; flex: 1 1 0; min-height: 0; min-width: 0; }
@@ -101,10 +106,16 @@
 .settings-item-body > :last-child { margin-bottom: 0; }
 .settings-context { display: none; margin-bottom: 5px; color: var(--muted); font-size: 11px; }
 .settings-searching .settings-context { display: block; }
-.settings-control { display: flex; align-items: center; gap: 12px; }
-.settings-control > label { flex: 1; min-width: 0; }
-.settings-view .settings-control .check, .settings-view .settings-control .choice { padding: 12px 0; margin: 0; border: 0; background: none; }
-.settings-info { display: grid; place-items: center; width: 25px; height: 25px; flex: none; padding: 0; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: none; font: 600 12px/1 var(--font); cursor: pointer; }
+.settings-control { display: grid; grid-template-columns: minmax(0, 1fr) var(--control-small); align-items: center; gap: 12px; min-height: 58px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); transition: background .15s, border-color .15s; }
+.settings-control:hover { border-color: var(--faint); }
+.settings-control:has(input:checked) { background: var(--tunnel-soft); border-color: color-mix(in srgb, var(--tunnel) 45%, var(--line)); }
+/* Выделяем целую строку. Старый inset у label давал обрезанную дугу слева. */
+:root .settings-item-body .settings-control > :is(.check, .choice),
+:root .settings-item-body .settings-control > .choice:has(input:checked) { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; min-height: var(--control-small); padding: 0; margin: 0; border: 0; border-image: none; border-radius: 0; background: none; box-shadow: none; clip-path: none; }
+.settings-control > label > span { min-width: 0; line-height: var(--control-line); }
+.settings-control > label > span > b { display: block; font-weight: 550; }
+.settings-control > label > input { margin: 0; }
+.settings-info { display: grid; place-items: center; width: var(--control-small); height: var(--control-small); flex: none; padding: 0; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--surface); font: 600 13px/1 var(--font); cursor: pointer; }
 .settings-info:hover { color: var(--ink); border-color: var(--faint); }
 .settings-action, .settings-open { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); color: var(--ink); text-align: left; }
 .settings-action p { margin: 4px 0 0; }
@@ -112,8 +123,8 @@
 .settings-open { cursor: pointer; font: inherit; }
 .settings-open small { display: block; margin-top: 4px; color: var(--muted); }
 .settings-open:hover { border-color: var(--faint); }
-.settings-pager { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: none; border-top: 1px solid var(--line); padding-top: 12px; }
-.settings-pager .btn { min-width: 76px; }
+.settings-pager { display: grid; grid-template-columns: 88px minmax(0, 1fr) 88px; align-items: center; gap: 16px; flex: none; border-top: 1px solid var(--line); padding-top: 12px; }
+.settings-pager .btn { width: 100%; }
 .settings-pager .hint { text-align: center; }
 .settings-view .set-empty { margin: 0; }
 .settings-view .theme-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }

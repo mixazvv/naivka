@@ -4123,14 +4123,16 @@ function settingsScreens(sections) {
       for (const label of [...content.querySelectorAll('.check, .choice'), ...(content.matches('.check, .choice') ? [content] : [])]) {
         const text = label.querySelector(':scope > span');
         const desc = text && (text.querySelector(':scope > .long') || text.querySelector(':scope > small'));
-        if (!desc) continue;
+        if (!text) continue;
         const title = text.querySelector('b')?.textContent || tab.title;
-        const detail = desc.querySelector('small') || desc;
         const wrap = h('div', { class: 'settings-control' });
         label.replaceWith(wrap); wrap.append(label);
-        wrap.append(h('button', { class: 'settings-info', type: 'button', title: 'Подробнее: ' + title, 'aria-label': 'Подробнее: ' + title,
-          onclick: () => settingsHelp(title, h('p', null, detail.textContent)) }, 'i'));
-        desc.remove();
+        if (desc) {
+          const detail = desc.querySelector('small') || desc;
+          if (detail.textContent.trim()) wrap.append(h('button', { class: 'settings-info', type: 'button', title: 'Подробнее: ' + title, 'aria-label': 'Подробнее: ' + title,
+            onclick: () => settingsHelp(title, h('p', null, detail.textContent)) }, 'i'));
+          desc.remove();
+        }
         if (label === content) content = wrap;
       }
       const inner = h('div', { class: 'settings-item-body' }, content);

@@ -11,7 +11,7 @@ let settings = {
   servers: [], rules: [], ruleLists: [], selected: '', achievements: false, mascot: false,
   mixedPort: 2080, dnsRemote: '1.1.1.1', dnsDirect: 'https://common.dot.dns.yandex.net/dns-query',
   testUrl: 'https://example.com', testInterval: '3m', logLevel: 'info',
-  extraOutbounds: '', override: '', ownServer: true, wall: {},
+  extraOutbounds: '', extraRules: '', override: '', ownServer: true, wall: {},
   share: { enabled: false, auth: true, port: 2090, password: 'fixture-password' },
 };
 const state = { running: false, starting: false, admin: false, os: 'windows', core: { present: true, version: '1.12', naive: true, cronet: true }, download: {}, dataDir: 'C:\\Naivka' };
@@ -47,7 +47,7 @@ const server = http.createServer(async (req, res) => {
     const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     p.setDefaultTimeout(10000);
     const errors = []; p.on('pageerror', e => errors.push(e.stack));
-    await p.addInitScript(() => { window.NAIVKA_HOST = { frame: true }; });
+    await p.addInitScript(() => { window.NAIVKA_HOST = { frame: true, mica: true }; });
     await p.goto(`http://127.0.0.1:${server.address().port}`);
     const mountFixture = ({ settings, state, sums }) => {
       S = settings; ST = state; SELF = { version: 'v2.22.2' }; AD = { updates: sums }; view = 'settings';
@@ -83,6 +83,49 @@ const server = http.createServer(async (req, res) => {
       });
       assert.deepEqual(problems, [], label);
     }
+    async function controlGeometry() {
+      const result = await p.evaluate(() => {
+        const box = h('div', { style: 'position:fixed;left:-10000px;top:0;display:flex;align-items:center;gap:12px' },
+          h('button', { class: 'btn' }, 'Обычная'), h('button', { class: 'btn primary' }, 'Основная'),
+          h('button', { class: 'btn', disabled: true }, 'Недоступна'),
+          h('input', { type: 'text', value: 'Поле' }), h('select', null, h('option', null, 'Список')),
+          h('button', { class: 'btn small' }, 'Малая'), h('button', { class: 'btn link' }, 'Ссылка'),
+          h('button', { class: 'icon-btn' }, '×'));
+        document.body.append(box);
+        const heights = [...box.children].map(e => e.getBoundingClientRect().height);
+        box.remove(); return heights;
+      });
+      assert.deepEqual(result, [36, 36, 36, 36, 36, 32, 32, 32], 'shared controls have consistent heights in each theme');
+    }
+    async function alignedTraffic() {
+      await category('Перехват трафика'); await tab(0);
+      const rows = await p.locator('.choices .settings-control').evaluateAll(es => es.map(e => {
+        const input = e.querySelector('input'), label = e.querySelector('label'), info = e.querySelector('.settings-info');
+        const r = e.getBoundingClientRect(), i = input.getBoundingClientRect(), b = info.getBoundingClientRect();
+        return { height: r.height, inputX: i.x, infoX: b.x, inputCenter: i.y + i.height / 2, infoCenter: b.y + b.height / 2, center: r.y + r.height / 2,
+          shadow: getComputedStyle(label).boxShadow, image: getComputedStyle(label).borderImageSource, border: getComputedStyle(label).borderLeftWidth, skin: document.documentElement.dataset.skin };
+      }));
+      assert.equal(rows.length, 2);
+      assert(Math.abs(rows[0].height - rows[1].height) < .25, 'selected and unselected rows have equal heights');
+      assert(Math.abs(rows[0].inputX - rows[1].inputX) < .25, JSON.stringify(rows));
+      assert(Math.abs(rows[0].infoX - rows[1].infoX) < .25);
+      for (const row of rows) {
+        assert(Math.abs(row.inputCenter - row.center) < 1 && Math.abs(row.infoCenter - row.center) < 1, 'radio and help button must be centred in the row');
+        assert.equal(row.shadow, 'none', 'old selected-radio inset must not leave a white arc');
+        assert.equal(row.image, 'none');
+      }
+      const radio = p.getByRole('radio', { name: 'Весь трафик (TUN)', exact: true });
+      await radio.check(); await settle(); assert(await radio.isChecked());
+      await p.getByRole('radio', { name: 'Системный прокси', exact: true }).check(); await settle();
+      await fits('aligned traffic rows');
+      await category('Запуск'); await tab(0);
+      const checkColumns = await p.locator('.settings-body .settings-control input[type=checkbox]').evaluateAll(es => es.filter(e => e.getBoundingClientRect().width).map(e => e.getBoundingClientRect().x));
+      assert.equal(checkColumns.length, 4, 'settings without descriptions use the same row layout');
+      assert(checkColumns.every(x => Math.abs(x - checkColumns[0]) < .25));
+      await category('Перехват трафика'); await tab(0);
+    }
+    await controlGeometry(); await alignedTraffic();
+    assert.match(await p.locator('#drawer').evaluate(e => getComputedStyle(e).backgroundColor), /^rgb\([\d,\s]+\)$/, 'Mica drawer must be opaque without a custom wallpaper');
     async function scan(label) {
       const visited = new Set();
       const expected = await p.locator('.settings-item').evaluateAll(es => es.flatMap((e, i) => {
@@ -169,6 +212,7 @@ const server = http.createServer(async (req, res) => {
     await p.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
     for (const theme of ['gold', 'blocks', 'custom']) {
       await p.evaluate(theme => { S.theme = theme; applyTheme(); mountSettings(); }, theme); await p.waitForTimeout(400);
+      await controlGeometry(); await alignedTraffic();
       await scan(theme);
       await p.setViewportSize({ width: 600, height: 480 }); await settle(); await scan(theme + ' small');
       await p.setViewportSize({ width: 1280, height: 900 }); await settle();
@@ -181,7 +225,11 @@ const server = http.createServer(async (req, res) => {
     await p.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click(); await settle();
     await category('Внешний вид'); await tab(0);
     await p.locator('.theme-tile[data-theme="dark"]').click(); await settle();
-    if (process.env.SETTINGS_SCREENSHOTS) { fs.mkdirSync(process.env.SETTINGS_SCREENSHOTS, { recursive: true }); await p.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, 'settings-desktop.png') }); }
+    if (process.env.SETTINGS_SCREENSHOTS) {
+      fs.mkdirSync(process.env.SETTINGS_SCREENSHOTS, { recursive: true });
+      await p.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, 'settings-desktop.png') });
+      await alignedTraffic(); await p.waitForTimeout(180); await p.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, 'settings-traffic.png') });
+    }
     await p.evaluate(() => { goNow('overview'); });
     assert(await p.evaluate(() => settingsDispose === null), 'observers are disconnected on exit');
     await p.evaluate(() => localStorage.setItem('naivka-lang', 'en')); await p.reload();
@@ -191,7 +239,38 @@ const server = http.createServer(async (req, res) => {
     assert(await p.locator('.settings-item:not([hidden])').count(), 'English search must find translated settings');
     await fits('English search');
     await p.setViewportSize({ width: 600, height: 480 }); await settle(); await fits('English small window');
+    // Shared button/field geometry also applies outside the settings screen.
+    await p.setViewportSize({ width: 1280, height: 900 });
+    for (const screen of ['servers', 'rules']) {
+      await p.evaluate(screen => {
+        if (settingsDispose) settingsDispose();
+        S.routing = 'ru-direct'; view = screen;
+        drawerBody.replaceChildren(screen === 'servers' ? viewServers() : viewRules());
+      }, screen);
+      const heights = await p.locator('#drawerBody .btn:not(.small):not(.link)').evaluateAll(es => es.map(e => e.getBoundingClientRect().height));
+      assert(heights.length && heights.every(h => Math.abs(h - 36) < .25), screen + ': action buttons share the same height');
+    }
+    await p.evaluate(() => editServer(null));
+    const formHeights = await p.locator('dialog .field :is(input,select)').evaluateAll(es => es.filter(e => e.getBoundingClientRect().height).map(e => e.getBoundingClientRect().height));
+    assert(formHeights.length && formHeights.every(h => Math.abs(h - 36) < .25), 'server dialog fields align');
+    await p.evaluate(() => document.querySelector('dialog').close());
+    const scaled = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 });
+    try {
+      scaled.on('pageerror', e => errors.push(e.stack));
+      await scaled.addInitScript(() => { window.NAIVKA_HOST = { frame: true, mica: true }; });
+      await scaled.goto(`http://127.0.0.1:${server.address().port}`);
+      await scaled.evaluate(mountFixture, { settings: { ...settings, lang: 'ru', theme: 'dark', accent: '#FFFFFF' }, state, sums });
+      await scaled.locator('.settings-category-select').evaluate(e => { e.value = 'Перехват трафика'; e.dispatchEvent(new Event('change')); });
+      await scaled.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+      await scaled.evaluate(async () => { await document.fonts.ready; });
+      const points = await scaled.locator('.choices .settings-control').evaluateAll(es => es.map(e => {
+        const r = e.getBoundingClientRect(), radio = e.querySelector('input').getBoundingClientRect(), info = e.querySelector('.settings-info').getBoundingClientRect();
+        return [r.height, radio.x, info.x];
+      }));
+      assert.deepEqual(points[0], points[1], '200% DPI preserves matching control dimensions and columns');
+      if (process.env.SETTINGS_SCREENSHOTS) await scaled.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, 'settings-traffic-200.png') });
+    } finally { await scaled.close(); }
     assert.deepEqual(errors, []); assert.deepEqual(uiErrors, []);
-    console.log('Search (RU/EN), help, saved controls, custom DNS/theme, dynamic dialogs, themes and cleanup: OK');
+    console.log('Search (RU/EN), help, saving, themes, aligned controls, server/rule forms and 200% DPI: OK');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; }).finally(() => server.close());
