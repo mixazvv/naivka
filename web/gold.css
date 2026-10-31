@@ -1,0 +1,161 @@
+/* «Никогда не проси об этом» — янтарь, чёрный металл и гранёная геометрия.
+   Ключ gold сохранён: существующий выбор темы не требует миграции. */
+:root[data-skin="gold"] {
+  --bg: #090C0E; --nav: #0B0E10; --layer: #0D1114;
+  --surface: #141A1E; --raised: #1C242A;
+  --ink: #EAE7DE; --muted: #ABA99F; --faint: #747A7C;
+  --line: #343A39; --tunnel: #DEB66A; --tunnel-soft: rgba(222, 182, 106, .13);
+  --on-accent: #17140D; --direct: #83ACBD; --direct-soft: rgba(131, 172, 189, .13);
+  --warn: #E29A50; --warn-soft: rgba(226, 154, 80, .14);
+  --danger: #ED7773; --danger-soft: rgba(237, 119, 115, .14); --tg: #ACA0D2;
+  --chart-tunnel: #CC963D; --chart-direct: #588DA9;
+  --logo: #DEB66A; --logo-ink: #0D1114;
+  --gold-fill: linear-gradient(105deg, #F0D294, #D9AE5D);
+  --gold-edge: #78623C; --gold-cut: 10px;
+  --gold-shape: polygon(0 0, calc(100% - var(--gold-cut)) 0, 100% var(--gold-cut), 100% 100%, var(--gold-cut) 100%, 0 calc(100% - var(--gold-cut)));
+  --font: "Exo 2", "Segoe UI", system-ui, sans-serif;
+  --display: "Jura", "Segoe UI", system-ui, sans-serif;
+  --control-radius: 0; --r-lg: 0; --r-md: 0;
+  --shadow: 0 20px 60px rgba(0, 0, 0, .6);
+}
+:root[data-skin="gold"] body { --lit: 0; background: var(--bg); }
+:root[data-skin="gold"] body[data-state="on"] { --lit: 1; }
+:root[data-skin="gold"] ::selection { background: #DEB66A; color: #17140D; }
+:root[data-skin="gold"] :focus-visible { outline: 2px solid var(--tunnel); outline-offset: 3px; }
+
+/* Крупные грани дают глубину; мелкая фактура остаётся за пределами текста. */
+:root[data-skin="gold"] .ambient { background: radial-gradient(ellipse at 12% 56%, #30271A 0, transparent 55%), #0B1013; }
+:root[data-skin="gold"] .ambient::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 17% 54%, rgba(222, 166, 69, .19), transparent 65%);
+  opacity: calc(.15 + var(--lit) * (.45 + var(--energy, 0) * .35)); transition: opacity 1s ease; }
+:root[data-skin="gold"] .ambient::after { display: block; position: absolute; inset: 0; background: url(gold-facets.svg) center / cover no-repeat; opacity: .7; -webkit-mask-image: none; mask-image: none; }
+:root[data-skin="gold"] .bokeh { display: none; }
+:root[data-skin="gold"] .titlebar { background: #080B0D; border-bottom: 1px solid var(--line); }
+:root[data-skin="gold"] .tb-name { color: var(--tunnel); font-family: var(--display); letter-spacing: .08em; }
+:root[data-skin="gold"] .sidebar { background: linear-gradient(180deg, #101518, #090C0E); border-right: 1px solid var(--gold-edge); }
+:root[data-skin="gold"] .brand { font: 600 19px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; }
+:root[data-skin="gold"] .feedback { border-radius: 0; border-color: transparent; }
+:root[data-skin="gold"] .feedback:hover { background: var(--tunnel-soft); color: var(--tunnel); }
+:root[data-skin="gold"]:not([data-nav="wheel"]) .rail::before,
+:root[data-skin="gold"]:not([data-nav="wheel"]) .rail::after,
+:root[data-skin="gold"]:not([data-nav="wheel"]) .petal { display: none; }
+:root[data-skin="gold"]:not([data-nav="wheel"]) .nav-item { grid-template-columns: 20px minmax(0, 1fr); gap: 12px; padding: 0 28px 0 14px;
+  border-radius: 0; font: 600 12px/20px var(--display); letter-spacing: .06em; text-transform: uppercase; clip-path: var(--gold-shape); }
+:root[data-skin="gold"]:not([data-nav="wheel"]) .nav-item:hover { background: #22271F; }
+:root[data-skin="gold"]:not([data-nav="wheel"]) .nav-item[aria-current="page"] { background: var(--gold-fill); color: var(--on-accent); box-shadow: none; }
+:root[data-skin="gold"] .nav-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 3px;
+  color: currentColor; font: 600 10px/1 var(--font); border: 1px solid currentColor; }
+
+/* Панель раздела непрозрачна: фон схемы не мешает читать формы. */
+:root[data-skin="gold"] .drawer { width: 100%; background: var(--bg); border: 0; box-shadow: none; }
+:root[data-skin="gold"] .drawer-body { background: url(gold-facets.svg) right top / auto 100% no-repeat; }
+:root[data-skin="gold"] .view { max-width: 1180px; padding: 30px 32px 44px; }
+:root[data-skin="gold"] .drawer-close { top: 30px; right: 24px; border-radius: 0; border-color: var(--gold-edge); background: #12191D; }
+:root[data-skin="gold"] h1 { color: var(--tunnel); font: 600 30px/1.25 var(--display); letter-spacing: .08em; text-transform: uppercase; }
+:root[data-skin="gold"] h2 { color: #E8D3A9; font-family: var(--display); font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+:root[data-skin="gold"] h3 { font-family: var(--display); font-weight: 600; letter-spacing: .04em; }
+:root[data-skin="gold"] :is(.home-eyebrow, .tile-k, .card-head small) { color: var(--tunnel); font-family: var(--display); letter-spacing: .1em; text-transform: uppercase; }
+:root[data-skin="gold"] .hint { color: var(--muted); }
+:root[data-skin="gold"] .warn-text { color: var(--warn); }
+:root[data-skin="gold"] .err-text { color: var(--danger); }
+:root[data-skin="gold"] :is(.card, .panel, .set-card, .scard, .tile, .preset, .stage-ready) {
+  border: 1px solid var(--line); border-radius: 0; background: linear-gradient(130deg, rgba(222, 182, 106, .045), transparent 50%), var(--surface); box-shadow: none;
+}
+:root[data-skin="gold"] :is(.set-card, .scard, .tile, .home-calm .stage-head) { clip-path: var(--gold-shape); }
+:root[data-skin="gold"] .settings-layout .settings-workspace { border-top-color: var(--gold-edge); background: #11171B url(gold-facets.svg) right bottom / cover no-repeat; }
+:root[data-skin="gold"] .settings-workspace > h2 { font-size: 18px; line-height: 1.4; }
+:root[data-skin="gold"] :is(.settings-categories button, .settings-tabs button) { border-radius: 0; font-family: var(--display); font-weight: 600; letter-spacing: .035em; }
+:root[data-skin="gold"] .settings-categories button[aria-current="true"] { background: var(--gold-fill); color: var(--on-accent); }
+:root[data-skin="gold"] .settings-tabs { border-bottom-color: var(--gold-edge); }
+:root[data-skin="gold"] .settings-tabs button[aria-pressed="true"] { color: var(--tunnel); background: #28271F; box-shadow: inset 0 -2px var(--tunnel); }
+:root[data-skin="gold"] :is(.settings-control, .settings-action, .settings-open) { border-radius: 0; border-color: var(--line); background: #141B20; }
+:root[data-skin="gold"] .settings-control:has(input:checked) { background: linear-gradient(90deg, #322B1E, #192024); border-color: var(--gold-edge); }
+:root[data-skin="gold"] :is(.settings-action, .settings-open) { clip-path: var(--gold-shape); }
+:root[data-skin="gold"] .settings-info { border-radius: 0; color: var(--tunnel); background: #10161A; }
+:root[data-skin="gold"] .settings-pager { border-top-color: var(--gold-edge); }
+:root[data-skin="gold"] .settings-context { color: var(--tunnel); }
+
+/* Общая геометрия 36/32 px сохраняется. Срез не меняет размеры и положение текста. */
+:root[data-skin="gold"] :is(.btn, .seg button) { font-family: var(--display); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+:root[data-skin="gold"] .btn { --gold-cut: 6px; border-radius: 0; border: 1px solid #72603D; background: #172025; color: var(--ink); box-shadow: none; clip-path: var(--gold-shape); }
+:root[data-skin="gold"] .btn:hover:not(:disabled) { border-color: var(--tunnel); background: #2B2D25; }
+:root[data-skin="gold"] .btn.primary { background: var(--gold-fill); border-color: transparent; color: var(--on-accent); }
+:root[data-skin="gold"] .btn.primary:hover:not(:disabled) { background: #F0D294; }
+:root[data-skin="gold"] .btn:active:not(:disabled) { transform: none; background: #343428; }
+:root[data-skin="gold"] .btn.primary:active:not(:disabled) { background: #D2AA5D; }
+:root[data-skin="gold"] .btn:disabled { opacity: 1; color: var(--faint); border-color: var(--line); background: #11171A; }
+:root[data-skin="gold"] .btn.danger { color: var(--danger); border-color: #8A4E4B; }
+:root[data-skin="gold"] .btn.danger:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
+:root[data-skin="gold"] .btn.link { clip-path: none; border: 0; background: none; color: var(--tunnel); }
+:root[data-skin="gold"] .btn.link:hover:not(:disabled) { background: none; text-decoration: underline; }
+:root[data-skin="gold"] :is(.btn, .theme-tile, .nav-item, .scard):focus-visible { outline-offset: -4px; }
+:root[data-skin="gold"] :is(input[type=text], input[type=search], input[type=number], input[type=password], input[type=url], select, textarea) { border-radius: 0; background: #0C1216; border-color: #47504D; }
+:root[data-skin="gold"] :is(input, select, textarea):focus-visible { outline-color: var(--tunnel); }
+:root[data-skin="gold"] :is(.check, .choice, .proc) input { accent-color: var(--tunnel); }
+:root[data-skin="gold"] .seg { border-radius: 0; border-color: var(--line); background: #0C1216; }
+:root[data-skin="gold"] .seg button { border-radius: 0; }
+:root[data-skin="gold"] .seg button[aria-pressed="true"] { background: var(--gold-fill); color: var(--on-accent); box-shadow: none; }
+:root[data-skin="gold"] .choice:has(input:checked) { border-color: var(--gold-edge); background: #2A281F; box-shadow: none; }
+:root[data-skin="gold"] :is(.switch i, .switch i::after) { border-radius: 0; }
+:root[data-skin="gold"] .switch input:checked + i { background: var(--gold-fill); }
+:root[data-skin="gold"] dialog { background: #10171B; border: 1px solid var(--gold-edge); border-radius: 0; box-shadow: var(--shadow); }
+:root[data-skin="gold"] dialog::backdrop { background: rgba(3, 6, 8, .8); }
+:root[data-skin="gold"] .notice { border-radius: 0; border: 1px solid var(--line); border-left: 3px solid var(--tunnel); background: #191E1D; }
+:root[data-skin="gold"] .notice.error { border-left-color: var(--danger); }
+:root[data-skin="gold"] .notice.warn { border-left-color: var(--warn); }
+:root[data-skin="gold"] .toast { background: #24291F; border: 1px solid var(--gold-edge); color: var(--ink); border-radius: 0; }
+:root[data-skin="gold"] .toast.bad { border-color: var(--danger); color: var(--danger); }
+
+/* Карточки серверов и миниатюра темы используют ту же палитру и срезы. */
+:root[data-skin="gold"] .scard.sel { background: linear-gradient(110deg, #332B1C, #172024); border-color: var(--tunnel); color: var(--ink); box-shadow: inset 3px 0 var(--tunnel); }
+:root[data-skin="gold"] .scard:not(.sel):hover { border-color: var(--gold-edge); background: #1C2529; }
+:root[data-skin="gold"] .scard.live::after { display: none; }
+:root[data-skin="gold"] .live-tag { color: var(--tunnel); }
+:root[data-skin="gold"] .table th { color: var(--tunnel); font-family: var(--display); font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+:root[data-skin="gold"] :is(.chip, .proto, .route-tag, .iptag, .cc, code) { border-radius: 0; }
+:root[data-skin="gold"] .theme-tile { --gold-cut: 8px; border-radius: 0; border-color: var(--line); background: #192126; clip-path: var(--gold-shape); }
+:root[data-skin="gold"] .theme-tile[aria-checked="true"] { border-color: var(--tunnel); box-shadow: inset 0 0 0 1px var(--tunnel); }
+:root[data-skin="gold"] .theme-tile b { font-family: var(--display); letter-spacing: .02em; }
+.theme-tile[data-theme="gold"] .theme-prev { background: #0B1013 url(gold-facets.svg) center / cover; border-radius: 0; }
+.theme-tile[data-theme="gold"] .theme-prev i:nth-child(1) { background: #DEB66A; height: 5px; top: 10px; }
+.theme-tile[data-theme="gold"] .theme-prev i:nth-child(2) { background: #1C252A; border: 1px solid #78623C; clip-path: polygon(0 0, 90% 0, 100% 30%, 100% 100%, 0 100%); }
+.theme-tile[data-theme="gold"] .theme-prev i:nth-child(3) { background: #DEB66A; }
+
+/* Главный экран: янтарный маршрут, холодные прямые соединения и матовые узлы. */
+:root[data-skin="gold"] .home-calm .stage-head { background: linear-gradient(120deg, #25251D, #121B21 65%); border-color: var(--gold-edge); }
+:root[data-skin="gold"] .home-calm .status-title { color: #F0E9D9; font-family: var(--display); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+:root[data-skin="gold"] .home-server select { background: #11191D; border-color: var(--gold-edge); }
+:root[data-skin="gold"] .home-led { border-radius: 0; transform: rotate(45deg); }
+:root[data-skin="gold"] .home-calm .stage-tiles .tile { border-radius: 0; border-color: var(--line); background: #141C21; }
+:root[data-skin="gold"] .tile-k { color: var(--tunnel); }
+:root[data-skin="gold"] .tile-v { font-family: var(--display); font-weight: 600; }
+:root[data-skin="gold"] .home-calm .stage-controls { border-color: var(--gold-edge); }
+:root[data-skin="gold"] .br-disc { background: #10181D; border-color: var(--gold-edge); }
+:root[data-skin="gold"] .route-node .br-disc { background: #10181D; }
+:root[data-skin="gold"] .br-leaf-body { border-radius: 0; background: #172025; }
+:root[data-skin="gold"] .br-txt b { font-family: var(--display); letter-spacing: .025em; }
+:root[data-skin="gold"] .leg-dot { border-radius: 0; transform: rotate(45deg) scale(.8); box-shadow: none; }
+:root[data-skin="gold"] .leg-chip { --gold-cut: 6px; border-radius: 0; clip-path: var(--gold-shape); background: #141C21; border-color: var(--line); }
+:root[data-skin="gold"] .pw-device { stroke: var(--tunnel); }
+:root[data-skin="gold"] .pw-core { fill: #11191D; }
+:root[data-skin="gold"] body[data-state="on"] .pw-core { fill: #30281A; }
+:root[data-skin="gold"] .pw-track { fill: #11191D; stroke: var(--gold-edge); }
+:root[data-skin="gold"] .pw-halo { animation: none; opacity: .12; }
+:root[data-skin="gold"] .stage-ready { border-color: var(--gold-edge); border-radius: 0; }
+:root[data-skin="gold"] .ready-text b { color: var(--tunnel); font-family: var(--display); font-weight: 600; letter-spacing: .04em; }
+:root[data-skin="gold"] .mini { background: #11181D; border-top: 2px solid var(--tunnel); }
+:root[data-skin="gold"] .mini-title { font-family: var(--display); letter-spacing: .04em; }
+:root[data-skin="gold"] .drawer .view > * { animation: goldPanelIn .22s ease both; animation-delay: 0s; }
+@keyframes goldPanelIn { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 900px) {
+  :root[data-skin="gold"] .sidebar { width: 64px; padding: 14px 8px; }
+  :root[data-skin="gold"] .brand { padding: 8px; }
+  :root[data-skin="gold"]:not([data-nav="wheel"]) .nav-item { display: flex; padding: 0; justify-content: center; }
+  :root[data-skin="gold"] .feedback { padding: 0; justify-content: center; }
+  :root[data-skin="gold"] .view { padding: 24px 22px 36px; }
+}
+@media (max-width: 620px) { :root[data-skin="gold"] .view { padding: 22px 16px 32px; } }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-skin="gold"] .ambient::before { transition: none; }
+  :root[data-skin="gold"] .drawer .view > *, :root[data-skin="gold"] .live-tag::before { animation: none !important; }
+}

@@ -194,7 +194,7 @@ document.addEventListener('contextmenu', e => {
 // ---------- тема ----------
 let themeSent = '';
 function applyTheme() {
-  // Тема одна — тёмная; «Чёрное с золотом» и «Пиксели» — стили поверх неё со своей палитрой.
+  // «Никогда не проси об этом» и «Пиксели» — стили поверх тёмной темы со своей палитрой.
   const gold = !!S && S.theme === 'gold';
   const blocks = !!S && S.theme === 'blocks';
   const root = document.documentElement;
@@ -675,7 +675,7 @@ function updateStatusNow() {
   }
 }
 
-// Числа на вкладках (видны в теме «Чёрное золото»): серверы, правила, соединения.
+// Числа на вкладках темы gold: серверы, правила, соединения.
 function navCounts() {
   const counts = { servers: S.servers.length, rules: S.rules.length + (S.ruleLists || []).length, diag: ST && ST.running ? connList.count || 0 : 0 };
   document.querySelectorAll('.nav-item').forEach(b => {
@@ -687,7 +687,7 @@ function navCounts() {
   });
 }
 
-// Заголовок раздела «проступает» из случайных символов (только в «Чёрном золоте»).
+// Заголовок раздела «проступает» из случайных символов (только в теме gold).
 function decodeTitle(el) {
   if (!el || REDUCE.matches || document.documentElement.dataset.skin !== 'gold') return;
   const text = el.textContent;
@@ -1281,7 +1281,7 @@ function renderLanes() {
   const free = box.clientHeight - (lg ? lg.offsetHeight : 0) - (ps ? ps.offsetHeight : 0) - 16;
   if (free > 0) box.style.setProperty('--lanes-free', free + 'px');
   const Y0 = (top + bottom) / 2;
-  const nodeX = { proxy: 500, tg: 405, zapret: 595, direct: 500 };
+  const nodeX = { proxy: 500, tg: 500, zapret: 500, direct: 500 };
   const mc = document.documentElement.dataset.skin === 'blocks';
   if (!mc) {
     const lsv = $('#lanesSvg');
@@ -1292,10 +1292,15 @@ function renderLanes() {
   Branches.unmount();
   box.classList.remove('many-routes');
   renderProcShelf();
-  const geo = lanes.map((l, i) => ({ ...l, ny: n === 1 ? Y0 : top + i * (bottom - top) / (n - 1), nx: nodeX[l.key] }));
+  const pixelOrder = ['tg', 'proxy', 'direct', 'zapret'];
+  const geo = [...lanes].sort((a, b) => pixelOrder.indexOf(a.key) - pixelOrder.indexOf(b.key)).map((l, i) => ({
+    ...l, node: l.node || { icon: 'route', title: 'Напрямую', sub: '' },
+    ny: n === 1 ? Y0 : top + i * (bottom - top) / (n - 1), nx: nodeX[l.key],
+  }));
   geo.forEach(l => {
-    const share = total > 0 ? l.speed / total : 0;
-    l.w = !l.active ? 2.5 : total > 0 ? Math.round(3 + 9 * share) : 3.5;
+    // В пиксельной схеме ширина постоянна: изменение скорости не пересоздаёт узлы
+    // и не сбрасывает фокус с кнопки маршрута, выбранной с клавиатуры.
+    l.w = 4;
     l.flow = l.active && l.speed >= 50;
   });
   const sig = JSON.stringify([mc, phase(), S.mode, S.mixedPort, S.routing, geo.map(l => [l.key, l.w, l.flow, l.active, l.node && [l.node.title, l.node.sub, l.node.cc]])]);
@@ -1310,8 +1315,8 @@ function renderLanes() {
       const d = lanePath(95, Y0, l.nx, l.ny, 905, Y0);
       let line;
       if (mc) {
-        // «Пиксели»: та же кривая, растрированная по клеткам 6×6; частицы бегут по невидимой исходной кривой.
-        paths.push(s('path', { d: pxLaneCells(95, Y0, l.nx, l.ny, 905, Y0, 6, l.w > 7 ? 2 : 1), class: 'px-lane' + (l.active ? '' : ' idle'), style: `fill:${l.color}` }));
+        // Клетки 4×4: одинаковая толщина сохраняет читаемость на любом трафике.
+        paths.push(s('path', { d: pxLaneCells(95, Y0, l.nx, l.ny, 905, Y0, 4, 1), class: 'px-lane' + (l.active ? '' : ' idle'), style: `fill:${l.color}` }));
         line = s('path', { d, class: 'lane-motion' });
         paths.push(line);
       } else {
@@ -1327,12 +1332,14 @@ function renderLanes() {
         const swapped = l.key === 'proxy' && lastProxyNode && lastProxyNode !== l.node.title && !REDUCE.matches;
         if (l.key === 'proxy') lastProxyNode = l.node.title;
         if (swapped && line) line.classList.add('swap-line');
-        const open = () => go(l.key === 'proxy' ? 'servers' : 'bypass');
-        const tip = s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : 'Открыть «Обход»');
+        const open = () => go(l.key === 'proxy' ? 'servers' : l.key === 'direct' ? 'rules' : 'bypass');
+        const tip = s('title', null, l.key === 'proxy' ? 'Выбрать сервер' : l.key === 'direct' ? 'Открыть правила' : 'Открыть «Обход»');
         // Флаг страны сервера — внутри узла вместо значка, чтобы не ложиться на ветку.
         const flag = l.node.cc ? flagInSvg(l.node.cc, x - 11, y - 22 / 3, 22) : null;
         // «Пиксели»: тот же круг радиусом 19, растрированный.
-        if (mc) nodes.push(s('g', { class: 'clickable' + (l.active ? ' on' : ''), onclick: open }, tip, pxNode(x, y, 19, flag ? null : l.node.icon, l.active ? l.color : 'var(--faint)', l.active ? 'on' : '')));
+        if (mc) nodes.push(s('g', { class: 'clickable' + (l.active ? ' on' : ''), 'data-route': l.key, tabindex: 0, role: 'button', 'aria-label': tip.textContent, onclick: open,
+          onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } },
+        }, tip, pxNode(x, y, 19, flag ? null : l.node.icon, l.active ? l.color : 'var(--faint)', l.active ? 'on' : '')));
         else {
           nodes.push(s('circle', { cx: x, cy: y, r: 19, class: 'lane-node clickable' + (l.active ? ' on' : ''), style: `stroke:${l.color}`, onclick: open }, tip));
           if (!flag) nodes.push(icon(l.node.icon, x, y, 20, l.active ? l.color : 'var(--faint)'));
@@ -3750,7 +3757,7 @@ function buildCoreBox() {
 }
 
 // Темы — плитками с маленьким видом каждой: длинное название не переносится внутри переключателя.
-const THEMES = [['dark', 'Naivka Flow', 'Спокойная, с вашим акцентом'], ['gold', 'Чёрное с золотом', 'Тонкие заглавные буквы, огни от трафика'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт'], ['custom', 'Своя', 'Ваши цвета и шрифт']];
+const THEMES = [['dark', 'Naivka Flow', 'Спокойная, с вашим акцентом'], ['gold', 'Никогда не проси об этом', 'Чёрный металл, янтарь и геометрия'], ['blocks', 'Пиксели', 'Песочные панели, коралл и крупные пиксели'], ['custom', 'Своя', 'Ваши цвета и шрифт']];
 function themeTiles() {
   const box = h('div', { class: 'theme-tiles', role: 'radiogroup', 'aria-label': 'Тема' });
   const paint = () => box.querySelectorAll('.theme-tile').forEach(b => b.setAttribute('aria-checked', b.dataset.theme === (S.theme || 'dark') ? 'true' : 'false'));

@@ -13,7 +13,7 @@ const root = path.resolve(__dirname, '..');
     const page = await browser.newPage({ viewport: { width: 1180, height: 760 } });
     const errors = []; page.on('pageerror', e => errors.push(e.stack));
     await page.setContent('<div id="tree" class="lanes-box"><button class="power" aria-label="Disconnect"></button></div>');
-    for (const file of ['web/app.css', 'web/flow.css']) await page.addStyleTag({ path: path.join(root, file) });
+    for (const file of ['web/app.css', 'web/flow.css', 'web/gold.css', 'web/pixels.css']) await page.addStyleTag({ path: path.join(root, file) });
     await page.addStyleTag({ content: '#tree{position:relative;width:1000px;height:540px;margin:50px auto}.power{background:var(--raised)}' });
     await page.evaluate(() => {
       window.REDUCE = matchMedia('(prefers-reduced-motion: reduce)'); window.ICONS = { server: 'M5 5h14v14H5z', globe: 'M12 3v18', shield: 'M5 5h14v14H5z', tg: 'M3 12h18' };

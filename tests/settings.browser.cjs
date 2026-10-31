@@ -36,7 +36,7 @@ const server = http.createServer(async (req, res) => {
   let content = fs.readFileSync(file);
   // Mount the real settings screen, skipping the unrelated connection polling/onboarding.
   if (file.endsWith('/app.js')) content = content.toString().replace(/\nboot\(\);\s*$/, '\n');
-  res.setHeader('Content-Type', ({ '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.woff2': 'font/woff2' })[path.extname(file)] || 'application/octet-stream');
+  res.setHeader('Content-Type', ({ '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' })[path.extname(file)] || 'application/octet-stream');
   res.end(content);
 });
 (async () => {
@@ -96,6 +96,11 @@ const server = http.createServer(async (req, res) => {
         box.remove(); return heights;
       });
       assert.deepEqual(result, [36, 36, 36, 36, 36, 32, 32, 32], 'shared controls have consistent heights in each theme');
+      const searchGap = await p.locator('.set-search').evaluate(e => {
+        const input = e.querySelector('input'), style = getComputedStyle(input);
+        return input.getBoundingClientRect().left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth) - e.querySelector('svg').getBoundingClientRect().right;
+      });
+      assert(searchGap >= 6, 'search text must not overlap the search icon in any theme');
     }
     async function alignedTraffic() {
       await category('Перехват трафика'); await tab(0);
@@ -211,11 +216,35 @@ const server = http.createServer(async (req, res) => {
     assert.equal(settings.custom.bg, '#17212B');
     await p.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
     for (const theme of ['gold', 'blocks', 'custom']) {
+      if (theme === 'gold') {
+        await category('Внешний вид'); await tab(0);
+        assert.equal(await p.locator('.theme-tile[data-theme="gold"] b').textContent(), 'Никогда не проси об этом');
+        await p.locator('.theme-tile[data-theme="gold"]').click(); await p.evaluate(() => saveNow());
+        assert.equal(settings.theme, 'gold', 'renaming preserves the existing saved theme key');
+        assert(await p.evaluate(() => new Promise(resolve => { const img = new Image(); img.onload = () => resolve(img.naturalWidth > 0); img.onerror = () => resolve(false); img.src = '/gold-facets.svg'; })), 'the bundled geometric background loads offline');
+        await p.emulateMedia({ reducedMotion: 'reduce' });
+        assert.equal(await p.locator('.settings-layout').evaluate(e => getComputedStyle(e).animationName), 'none');
+        await p.emulateMedia({ reducedMotion: 'no-preference' });
+      }
+      if (theme === 'blocks') {
+        await category('Внешний вид'); await tab(0);
+        await p.locator('.theme-tile[data-theme="blocks"]').click(); await p.evaluate(() => saveNow());
+        assert.equal(settings.theme, 'blocks', 'pixel theme keeps its existing saved key');
+        assert(await p.evaluate(() => new Promise(resolve => { const img = new Image(); img.onload = () => resolve(img.naturalWidth > 0); img.onerror = () => resolve(false); img.src = '/pixel-grid.svg'; })), 'pixel grid loads from the bundled assets');
+      }
       await p.evaluate(theme => { S.theme = theme; applyTheme(); mountSettings(); }, theme); await p.waitForTimeout(400);
       await controlGeometry(); await alignedTraffic();
       await scan(theme);
       await p.setViewportSize({ width: 600, height: 480 }); await settle(); await scan(theme + ' small');
       await p.setViewportSize({ width: 1280, height: 900 }); await settle();
+      if (theme !== 'custom' && process.env.SETTINGS_SCREENSHOTS) {
+        const name = theme === 'blocks' ? 'pixels' : 'gold';
+        await category('Внешний вид'); await tab(0); await p.waitForTimeout(250);
+        fs.mkdirSync(process.env.SETTINGS_SCREENSHOTS, { recursive: true });
+        await p.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, `${name}-settings.png`) });
+        await alignedTraffic(); await p.waitForTimeout(200);
+        await p.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, `${name}-traffic.png`) });
+      }
     }
     // Dynamic oversized content opens separately instead of being clipped or lost.
     await category('Ядро sing-box');
@@ -239,6 +268,7 @@ const server = http.createServer(async (req, res) => {
     assert(await p.locator('.settings-item:not([hidden])').count(), 'English search must find translated settings');
     await fits('English search');
     await p.setViewportSize({ width: 600, height: 480 }); await settle(); await fits('English small window');
+    assert.equal(await p.locator('.theme-tile[data-theme="gold"] b').textContent(), 'I Never Asked for This');
     // Shared button/field geometry also applies outside the settings screen.
     await p.setViewportSize({ width: 1280, height: 900 });
     for (const screen of ['servers', 'rules']) {
@@ -269,6 +299,61 @@ const server = http.createServer(async (req, res) => {
       }));
       assert.deepEqual(points[0], points[1], '200% DPI preserves matching control dimensions and columns');
       if (process.env.SETTINGS_SCREENSHOTS) await scaled.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, 'settings-traffic-200.png') });
+      for (const previewTheme of ['gold', 'blocks']) {
+        const name = previewTheme === 'blocks' ? 'pixels' : 'gold';
+        await scaled.evaluate(theme => {
+          if (settingsDispose) settingsDispose();
+          S.theme = theme; S.nav = 'list'; S.routing = 'ru-direct'; S.selected = 'preview-nl';
+          S.showIp = true; S.smartDirect = false; S.achievements = false; S.wl = { enabled: false };
+          S.zapret = { enabled: true, strategy: 'Автоподбор' }; S.telegram = { enabled: false };
+          S.servers = [{ id: 'preview-nl', name: 'Нидерланды', type: 'naive', host: 'nl.example.invalid', port: 443, username: 'demo', password: '' },
+            { id: 'preview-de', name: 'Германия', type: 'naive', host: 'de.example.invalid', port: 443, username: 'demo', password: '' }];
+          ST.running = true; ST.startedAt = Date.now() / 1000 - 5420; ST.mode = 'proxy'; ST.mixedPort = 2080;
+          PX = { running: true, selected: 's-preview-nl', delays: { 's-preview-nl': 128, 's-preview-de': 76 } };
+          AD.zapret = { installed: true, running: true, strategy: 'Автоподбор' }; AD.telegram = { running: false };
+          STATS = { health: 'ok', totals: [8.4e9, 1.7e9],
+            samples: Array.from({ length: 60 }, (_, i) => ({ t: Date.now() / 1000 - 59 + i, pd: 800000 + Math.sin(i / 4) * 200000, pu: 30000, dd: 40000, du: 1000, zd: 10000, zu: 1000, td: 0, tu: 0 })),
+            top: [{ host: 'chatgpt.com', speed: 600000, total: 4e9, route: 'proxy' }, { host: 'twitch.tv', speed: 200000, total: 2e9, route: 'proxy' }] };
+          srvGeo['preview-nl'] = { info: { countryCode: 'NL', city: 'Амстердам' } };
+          ip.data = { proxy: { info: { countryCode: 'NL', ip: '203.0.113.11', city: 'Амстердам' } } };
+          view = 'overview'; document.querySelector('#drawer').style.display = 'none';
+          main.replaceChildren(viewOverview()); applyTheme(); applySections(); updateStatusNow();
+          renderLanes();
+          document.querySelectorAll('.nav-item').forEach(e => e.dataset.view === view ? e.setAttribute('aria-current', 'page') : e.removeAttribute('aria-current'));
+        }, previewTheme);
+        await scaled.evaluate(async () => { await document.fonts.ready; }); await scaled.waitForTimeout(1800);
+        if (previewTheme === 'gold') assert.equal(await scaled.locator('.route-node').count(), 3, 'the new theme preserves the actual branch diagram');
+        else {
+          const nodes = await scaled.locator('.lanes [data-route]').evaluateAll(es => es.map(e => {
+            const r = e.getBoundingClientRect(); return { route: e.dataset.route, x: r.x + r.width / 2, y: r.y + r.height / 2, tab: e.tabIndex, role: e.getAttribute('role') };
+          }));
+          assert.deepEqual(nodes.map(n => n.route), ['proxy', 'direct', 'zapret']);
+          assert(nodes.every(n => Math.abs(n.x - nodes[0].x) < .5 && n.tab === 0 && n.role === 'button'), 'pixel route nodes share one column and support keyboard focus');
+          assert(nodes[0].y < nodes[1].y && nodes[1].y < nodes[2].y);
+          await scaled.emulateMedia({ reducedMotion: 'reduce' });
+          assert.equal(await scaled.locator('.pw-px-ring').first().evaluate(e => getComputedStyle(e).animationName), 'none');
+          await scaled.emulateMedia({ reducedMotion: 'no-preference' });
+          await scaled.locator('.lanes [data-route="direct"]').focus();
+          assert(await scaled.evaluate(() => {
+            const focused = document.activeElement, sample = STATS.samples.at(-1), old = { ...sample };
+            sample.pd *= .7; sample.dd *= 3; renderLanes();
+            const kept = document.activeElement === focused;
+            Object.assign(sample, old); renderLanes(); focused.blur(); return kept;
+          }), 'traffic updates preserve keyboard focus on a pixel route node');
+        }
+        const overflow = await scaled.locator('#main').evaluate(e => e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 2);
+        assert.equal(overflow, false, 'main screen fits with the themed headings and controls');
+        if (process.env.SETTINGS_SCREENSHOTS) await scaled.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, `${name}-home.png`) });
+        await scaled.evaluate(() => {
+          Branches.unmount(); main.replaceChildren(); view = 'servers';
+          document.querySelector('#drawer').style.removeProperty('display');
+          drawerBody.replaceChildren(viewServers()); renderServers();
+          document.querySelectorAll('.nav-item').forEach(e => e.dataset.view === view ? e.setAttribute('aria-current', 'page') : e.removeAttribute('aria-current')); railMark();
+        });
+        await scaled.waitForTimeout(250);
+        assert.equal(await scaled.locator('.scard.sel').count(), 1);
+        if (process.env.SETTINGS_SCREENSHOTS) await scaled.screenshot({ path: path.join(process.env.SETTINGS_SCREENSHOTS, `${name}-servers.png`) });
+      }
     } finally { await scaled.close(); }
     assert.deepEqual(errors, []); assert.deepEqual(uiErrors, []);
     console.log('Search (RU/EN), help, saving, themes, aligned controls, server/rule forms and 200% DPI: OK');

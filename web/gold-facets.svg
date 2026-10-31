@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" fill="none">
+  <g fill="#DEB66A">
+    <path opacity=".025" d="M930 0h670v520L1210 190Z"/>
+    <path opacity=".04" d="m1600 170-390 20 190 390 200-140Z"/>
+    <path opacity=".025" d="m1210 190-280 410 470-20Z"/>
+    <path opacity=".035" d="m1400 580 200 420V440Z"/>
+    <path opacity=".018" d="M930 600 690 1000h910l-200-420Z"/>
+  </g>
+  <g stroke="#DEB66A" stroke-width="1" opacity=".12">
+    <path d="m930 0 280 190 390-20M1210 190l190 390 200-140M1210 190 930 600l470-20 200 420M930 600l-240 400M1400 580l-150 420"/>
+    <path opacity=".5" d="m1210 190-80 45m270 345-67 3m267-143-50 35" stroke-width="3"/>
+  </g>
+  <g fill="#DEB66A" opacity=".3">
+    <path d="m1210 185 5 5-5 5-5-5Zm190 390 5 5-5 5-5-5Zm-470 20 5 5-5 5-5-5Z"/>
+  </g>
+</svg>
