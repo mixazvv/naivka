@@ -6,13 +6,12 @@
 // по-разному: за холку, хвост, лапу или туловище; трясут — кружится голова; швырнули — обижается.
 // Живёт состоянием подключения: отключено — ложится спать; подключается — насторожен; много трафика —
 // носится по окну; сбой — пугается; заблокировано защитой — грустит; связь вернулась — радуется.
-// Выключается в «Настройках» → «Внешний вид»; там же — бета-котёнок из нового набора анимаций. Место, куда его унесли, хранится в настройках.
+// Выключается в «Настройках» → «Внешний вид». Место, куда его унесли, хранится в настройках.
 const Pet = (() => {
   'use strict';
   const REDUCE = matchMedia('(prefers-reduced-motion: reduce)');
   const NS = 'http://www.w3.org/2000/svg';
-  // Классический котёнок или бета (новый набор анимаций, pet-atlas-beta.js): у беты те же имена кадров.
-  let ATL = PET_ATLAS, FR = ATL.frames, IMG = 'cat-atlas.webp', beta = false;
+  const ATL = PET_ATLAS, FR = ATL.frames, IMG = 'cat-atlas.webp';
   const K = 64 / 120; // единиц SVG на пиксель атласа: сидящий кот ростом 113 px — около 60 единиц
   let root = null, svg = null, bubble = null, body = null, home = null, sprite = null, clipRect = null;
   let state = '', prev = '', say = () => '', onPurr = null, onMove = null, exit = null;
@@ -1127,13 +1126,7 @@ const Pet = (() => {
   // opts: say(state) — реплика по щелчку, onPurr — погладили, spot — сохранённое место ([доля x, доля y]
   // или null — дома), onMove(spot) — кота перенесли.
   function mount(container, opts = {}) {
-    const b = !!opts.beta && typeof PET_ATLAS_BETA !== 'undefined';
-    if (root) {
-      if (b === beta) return;
-      unmount(); // сменили котёнка в настройках — пересоздаём с другим набором кадров
-    }
-    beta = b;
-    ATL = b ? PET_ATLAS_BETA : PET_ATLAS; FR = ATL.frames; IMG = b ? 'cat-atlas-beta.webp' : 'cat-atlas.webp';
+    if (root) return;
     say = opts.say || say;
     onPurr = opts.onPurr || onPurr;
     onMove = opts.onMove || onMove;

@@ -370,7 +370,7 @@ const Branches = (() => {
     for (const q of L) ctx.lineTo(q[0], q[1]);
     for (let i = R.length - 1; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
     ctx.closePath(); ctx.fillStyle = col;
-    if (!dead) { ctx.shadowColor = col; ctx.shadowBlur = dragOver === k ? 26 : 12; }
+    if (!dead) { ctx.shadowColor = col; ctx.shadowBlur = dragOver === k ? 18 : document.documentElement.dataset.skin === 'gold' ? 12 : 0; }
     // «Всё через сервер»: прямая ветка остаётся целой, но тонкой и бледной — по ней идёт только локальная сеть и ваши правила.
     ctx.globalAlpha = dead ? .55 : b.thin ? .35 : (dragOver && dragOver !== k ? .4 : 1);
     ctx.fill(); ctx.restore();

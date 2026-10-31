@@ -1,6 +1,29 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+// Старое включение бета-котёнка не мешает загрузить настройки обычного талисмана.
+func TestLegacyBetaMascotSettings(t *testing.T) {
+	s := DefaultSettings()
+	if err := json.Unmarshal([]byte(`{"mascot":true,"mascotBeta":true,"petTaskbar":true}`), s); err != nil {
+		t.Fatal(err)
+	}
+	s.normalize()
+	if !s.Mascot || !s.PetTaskbar {
+		t.Fatal("existing mascot preferences were lost")
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "mascotBeta") {
+		t.Fatal("removed beta setting was persisted")
+	}
+}
 
 // Избранное, порядок серверов и оформление не требуют перезапуска ядра.
 func TestFingerprintIgnoresUIFields(t *testing.T) {

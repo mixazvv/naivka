@@ -214,7 +214,6 @@ type Settings struct {
 	Theme           string           `json:"theme"`             // dark | gold («Никогда не проси об этом») | blocks («Пиксели») | custom («Своя»)
 	Custom          CustomTheme      `json:"custom"`            // цвета и шрифт темы «Своя»
 	Mascot          bool             `json:"mascot"`            // талисман внизу меню
-	MascotBeta      bool             `json:"mascotBeta"`        // бета-котёнок: новый набор анимаций
 	PetTaskbar      bool             `json:"petTaskbar"`        // котёнок живёт на панели задач Windows, а не в меню
 	PetHopOff       bool             `json:"petHopOff"`         // котёнок не спрыгивает из окна на панель задач
 	PetSpot         []float64        `json:"petSpot,omitempty"` // куда перенесли талисман: доли ширины и высоты окна; пусто — внизу меню
@@ -444,7 +443,7 @@ func (s *Settings) fingerprint() string {
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
 	c.Wall = WallSettings{}
 	c.Custom = CustomTheme{}
-	c.Mascot, c.MascotBeta, c.PetTaskbar, c.PetHopOff, c.Achievements, c.Achv, c.PetSpot = false, false, false, false, false, nil, nil
+	c.Mascot, c.PetTaskbar, c.PetHopOff, c.Achievements, c.Achv, c.PetSpot = false, false, false, false, nil, nil
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
 		c.Servers[i].Fav = false

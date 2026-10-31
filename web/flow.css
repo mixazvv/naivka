@@ -1,0 +1,115 @@
+/* Naivka Flow. Единые поверхности, шкала текста и отступы для обычной темы.
+   Цвета пользовательской темы, OLED, Mica и стили «Золото»/«Пиксели» сохраняются. */
+:root:not([data-skin]) {
+  --display: var(--font);
+  --r-lg: 18px;
+  --r-md: 10px;
+  --shadow: 0 20px 70px rgba(0, 0, 0, .32);
+}
+:root:not([data-skin]):not([data-oled]):not([data-solid]):not(.mica) {
+  --bg: #101316;
+  --nav: #13171B;
+  --surface: #191E23;
+  --raised: #22292F;
+  --ink: #EEF2F3;
+  --muted: #A0ADB7;
+  --faint: #6C7B86;
+  --line: #2B343C;
+}
+:root:not([data-skin]) .ambient { background: none; animation: none; }
+:root:not([data-skin]) .ambient::after { display: none; }
+:root:not([data-skin]) .brand { font-size: 23px; letter-spacing: -.04em; padding: 10px; }
+:root:not([data-skin]) .sidebar { border-right: 1px solid var(--line); padding: 18px 12px 14px; gap: 28px; }
+:root:not([data-skin]):not([data-nav="wheel"]) .rail { --row: 44px; --gap: 5px; }
+:root:not([data-skin]):not([data-nav="wheel"]) .rail::before,
+:root:not([data-skin]):not([data-nav="wheel"]) .rail::after { display: none; }
+:root:not([data-skin]):not([data-nav="wheel"]) .nav-item {
+  grid-template-columns: 20px minmax(0, 1fr); gap: 12px; padding: 0 30px 0 14px; border-radius: 11px;
+}
+:root:not([data-skin]):not([data-nav="wheel"]) .petal { display: none; }
+:root:not([data-skin]):not([data-nav="wheel"]) .nav-item:hover { background: var(--raised); }
+:root:not([data-skin]):not([data-nav="wheel"]) .nav-item[aria-current="page"] {
+  background: var(--tunnel-soft); color: var(--ink); box-shadow: inset 3px 0 var(--tunnel);
+}
+:root:not([data-skin]) .feedback { justify-content: flex-start; border-color: transparent; padding: 0 14px; }
+:root:not([data-skin]) .feedback:hover { background: var(--raised); border-color: transparent; color: var(--ink); }
+:root:not([data-skin]) .scrim { background: rgba(0, 0, 0, .2); backdrop-filter: none; }
+:root:not([data-skin]) .drawer { width: 100%; background: var(--bg); border: 0; border-radius: 0; box-shadow: none; }
+:root:not([data-skin]) .view { max-width: 1180px; padding: 30px 32px 44px; }
+:root:not([data-skin]) h1 { font-size: 28px; line-height: 1.25; font-weight: 650; letter-spacing: -.035em; }
+:root:not([data-skin]) h2 { font-size: 18px; font-weight: 600; letter-spacing: -.015em; }
+:root:not([data-skin]) .title-row { margin-bottom: 24px; }
+:root:not([data-skin]) .drawer-close { top: 30px; right: 24px; border-color: transparent; background: var(--surface); }
+:root:not([data-skin]) :is(.panel, .card, .set-card, .tile) { border-radius: var(--r-lg); box-shadow: none; }
+:root:not([data-skin]) .btn { min-height: 36px; padding: 8px 14px; border-radius: 9px; font-weight: 550; box-shadow: none; }
+:root:not([data-skin]) .btn.small { min-height: 30px; padding: 5px 10px; }
+:root:not([data-skin]) .btn.primary { background: var(--tunnel); color: var(--on-accent); border-color: transparent; }
+:root:not([data-skin]) .btn.link { background: none; border-color: transparent; }
+:root:not([data-skin]) :is(input[type="text"], input[type="search"], input[type="password"], input[type="number"], input[type="url"], select, textarea) {
+  border-radius: 9px; border-color: var(--line); background: var(--bg); box-shadow: none;
+}
+:root:not([data-skin]) :is(input, select, textarea):focus-visible { outline: 2px solid var(--tunnel); outline-offset: 2px; }
+:root:not([data-skin]) .seg { padding: 3px; border-radius: 10px; background: var(--bg); gap: 3px; }
+:root:not([data-skin]) .seg button { border-radius: 7px; padding: 6px 12px; }
+:root:not([data-skin]) .seg button[aria-pressed="true"] { box-shadow: none; }
+:root:not([data-skin]) .check { padding: 12px 0; }
+:root:not([data-skin]) .check small { line-height: 1.6; max-width: 70ch; }
+:root:not([data-skin]) .notice { border-radius: 12px; box-shadow: none; padding: 12px 16px; }
+:root:not([data-skin]) dialog { border-radius: 20px; border-color: var(--line); box-shadow: var(--shadow); }
+:root:not([data-skin]) .toast { border-radius: 12px; box-shadow: var(--shadow); }
+:root:not([data-skin]) .br-txt { text-shadow: none; }
+:root:not([data-skin]) .home-calm .stage-head { background: var(--surface); border-radius: 20px; }
+:root:not([data-skin]) .home-calm .status-title { font-size: clamp(24px, 2.8vw, 36px); letter-spacing: -.04em; font-weight: 650; }
+:root:not([data-skin]) .home-calm .stage-status .sub { color: var(--muted); }
+:root:not([data-skin]) .leg-chip { border: 0; background: var(--surface); }
+/* Серверы: компактные строки с доступными действиями вместо плиточной стены. */
+:root:not([data-skin]) .scards { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+:root:not([data-skin]) .scard { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 24px; padding: 18px 20px; border-radius: 14px; background: var(--surface); }
+:root:not([data-skin]) .scard:hover { transform: none; background: var(--raised); }
+:root:not([data-skin]) .scard.sel { border-color: color-mix(in srgb, var(--tunnel) 60%, var(--line)); box-shadow: inset 3px 0 var(--tunnel); }
+:root:not([data-skin]) .scard-sub { grid-column: 1 / -1; }
+:root:not([data-skin]) .scard-top { min-width: 0; }
+:root:not([data-skin]) .scard-mid { justify-content: flex-end; }
+:root:not([data-skin]) .scard-spark { max-width: 100px; }
+:root:not([data-skin]) .scard .scard-tools { width: auto; overflow: visible; opacity: 1; }
+:root:not([data-skin]) .table th { color: var(--muted); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; padding: 12px 14px; }
+:root:not([data-skin]) .table td { padding: 14px; border-color: var(--line); }
+/* Категории настроек: поиск охватывает все категории, очистка возвращает выбранную. */
+.settings-layout { display: grid; grid-template-columns: 178px minmax(0, 1fr); align-items: start; gap: 24px; margin-top: 18px; }
+.settings-categories { position: sticky; top: 14px; display: flex; flex-direction: column; gap: 4px; }
+.settings-categories button { padding: 10px 12px; border: 0; border-radius: 9px; background: none; color: var(--muted); text-align: left; cursor: pointer; font: 500 13px/1.4 var(--font); }
+.settings-categories button:hover { background: var(--raised); color: var(--ink); }
+.settings-categories button[aria-current="true"] { color: var(--ink); background: var(--tunnel-soft); }
+.settings-layout .set-grid { display: block; columns: auto; min-width: 0; }
+.settings-layout .set-card { margin-bottom: 16px; padding: 22px; }
+.settings-layout .set-card > h2 { margin-top: 0; margin-bottom: 18px; }
+.settings-layout .set-empty { grid-column: 2; }
+:root:not([data-skin]) .set-search { margin-top: 22px; border-radius: 10px; }
+:root:not([data-skin]) .set-search input { background: transparent; }
+@media (max-width: 1100px) {
+  :root:not([data-skin]) .scard { grid-template-columns: minmax(0, 1fr); }
+  :root:not([data-skin]) .scard-mid { justify-content: flex-start; }
+}
+@media (max-width: 900px) {
+  :root:not([data-skin]) .sidebar { width: 64px; padding: 14px 8px; }
+  :root:not([data-skin]) .brand { padding: 8px; }
+  :root:not([data-skin]):not([data-nav="wheel"]) .nav-item { display: flex; padding: 0; justify-content: center; }
+  :root:not([data-skin]) .feedback { padding: 0; justify-content: center; }
+  :root:not([data-skin]) .view { padding: 24px 22px 36px; }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .settings-categories { position: static; flex-direction: row; overflow-x: auto; padding-bottom: 6px; }
+  .settings-categories button { white-space: nowrap; flex: none; }
+  .settings-layout .set-empty { grid-column: 1; }
+}
+@media (max-width: 620px) {
+  :root:not([data-skin]) .view { padding: 22px 16px 32px; }
+  :root:not([data-skin]) .scard { padding: 14px; }
+  :root:not([data-skin]) .scard-top { gap: 8px; flex-wrap: wrap; }
+  :root:not([data-skin]) .scard-title { flex-basis: 100px; }
+  .settings-layout .set-card { padding: 16px; }
+  :root:not([data-skin]) .theme-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-skin]) *, :root:not([data-skin]) *::before, :root:not([data-skin]) *::after { scroll-behavior: auto !important; }
+}
+:root:not([data-skin]) .set-card { animation: none; }

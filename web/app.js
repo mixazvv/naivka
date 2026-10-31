@@ -640,7 +640,7 @@ function updateStatusNow() {
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
   // Котёнок переселён на панель задач (своё окно Windows) — в меню его нет.
-  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { beta: S.mascotBeta === true, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024, STATS && STATS.health); }
+  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024, STATS && STATS.health); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -3720,7 +3720,7 @@ function buildCoreBox() {
 }
 
 // Темы — плитками с маленьким видом каждой: длинное название не переносится внутри переключателя.
-const THEMES = [['dark', 'Обычная', 'Спокойная, с вашим акцентом'], ['gold', 'Чёрное с золотом', 'Тонкие заглавные буквы, огни от трафика'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт'], ['custom', 'Своя', 'Ваши цвета и шрифт']];
+const THEMES = [['dark', 'Naivka Flow', 'Спокойная, с вашим акцентом'], ['gold', 'Чёрное с золотом', 'Тонкие заглавные буквы, огни от трафика'], ['blocks', 'Пиксели', 'Ступеньки, клетки, пиксельный шрифт'], ['custom', 'Своя', 'Ваши цвета и шрифт']];
 function themeTiles() {
   const box = h('div', { class: 'theme-tiles', role: 'radiogroup', 'aria-label': 'Тема' });
   const paint = () => box.querySelectorAll('.theme-tile').forEach(b => b.setAttribute('aria-checked', b.dataset.theme === (S.theme || 'dark') ? 'true' : 'false'));
@@ -3955,7 +3955,6 @@ function viewSettings() {
       h('input', { type: 'checkbox', checked: S.petHopOff !== true, onchange: e => { S.petHopOff = !e.target.checked; save(); } }),
       h('span', null, h('b', null, 'Котёнок спрыгивает на панель задач'), h('small', null, 'Пока окно Naivka открыто, котёнок иногда спрыгивает с его низа на панель задач Windows, бегает там под окном и запрыгивает обратно. Его можно унести мышью на панель задач другого монитора, а отпустить над окном Naivka — вернуть домой.'))) : null,
     window.NAIVKA_HOST ? check('petTaskbar', 'Котёнок живёт на панели задач', 'Котёнок переселяется из меню на панель задач Windows насовсем: гуляет вдоль неё поверх всех окон, даже когда окно Naivka закрыто, и прячется, когда открыта игра или видео во весь экран. Его можно гладить и переносить мышью, в том числе на другой монитор; щелчки мимо кота проходят к окнам как обычно. Работает, когда талисман включён.', updateStatus) : null,
-    check('mascotBeta', 'Новый котёнок (бета)', 'Котёнок из нового набора анимаций: ходит и бегает по-новому, играет с мячиком, прячется в коробку, ест и пьёт. Пока бета — что-то может выглядеть непривычно. Работает, когда талисман включён.', updateStatus),
     check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'),
     h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
       segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),
@@ -4063,6 +4062,7 @@ const SET_ICONS = {
   'Ядро sing-box': 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10', 'Резервная копия': 'M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6',
   'Для опытных': 'M8 8l-4 4 4 4M16 8l4 4-4 4',
 };
+let settingsCategory = 'Внешний вид';
 function settingsCards(view) {
   const grid = h('div', { class: 'set-grid' });
   const mores = h('section', { class: 'set-card' }, h('h2', null, 'Для опытных'));
@@ -4077,23 +4077,39 @@ function settingsCards(view) {
   if (mores.children.length > 1) grid.append(mores);
   for (const c of grid.children) {
     const t = c.querySelector('h2'), ic = t && SET_ICONS[t.textContent];
+    c.dataset.category = t.textContent;
     if (ic) t.prepend(h('span', { class: 'set-ic' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: ic }))));
   }
   const exit = view.querySelector(':scope > .exit-row');
-  view.querySelector('.set-search').after(grid);
-  if (exit) grid.after(exit);
-  for (const el of [...view.children]) if (el.tagName !== 'H1' && el !== grid && el !== exit && !el.classList.contains('set-search')) el.remove();
+  const nav = h('nav', { class: 'settings-categories', 'aria-label': 'Разделы настроек' });
+  for (const title of ['', ...[...grid.children].map(c => c.dataset.category)]) {
+    nav.append(h('button', { type: 'button', 'data-category': title, onclick: () => {
+      settingsCategory = title;
+      view.querySelector('#setSearch').value = '';
+      filterSettings('', view);
+      drawerBody.scrollTop = 0;
+    } }, title || 'Все настройки'));
+  }
+  const layout = h('div', { class: 'settings-layout' }, nav, grid);
+  view.querySelector('.set-search').after(layout);
+  if (exit) layout.after(exit);
+  for (const el of [...view.children]) if (el.tagName !== 'H1' && el !== layout && el !== exit && !el.classList.contains('set-search')) el.remove();
+  filterSettings('', view);
   return view;
 }
-function filterSettings(q) {
+function filterSettings(q, root = drawerBody) {
   q = q.trim().toLowerCase();
   // Русские окончания: «утечки» должно найти «утечек», «запуска» — «запуск».
   const stems = q.length >= 5 ? [q, q.slice(0, -1), q.slice(0, -2)] : [q];
   const has = t => stems.some(x => t.includes(x));
-  const grid = drawerBody.querySelector('.set-grid');
+  const grid = root.querySelector('.set-grid');
   if (!grid) return;
+  root.querySelectorAll('.settings-categories button').forEach(b => {
+    b.setAttribute('aria-current', String(b.dataset.category === (q ? '' : settingsCategory)));
+  });
   let any = false;
   for (const card of grid.children) {
+    if (!q && settingsCategory && card.dataset.category !== settingsCategory) { card.hidden = true; continue; }
     const title = (card.querySelector('h2') || {}).textContent || '';
     const titleHit = !q || has(title.toLowerCase());
     let hit = titleHit;
@@ -4107,7 +4123,7 @@ function filterSettings(q) {
     card.hidden = !hit;
     if (hit) any = true;
   }
-  let empty = drawerBody.querySelector('.set-empty');
+  let empty = root.querySelector('.set-empty');
   if (!any && !empty) grid.after(h('p', { class: 'set-empty hint' }, 'Ничего не нашлось. Попробуйте другое слово.'));
   if (any && empty) empty.remove();
 }

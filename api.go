@@ -548,7 +548,7 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 			go func() { _ = setSystemProxy(a.dir, port) }()
 		}
 	}
-	if p, ok := a.ui.(petHost); ok && (prev.Mascot != ns.Mascot || prev.PetTaskbar != ns.PetTaskbar || prev.PetHopOff != ns.PetHopOff || prev.MascotBeta != ns.MascotBeta) {
+	if p, ok := a.ui.(petHost); ok && (prev.Mascot != ns.Mascot || prev.PetTaskbar != ns.PetTaskbar || prev.PetHopOff != ns.PetHopOff) {
 		go p.SyncPet()
 	}
 	if err := a.applyAutostart(prev, ns); err != nil {

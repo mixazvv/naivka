@@ -15,14 +15,13 @@ const petHost = (() => {
     return r.json();
   };
   const SAY = { off: 'Naivka отключена — я сплю', wait: 'Подключаюсь…', run: 'Бегу вместе с трафиком!', err: 'Не получилось подключиться', sad: 'Трафик заблокирован…', on: 'Всё работает. Мяу!' };
-  let S = null, beta = null;
+  let S = null, mounted = false;
 
   async function reload() {
     try { S = await api('/api/settings'); } catch (_) { return; }
-    const b = S.mascotBeta === true;
-    if (b !== beta) {
-      beta = b;
-      Pet.mount(document.getElementById('petFloor'), { beta: b, say: m => SAY[m] || 'Мяу', exit: HOP ? EXIT : null });
+    if (!mounted) {
+      mounted = true;
+      Pet.mount(document.getElementById('petFloor'), { say: m => SAY[m] || 'Мяу', exit: HOP ? EXIT : null });
       if (HOP) { out = false; Pet.hide(); }
     }
   }
