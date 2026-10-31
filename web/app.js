@@ -869,6 +869,7 @@ function railWheel(e) {
 
 // Главный экран («сцена» с ветвями) всегда на месте; разделы открываются панелью справа поверх него.
 function goNow(v) {
+  if (settingsDispose) settingsDispose();
   const was = view;
   view = v;
   sessionStorage.setItem('naivka-view', v);
@@ -905,31 +906,8 @@ function refreshView(v = view) {
   if (v === 'own') renderOwn();
   if (v === 'rules') { renderRules(); renderLists(); renderSmart(); }
   if (v === 'bypass') refreshAddons();
-  if (v === 'settings') { buildToc(); shareBox(); renderCustomEditor(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); refreshAddons(); }
+  if (v === 'settings') { shareBox(); refreshSelf().then(() => patch('selfBox', JSON.stringify([SELF, APPUP]), selfBox)); refreshAddons(); }
   if (v === 'servers') Promise.all([refreshAddons(), S.wl.enabled ? refreshWL() : null]).then(renderServers);
-}
-
-// Оглавление «Настроек»: кнопки к заголовкам разделов, текущий подсвечивается при прокрутке.
-function buildToc() {
-  const view = drawerBody.querySelector('.view');
-  const toc = view && view.querySelector('.toc');
-  if (!toc) return;
-  const heads = [...view.querySelectorAll(':scope > h2')];
-  const btns = heads.map(hd => h('button', { type: 'button', onclick: () => {
-    drawerBody.scrollTo({ top: hd.offsetTop - toc.offsetHeight - 8, behavior: REDUCE.matches ? 'auto' : 'smooth' });
-  } }, hd.textContent));
-  toc.replaceChildren(...btns);
-  const mark = () => {
-    const y = drawerBody.scrollTop + toc.offsetHeight + 24;
-    let cur = 0;
-    heads.forEach((hd, i) => { if (hd.offsetTop <= y) cur = i; });
-    btns.forEach((b, i) => b.setAttribute('aria-current', String(i === cur)));
-    const c = btns[cur];
-    if (c && (c.offsetLeft < toc.scrollLeft || c.offsetLeft + c.offsetWidth > toc.scrollLeft + toc.clientWidth)) toc.scrollTo({ left: c.offsetLeft - 34 });
-    toc.classList.toggle('stuck', drawerBody.scrollTop > toc.offsetTop - 4);
-  };
-  drawerBody.onscroll = mark;
-  mark();
 }
 
 function openDiag(tab) {
@@ -3978,207 +3956,273 @@ function renderAccentPicker() {
   if (old) old.replaceWith(accentPicker());
 }
 
+function settingsHelp(title, content) {
+  const dlg = openDialog(h('h2', null, title), content,
+    h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => dlg.close() }, 'Закрыть')));
+  dlg.classList.add('settings-dialog');
+  return dlg;
+}
+
+function editCustomTheme() {
+  S.theme = 'custom'; applyTheme(); save();
+  document.querySelectorAll('.theme-tile').forEach(b => b.setAttribute('aria-checked', String(b.dataset.theme === 'custom')));
+  const dlg = settingsHelp('Своя тема', customEditor());
+  dlg.classList.add('wide');
+  renderCustomEditor();
+}
+
+function editSettingsJSON(key, title, placeholder, wantArray) {
+  const notes = wantArray ? 'JSON-массив, добавляется в конец outbounds.'
+    : 'JSON-объект накладывается на итоговый конфиг: объекты сливаются, массивы и значения заменяются, null удаляет ключ. В режиме администратора пути к файлам из правок убираются.';
+  const dlg = settingsHelp(title, h('div', null, h('p', { class: 'hint' }, notes), jsonArea(key, placeholder, wantArray)));
+  dlg.classList.add('wide');
+  dlg.querySelector('textarea').setAttribute('aria-label', title);
+  dlg.querySelector('textarea').focus();
+}
+
+async function showSettingsConfig() {
+  await saveNow();
+  try {
+    const value = (await api('/api/config')).config;
+    const dlg = settingsHelp('Итоговый конфиг', h('textarea', { readonly: true, value, 'aria-label': 'Итоговый конфиг' }));
+    dlg.classList.add('wide');
+    dlg.querySelector('.row').prepend(h('button', { class: 'btn', onclick: async () => {
+      try { await navigator.clipboard.writeText(value); toast('Конфиг скопирован'); } catch (_) { toast('Не удалось скопировать', true); }
+    } }, 'Скопировать'));
+  } catch (e) { toast(e.message, true); }
+}
+
 function viewSettings() {
-  const cfgOut = h('textarea', { readonly: true, style: 'min-height:320px', hidden: true });
-  return settingsCards(h('div', { class: 'view settings-view' },
-    h('h1', null, 'Настройки'),
-    h('div', { class: 'set-search' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('circle', { cx: 11, cy: 11, r: 7 }), s('path', { d: 'M20 20l-4-4' })),
-      h('input', { type: 'search', id: 'setSearch', placeholder: 'Найти настройку: dns, запуск, утечки…', 'aria-label': 'Найти настройку', oninput: e => filterSettings(e.target.value) })),
-
-    h('h2', null, 'Язык · Language'),
-    segmented([['ru', 'Русский'], ['en', 'English']], () => S.lang === 'en' ? 'en' : 'ru', async v => {
-      S.lang = v;
-      save();
-      await saveNow();
-      try { localStorage.setItem('naivka-lang', v); } catch (_) { /* перезагрузка всё равно возьмёт из настроек */ }
-      location.reload();
-    }, 'Язык'),
-
-    h('h2', null, 'Внешний вид'),
-    themeTiles(),
-    customEditor(),
-    wallBox(),
-    h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
-    h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'),
-    accentPicker(),
-    h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme)),
-    check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить. По умолчанию выключен.', updateStatus),
-    window.NAIVKA_HOST ? h('label', { class: 'check' },
-      h('input', { type: 'checkbox', checked: S.petHopOff !== true, onchange: e => { S.petHopOff = !e.target.checked; save(); } }),
-      h('span', null, h('b', null, 'Котёнок спрыгивает на панель задач'), h('small', null, 'Пока окно Naivka открыто, котёнок иногда спрыгивает с его низа на панель задач Windows, бегает там под окном и запрыгивает обратно. Его можно унести мышью на панель задач другого монитора, а отпустить над окном Naivka — вернуть домой.'))) : null,
-    window.NAIVKA_HOST ? check('petTaskbar', 'Котёнок живёт на панели задач', 'Котёнок переселяется из меню на панель задач Windows насовсем: гуляет вдоль неё поверх всех окон, даже когда окно Naivka закрыто, и прячется, когда открыта игра или видео во весь экран. Его можно гладить и переносить мышью, в том числе на другой монитор; щелчки мимо кота проходят к окнам как обычно. Работает, когда талисман включён.', updateStatus) : null,
-    check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'),
-    h('div', { class: 'row mt' }, h('span', { class: 'hint' }, 'Меню'),
-      segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),
-    h('h2', null, 'Разделы'),
-    check('ownServer', 'Свой сервер', 'Установка своего сервера на VPS. Выключите, если не нужно.', applySections),
-
-    window.NAIVKA_HOST ? h('h2', null, 'Окно') : null,
-    window.NAIVKA_HOST ? check('trayMini', 'Мини-окно по щелчку в трее', 'Если выключить, щелчок по значку сразу открывает окно.') : null,
-    window.NAIVKA_HOST ? check('nativeFrame', 'Классическое окно Windows', 'Применится после перезапуска.') : null,
-
-    h('h2', null, 'Перехват трафика'),
-    choices('mode', [
-      ['proxy', 'Системный прокси', 'Без прав администратора. Браузеры и большинство программ используют его сами.'],
-      ['tun', 'Весь трафик (TUN)', 'Ловит трафик всех программ, включая те, что игнорируют прокси. Нужны права администратора.'],
-    ], () => S.mode, v => { S.mode = v; save(); updateStatus(); }),
-    h('div', { id: 'adminBox' }),
-    window.NAIVKA_HOST ? check('proxyPac', 'Без Naivka — интернет напрямую (PAC)', 'Системный прокси скриптом настройки: если компьютер выключили или Naivka упала, сайты откроются и без неё. Некоторые программы скрипт не понимают и идут мимо сервера — если что-то стало медленнее или отваливается, выключите.') : null,
-
-    h('h2', null, 'Надёжность'),
-    check('killSwitch', 'Защита от утечек', 'Если соединение упадёт, трафик не пойдёт мимо сервера.'),
-    check('watchdog', 'Следить за соединением', 'Переподключаться после сбоев и смены сети.'),
-    check('autoApply', 'Применять изменения сразу', 'Если изменению нужно переподключение, Naivka переподключится сама — без кнопки «Переподключить».'),
-    check('confirm', 'Спрашивать перед удалением', 'Подтверждение перед удалением серверов, списков, правил и перед восстановлением копии.'),
-    check('failover', 'Переходить на рабочий сервер', 'Если выбранный сервер перестал отвечать — временно работать через другой свой, потом вернуться.'),
-    check('sleepReconnect', 'Отключаться перед сном', 'После пробуждения компьютера Naivka подключится снова.'),
-    check('notify', 'Уведомления Windows', 'О сбоях, восстановлении связи и смене сервера автовыбором.'),
-
-    h('h2', null, 'Запуск'),
-    check('autoStart', 'Запускать вместе с Windows', 'Naivka запустится в трее без окна. Для режима TUN и zapret без запроса Windows — только если папка Naivka лежит в Program Files; иначе Windows спросит разрешение при входе (так подменить программу нельзя).'),
-    check('autoConnect', 'Подключаться при запуске Naivka'),
-    check('exitWithWindow', 'Закрывать Naivka вместе с окном', 'Иначе при закрытии окна Naivka уходит в трей и соединение остаётся.'),
-    check('showIp', 'Показывать мой IP и страну', 'Как вас видят сайты. Узнаётся через ipwho.is и ipinfo.io.', () => { ip.key = ''; srvGeoKey = ''; }),
-
-    h('h2', null, 'Раздача на другие устройства'),
-    h('p', { class: 'hint' }, 'Телевизор, приставка или второй компьютер в той же сети смогут пользоваться подключением Naivka как прокси.'),
-    h('div', { id: 'shareBox' }),
-    h('h2', null, 'Ядро sing-box'),
-    h('div', { id: 'coreBox' }),
-    check('updateCheck', 'Проверять обновления', 'Устанавливаются только по вашей кнопке.'),
-
-    h('h2', null, 'Резервная копия'),
-    h('p', { class: 'hint' }, 'Серверы, правила и настройки в одном файле. Пароль от копии не восстановить — не забудьте его.'),
-    h('div', { class: 'row' },
-      h('button', { class: 'btn', onclick: backupDialog }, 'Сохранить копию'),
-      h('button', { class: 'btn', onclick: restoreBackup }, 'Восстановить из копии')),
-
-    h('div', { class: 'mt-lg' }),
-    more('Сеть и DNS', `порт ${S.mixedPort}, DNS ${S.dnsRemote} и ${S.dnsDirect}`,
-      h('div', { class: 'grid2' },
-        field('mixedPort', 'Порт локального прокси', { type: 'number', min: 1, max: 65535, hint: 'HTTP и SOCKS5 на 127.0.0.1.' }),
-        h('span'),
-        field('dnsRemote', 'DNS через сервер (DoH)', { placeholder: '1.1.1.1', hint: 'Для зарубежных и заблокированных сайтов.' }),
-        dnsDirectField()),
-      check('ipv4Only', 'Только IPv4', 'Меньше проблем у провайдеров с кривым IPv6.'),
-      check('ruleSetViaProxy', 'Скачивать списки блокировок через сервер', 'Если GitHub у провайдера открывается плохо.')),
-    more('Проверка серверов', `каждые ${S.testInterval}`,
-      h('div', { class: 'grid2' },
-        field('testUrl', 'Адрес для проверки', { hint: 'Должен быстро отвечать и не быть заблокирован на сервере.' }),
-        field('testInterval', 'Как часто проверять', { placeholder: '3m', hint: 'Например 90s, 3m, 10m.' }))),
-    more('Для опытных', 'журнал, свои outbounds, правка конфига',
-      h('div', { class: 'grid2' },
-        h('label', { class: 'field' }, h('span', null, 'Подробность журнала'),
-          h('select', { onchange: e => { S.logLevel = e.target.value; save(); } },
-            ['error', 'warn', 'info', 'debug', 'trace'].map(l => h('option', { value: l, selected: S.logLevel === l }, l))))),
-      h('h3', { class: 'mt' }, 'Дополнительные outbounds'),
-      h('p', { class: 'hint' }, 'JSON-массив, добавляется в конец outbounds.'),
-      jsonArea('extraOutbounds', '[\n  { "type": "socks", "tag": "work", "server": "10.0.0.5", "server_port": 1080 }\n]', true),
-      h('h3', { class: 'mt' }, 'Ручные правки конфига'),
-      h('p', { class: 'hint' }, 'JSON-объект накладывается на итоговый конфиг последним: объекты сливаются, массивы и значения заменяются, null удаляет ключ. В режиме администратора пути к файлам из правок убираются.'),
-      jsonArea('override', '{\n  "route": { "final": "direct" }\n}', false),
-      h('div', { class: 'row mt' },
-        h('button', { class: 'btn', onclick: async () => {
-          await saveNow();
-          try { cfgOut.value = (await api('/api/config')).config; cfgOut.hidden = false; } catch (e) { toast(e.message, true); }
-        } }, 'Показать итоговый конфиг'),
-        h('button', { class: 'btn', onclick: async () => {
-          if (cfgOut.hidden) return;
-          try { await navigator.clipboard.writeText(cfgOut.value); toast('Конфиг скопирован'); } catch (_) { toast('Не удалось скопировать', true); }
-        } }, 'Скопировать')),
-      cfgOut),
-
-    // «О программе» — в конце: сюда заглядывают редко. Здесь же версии компонентов (раньше были в «Обходе»).
-    h('h2', null, 'О программе'),
-    h('div', { id: 'selfBox' }),
-    h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: openGuide }, 'Как пользоваться'),
-      h('button', { class: 'btn', onclick: openFeedback }, 'Написать автору в Telegram'),
-      h('span', { class: 'hint' }, 'Вопросы, ошибки и идеи — @mixazvv.')),
-    h('div', { id: 'versionsBox' }, AD ? versionsCard(AD.updates) : null),
-
-    h('div', { class: 'exit-row' },
-      h('span', { class: 'hint' }, 'Отключит соединение, вернёт настройки прокси Windows и закроет приложение.'),
-      h('button', { class: 'btn danger', onclick: async () => {
-        try { await saveNow(); await api('/api/quit', {}); } catch (_) { /* уже закрывается */ }
-        setTimeout(() => window.close(), 300);
-      } }, 'Выйти из Naivka'))));
+  const page = (title, ...items) => ({ title, items: items.filter(Boolean) });
+  const section = (title, ...pages) => ({ title, pages: pages.filter(Boolean) });
+  const action = (title, note, onclick) => h('div', { class: 'settings-action' },
+    h('div', null, h('b', null, title), note && h('p', { class: 'hint' }, note)),
+    h('button', { class: 'btn small', onclick }, 'Открыть'));
+  const sections = [
+    section('Внешний вид',
+      page('Тема', themeTiles(),
+        action('Своя тема', 'Собственные цвета, шрифт и готовые палитры.', editCustomTheme)),
+      page('Фон', wallBox()),
+      page('Цвета', h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
+        h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'), accentPicker(),
+        h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme))),
+      page('Котёнок',
+        check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить. По умолчанию выключен.', updateStatus),
+        window.NAIVKA_HOST && h('label', { class: 'check' },
+          h('input', { type: 'checkbox', checked: S.petHopOff !== true, onchange: e => { S.petHopOff = !e.target.checked; save(); } }),
+          h('span', null, h('b', null, 'Котёнок спрыгивает на панель задач'), h('small', null, 'Пока окно Naivka открыто, котёнок иногда спрыгивает с его низа на панель задач Windows, бегает там под окном и запрыгивает обратно. Его можно унести мышью на панель задач другого монитора, а отпустить над окном Naivka — вернуть домой.'))),
+        window.NAIVKA_HOST && check('petTaskbar', 'Котёнок живёт на панели задач', 'Котёнок гуляет поверх окон, даже когда Naivka закрыта, и прячется при полноэкранной игре или видео. Его можно гладить и переносить, в том числе на другой монитор. Работает, когда талисман включён.', updateStatus)),
+      page('Меню', h('div', { class: 'row' }, h('span', { class: 'hint' }, 'Меню'),
+        segmented([['list', 'Список'], ['wheel', 'Колесо']], () => S.nav === 'wheel' ? 'wheel' : 'list', v => { S.nav = v; save(); applyTheme(); railMark(); }, 'Меню')),
+        check('achievements', 'Достижения', 'Значки за первый гигабайт, неделю без перерыва, свой сервер и другое — в «Сводке».'))),
+    section('Перехват трафика', page('Режим',
+      choices('mode', [
+        ['proxy', 'Системный прокси', 'Без прав администратора. Браузеры и большинство программ используют его сами.'],
+        ['tun', 'Весь трафик (TUN)', 'Ловит трафик всех программ, включая те, что игнорируют прокси. Нужны права администратора.'],
+      ], () => S.mode, v => { S.mode = v; save(); updateStatus(); }),
+      h('div', { id: 'adminBox' }),
+      window.NAIVKA_HOST && check('proxyPac', 'Без Naivka — интернет напрямую (PAC)', 'Системный прокси скриптом настройки: если компьютер выключили или Naivka упала, сайты откроются и без неё. Некоторые программы скрипт не понимают и идут мимо сервера — если что-то стало медленнее или отваливается, выключите.'))),
+    section('Надёжность',
+      page('Соединение',
+        check('killSwitch', 'Защита от утечек', 'Если соединение упадёт, трафик не пойдёт мимо сервера.'),
+        check('watchdog', 'Следить за соединением', 'Переподключаться после сбоев и смены сети.'),
+        check('failover', 'Переходить на рабочий сервер', 'Если выбранный сервер перестал отвечать — временно работать через другой свой, потом вернуться.'),
+        check('sleepReconnect', 'Отключаться перед сном', 'После пробуждения компьютера Naivka подключится снова.')),
+      page('Действия',
+        check('autoApply', 'Применять изменения сразу', 'Если изменению нужно переподключение, Naivka переподключится сама — без кнопки «Переподключить».'),
+        check('confirm', 'Спрашивать перед удалением', 'Подтверждение перед удалением серверов, списков, правил и перед восстановлением копии.'),
+        check('notify', 'Уведомления Windows', 'О сбоях, восстановлении связи и смене сервера автовыбором.'))),
+    section('Запуск', page('Поведение',
+      check('autoStart', 'Запускать вместе с Windows', 'Naivka запустится в трее без окна. Для режима TUN и zapret без запроса Windows — только если папка Naivka лежит в Program Files; иначе Windows спросит разрешение при входе (так подменить программу нельзя).'),
+      check('autoConnect', 'Подключаться при запуске Naivka'),
+      check('exitWithWindow', 'Закрывать Naivka вместе с окном', 'Иначе при закрытии окна Naivka уходит в трей и соединение остаётся.'),
+      check('showIp', 'Показывать мой IP и страну', 'Как вас видят сайты. Узнаётся через ipwho.is и ipinfo.io.', () => { ip.key = ''; srvGeoKey = ''; }))),
+    section('Раздача на другие устройства', page('Подключение',
+      h('p', { class: 'hint' }, 'Телевизор, приставка или второй компьютер в той же сети смогут пользоваться подключением Naivka как прокси.'),
+      h('div', { id: 'shareBox' }))),
+    section('Ядро sing-box', page('Обновление', h('div', { id: 'coreBox' }))),
+    section('Резервная копия', page('Данные',
+      h('p', { class: 'hint' }, 'Серверы, правила и настройки в одном файле. Пароль от копии не восстановить — не забудьте его.'),
+      h('div', { class: 'row' }, h('button', { class: 'btn', onclick: backupDialog }, 'Сохранить копию'),
+        h('button', { class: 'btn', onclick: restoreBackup }, 'Восстановить из копии')))),
+    section('Для опытных',
+      page('Сеть', field('mixedPort', 'Порт локального прокси', { type: 'number', min: 1, max: 65535, hint: 'HTTP и SOCKS5 на 127.0.0.1.' }),
+        check('ipv4Only', 'Только IPv4', 'Меньше проблем у провайдеров с кривым IPv6.'),
+        check('ruleSetViaProxy', 'Скачивать списки блокировок через сервер', 'Если GitHub у провайдера открывается плохо.')),
+      page('DNS', field('dnsRemote', 'DNS через сервер (DoH)', { placeholder: '1.1.1.1', hint: 'Для зарубежных и заблокированных сайтов.' }), dnsDirectField()),
+      page('Проверка серверов', field('testUrl', 'Адрес для проверки', { hint: 'Должен быстро отвечать и не быть заблокирован на сервере.' }),
+        field('testInterval', 'Как часто проверять', { placeholder: '3m', hint: 'Например 90s, 3m, 10m.' })),
+      page('Конфиг', h('label', { class: 'field' }, h('span', null, 'Подробность журнала'),
+        h('select', { onchange: e => { S.logLevel = e.target.value; save(); } },
+          ['error', 'warn', 'info', 'debug', 'trace'].map(l => h('option', { value: l, selected: S.logLevel === l }, l)))),
+        action('Дополнительные outbounds', 'Свои выходы в формате JSON.', () => editSettingsJSON('extraOutbounds', 'Дополнительные outbounds', '[\n  { "type": "socks", "tag": "work", "server": "10.0.0.5", "server_port": 1080 }\n]', true)),
+        action('Ручные правки конфига', 'Изменения поверх сгенерированного конфига.', () => editSettingsJSON('override', 'Ручные правки конфига', '{\n  "route": { "final": "direct" }\n}', false)),
+        action('Итоговый конфиг', 'Просмотр и копирование.', showSettingsConfig))),
+    section('Приложение',
+      page('Язык · Language', segmented([['ru', 'Русский'], ['en', 'English']], () => S.lang === 'en' ? 'en' : 'ru', async v => {
+        S.lang = v; save(); await saveNow();
+        try { localStorage.setItem('naivka-lang', v); } catch (_) { /* загрузим из настроек */ }
+        location.reload();
+      }, 'Язык')),
+      page('Разделы', check('ownServer', 'Свой сервер', 'Установка своего сервера на VPS. Выключите, если не нужно.', applySections)),
+      window.NAIVKA_HOST && page('Окно',
+        check('trayMini', 'Мини-окно по щелчку в трее', 'Если выключить, щелчок по значку сразу открывает окно.'),
+        check('nativeFrame', 'Классическое окно Windows', 'Применится после перезапуска.'))),
+    section('О программе',
+      page('Программа', h('div', { id: 'selfBox' }), check('updateCheck', 'Проверять обновления', 'Устанавливаются только по вашей кнопке.')),
+      page('Компоненты', h('div', { id: 'versionsBox' }, AD ? versionsCard(AD.updates) : h('p', { class: 'hint' }, 'Загружаю…'))),
+      page('Помощь', action('Как пользоваться', 'Подсказки по работе с Naivka.', openGuide),
+        action('Написать автору в Telegram', 'Вопросы, ошибки и идеи — @mixazvv.', openFeedback),
+        h('button', { class: 'btn danger', onclick: async () => {
+          try { await saveNow(); await api('/api/quit', {}); } catch (_) { /* уже закрывается */ }
+          setTimeout(() => window.close(), 300);
+        } }, 'Выйти из Naivka'))),
+  ];
+  return settingsScreens(sections);
 }
 
-// Настройки карточками: каждый раздел (заголовок h2 и всё до следующего) — отдельная карточка,
-// блоки «Для опытных» собраны в одну. Поиск прячет карточки и строки, где нет искомого.
-const SET_ICONS = {
-  'О программе': 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01', 'Язык · Language': 'M4 5h10M9 3v2M6 5c1 4 4 7 8 8M12 5c-1 4-4 7-8 8M14 21l4-9 4 9M15.5 18h5',
-  'Внешний вид': 'M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5S14 15 15 15h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8z', 'Разделы': 'M4 5h16v14H4zM9 5v14',
-  'Окно': 'M4 5h16v14H4zM4 9h16', 'Перехват трафика': 'M13 3L4 14h7l-1 7 9-11h-7z', 'Надёжность': 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z',
-  'Запуск': 'M5 12h14M13 6l6 6-6 6', 'Раздача на другие устройства': 'M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0M12 12v.01',
-  'Ядро sing-box': 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10', 'Резервная копия': 'M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6',
-  'Для опытных': 'M8 8l-4 4 4 4M16 8l4 4-4 4',
-};
+// Каждый экран состоит из отдельных параметров. В низком окне параметры распределяются
+// по страницам; крупный редактор открывается отдельно, поэтому ничего не обрезается.
 let settingsCategory = 'Внешний вид';
-function settingsCards(view) {
-  const grid = h('div', { class: 'set-grid' });
-  const mores = h('section', { class: 'set-card' }, h('h2', null, 'Для опытных'));
-  let card = null;
-  for (const el of [...view.children]) {
-    if (el.tagName === 'H1' || el.classList.contains('set-search')) continue;
-    if (el.classList.contains('exit-row')) continue;
-    if (el.tagName === 'DETAILS') { mores.append(el); continue; }
-    if (el.tagName === 'H2') { card = h('section', { class: 'set-card' }); grid.append(card); }
-    if (card) card.append(el); else continue;
-  }
-  if (mores.children.length > 1) grid.append(mores);
-  for (const c of grid.children) {
-    const t = c.querySelector('h2'), ic = t && SET_ICONS[t.textContent];
-    c.dataset.category = t.textContent;
-    if (ic) t.prepend(h('span', { class: 'set-ic' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: ic }))));
-  }
-  const exit = view.querySelector(':scope > .exit-row');
+const settingsPositions = new Map();
+let settingsDispose = null;
+function settingsScreens(sections) {
+  if (settingsDispose) settingsDispose();
+  let activeTab = settingsPositions.get(settingsCategory)?.tab || 0;
+  let pageIndex = settingsPositions.get(settingsCategory)?.page || 0;
+  let query = '', pages = [], frame = 0, disposed = false;
+  const all = [];
+  const heading = h('h2', { id: 'settingsHeading' });
+  const tabs = h('nav', { class: 'settings-tabs', 'aria-label': 'Подразделы настроек' });
+  const tabSelect = h('select', { class: 'settings-tab-select', 'aria-label': 'Подраздел настроек', onchange: e => selectTab(+e.target.value) });
+  const body = h('div', { class: 'settings-body', role: 'region', 'aria-labelledby': 'settingsHeading' });
+  const status = h('span', { class: 'hint', 'aria-live': 'polite', 'aria-atomic': 'true' });
+  const prev = h('button', { class: 'btn small', 'aria-label': 'Предыдущая страница настроек', onclick: () => changePage(pageIndex - 1) }, 'Назад');
+  const next = h('button', { class: 'btn small', 'aria-label': 'Следующая страница настроек', onclick: () => changePage(pageIndex + 1) }, 'Далее');
+  const footer = h('nav', { class: 'settings-pager', 'aria-label': 'Страницы настроек' }, prev, status, next);
   const nav = h('nav', { class: 'settings-categories', 'aria-label': 'Разделы настроек' });
-  for (const title of ['', ...[...grid.children].map(c => c.dataset.category)]) {
-    nav.append(h('button', { type: 'button', 'data-category': title, onclick: () => {
-      settingsCategory = title;
-      view.querySelector('#setSearch').value = '';
-      filterSettings('', view);
-      drawerBody.scrollTop = 0;
-    } }, title || 'Все настройки'));
+  const categorySelect = h('select', { class: 'settings-category-select', 'aria-label': 'Раздел настроек', onchange: e => selectCategory(e.target.value) });
+  const search = h('input', { type: 'search', id: 'setSearch', placeholder: 'Найти настройку…', 'aria-label': 'Найти настройку', oninput: e => filter(e.target.value) });
+  const view = h('div', { class: 'view settings-view' },
+    h('header', { class: 'settings-topbar' }, h('div', null, h('h1', null, 'Настройки'), h('p', { class: 'hint' }, 'Изменения сохраняются автоматически')),
+      h('div', { class: 'set-search' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('circle', { cx: 11, cy: 11, r: 7 }), s('path', { d: 'M20 20l-4-4' })), search)),
+    categorySelect,
+    h('div', { class: 'settings-layout' }, nav,
+      h('section', { class: 'set-card settings-workspace' }, heading, tabs, tabSelect, body, footer)));
+
+  for (const sec of sections) {
+    categorySelect.append(h('option', { value: sec.title }, sec.title));
+    nav.append(h('button', { type: 'button', 'data-category': sec.title, onclick: () => selectCategory(sec.title) }, sec.title));
+    sec.pages.forEach((tab, ti) => tab.items.forEach(content => {
+      const words = [sec.title, tab.title];
+      const textNodes = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+      for (let n = textNodes.nextNode(); n; n = textNodes.nextNode()) words.push(n.textContent);
+      words.push(...[...content.querySelectorAll('input,textarea')].map(e => e.getAttribute('placeholder') || ''));
+      const searchText = [...words, ...words.map(tr)].join(' ');
+      // Кнопка справки — рядом с label, чтобы её щелчок не переключал настройку.
+      for (const label of [...content.querySelectorAll('.check, .choice'), ...(content.matches('.check, .choice') ? [content] : [])]) {
+        const text = label.querySelector(':scope > span');
+        const desc = text && (text.querySelector(':scope > .long') || text.querySelector(':scope > small'));
+        if (!desc) continue;
+        const title = text.querySelector('b')?.textContent || tab.title;
+        const detail = desc.querySelector('small') || desc;
+        const wrap = h('div', { class: 'settings-control' });
+        label.replaceWith(wrap); wrap.append(label);
+        wrap.append(h('button', { class: 'settings-info', type: 'button', title: 'Подробнее: ' + title, 'aria-label': 'Подробнее: ' + title,
+          onclick: () => settingsHelp(title, h('p', null, detail.textContent)) }, 'i'));
+        desc.remove();
+        if (label === content) content = wrap;
+      }
+      const inner = h('div', { class: 'settings-item-body' }, content);
+      const open = h('button', { class: 'settings-open', type: 'button', hidden: true, onclick: () => {
+        inner.hidden = false;
+        const dlg = settingsHelp(tab.title, inner);
+        dlg.addEventListener('close', () => { el.prepend(inner); schedule(); }, { once: true });
+      } }, h('span', null, h('b', null, content.querySelector('b,h3')?.textContent || tab.title), h('small', null, 'Открыть параметры')), h('span', { 'aria-hidden': 'true' }, '↗'));
+      const el = h('div', { class: 'settings-item', hidden: true }, h('div', { class: 'settings-context' }, `${sec.title} · ${tab.title}`), inner, open);
+      const item = { el, inner, open, sec: sec.title, tab: ti, searchText: searchText.toLowerCase() };
+      all.push(item); body.append(el);
+    }));
   }
-  const layout = h('div', { class: 'settings-layout' }, nav, grid);
-  view.querySelector('.set-search').after(layout);
-  if (exit) layout.after(exit);
-  for (const el of [...view.children]) if (el.tagName !== 'H1' && el !== layout && el !== exit && !el.classList.contains('set-search')) el.remove();
-  filterSettings('', view);
-  return view;
-}
-function filterSettings(q, root = drawerBody) {
-  q = q.trim().toLowerCase();
-  // Русские окончания: «утечки» должно найти «утечек», «запуска» — «запуск».
-  const stems = q.length >= 5 ? [q, q.slice(0, -1), q.slice(0, -2)] : [q];
-  const has = t => stems.some(x => t.includes(x));
-  const grid = root.querySelector('.set-grid');
-  if (!grid) return;
-  grid.scrollTop = 0;
-  root.querySelectorAll('.settings-categories button').forEach(b => {
-    b.setAttribute('aria-current', String(b.dataset.category === (q ? '' : settingsCategory)));
-  });
-  let any = false;
-  for (const card of grid.children) {
-    if (!q && settingsCategory && card.dataset.category !== settingsCategory) { card.hidden = true; continue; }
-    const title = (card.querySelector('h2') || {}).textContent || '';
-    const titleHit = !q || has(title.toLowerCase());
-    let hit = titleHit;
-    for (const el of card.children) {
-      if (el.tagName === 'H2') continue;
-      if (el.tagName === 'DETAILS' && q) el.open = has(el.textContent.toLowerCase()) || el.open;
-      const m = titleHit || has(el.textContent.toLowerCase());
-      el.hidden = !!q && !m;
-      if (m) hit = true;
+  const empty = h('p', { class: 'set-empty hint', hidden: true }, 'Ничего не нашлось. Попробуйте другое слово.');
+  body.append(empty);
+  function remember() { if (!query) settingsPositions.set(settingsCategory, { tab: activeTab, page: pageIndex }); }
+  function selectCategory(title) {
+    settingsCategory = title;
+    activeTab = settingsPositions.get(title)?.tab || 0;
+    pageIndex = settingsPositions.get(title)?.page || 0;
+    search.value = ''; query = '';
+    renderNavigation(); schedule();
+  }
+  function selectTab(index) { activeTab = index; pageIndex = 0; remember(); renderNavigation(); schedule(); }
+  function renderNavigation() {
+    const sec = sections.find(s => s.title === settingsCategory) || sections[0];
+    settingsCategory = sec.title; activeTab = Math.min(activeTab, sec.pages.length - 1);
+    heading.textContent = query ? 'Результаты поиска' : sec.title;
+    categorySelect.value = sec.title;
+    nav.querySelectorAll('button').forEach(b => b.setAttribute('aria-current', String(!query && b.dataset.category === sec.title)));
+    tabs.replaceChildren(...sec.pages.map((tab, i) => h('button', { type: 'button', 'aria-pressed': String(i === activeTab), onclick: () => selectTab(i) }, tab.title)));
+    tabSelect.replaceChildren(...sec.pages.map((tab, i) => h('option', { value: i, selected: i === activeTab }, tab.title)));
+    tabs.hidden = tabSelect.hidden = !!query || sec.pages.length < 2;
+    view.classList.toggle('settings-searching', !!query);
+  }
+  function filter(value) { query = value.trim().toLowerCase(); pageIndex = query ? 0 : (settingsPositions.get(settingsCategory)?.page || 0); renderNavigation(); schedule(); }
+  function schedule() { if (!disposed && !frame) frame = requestAnimationFrame(reflow); }
+  function reflow() {
+    frame = 0;
+    if (disposed || !view.isConnected || !body.clientHeight) return;
+    const stems = query.length >= 5 ? [query, query.slice(0, -1), query.slice(0, -2)] : [query];
+    const eligible = all.filter(it => query ? stems.some(q => it.searchText.includes(q)) : it.sec === settingsCategory && it.tab === activeTab);
+    const focused = all.find(it => it.el.contains(document.activeElement));
+    const available = body.clientHeight;
+    pages = []; let batch = [], used = 0;
+    // Сначала показываем кандидатов вместе: временное скрытие активного поля
+    // во время замера сбросило бы фокус после ввода символа.
+    all.forEach(it => { it.el.hidden = !eligible.includes(it); });
+    for (const item of eligible) {
+      item.el.hidden = false;
+      if (item.inner.parentElement === item.el) {
+        item.inner.hidden = false; item.open.hidden = true;
+        if (item.inner.getBoundingClientRect().height < 1) { item.el.hidden = true; continue; }
+        if (item.el.getBoundingClientRect().height > available || item.inner.scrollWidth > item.inner.clientWidth + 1) {
+          item.open.hidden = false;
+          const active = document.activeElement;
+          if (item.inner.contains(active)) {
+            item.open.click(); active.focus({ preventScroll: true });
+          } else item.inner.hidden = true;
+        }
+      }
+      const height = item.el.getBoundingClientRect().height;
+      // Пустые динамические блоки и пояснения другой темы не занимают страницу.
+      if (height < 1) { item.el.hidden = true; continue; }
+      const gap = batch.length ? 12 : 0;
+      if (batch.length && used + gap + height > available) { pages.push(batch); batch = []; used = 0; }
+      used += (batch.length ? 12 : 0) + height; batch.push(item);
     }
-    card.hidden = !hit;
-    if (hit) any = true;
+    if (batch.length) pages.push(batch);
+    if (focused && eligible.includes(focused)) { const at = pages.findIndex(p => p.includes(focused)); if (at >= 0) pageIndex = at; }
+    pageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
+    all.forEach(it => { it.el.hidden = !pages[pageIndex]?.includes(it); });
+    empty.hidden = !!pages.length;
+    prev.disabled = pageIndex === 0; next.disabled = pageIndex >= pages.length - 1;
+    const message = pages.length > 1 ? `${pageIndex + 1} / ${pages.length}` : query ? `${pages.flat().length} найдено` : 'Все параметры';
+    if (status.textContent !== message) status.textContent = message;
+    remember();
   }
-  let empty = root.querySelector('.set-empty');
-  if (!any && !empty) grid.after(h('p', { class: 'set-empty hint' }, 'Ничего не нашлось. Попробуйте другое слово.'));
-  if (any && empty) empty.remove();
+  function changePage(index) { pageIndex = index; reflow(); }
+  const resize = new ResizeObserver(schedule);
+  resize.observe(view); resize.observe(body);
+  const changes = new MutationObserver(schedule);
+  changes.observe(body, { childList: true, subtree: true, characterData: true });
+  const theme = new MutationObserver(schedule);
+  theme.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-skin', 'data-nav'] });
+  body.addEventListener('change', schedule);
+  body.addEventListener('input', schedule);
+  document.fonts.ready.then(schedule);
+  document.fonts.addEventListener('loadingdone', schedule);
+  settingsDispose = () => { disposed = true; cancelAnimationFrame(frame); resize.disconnect(); changes.disconnect(); theme.disconnect(); document.fonts.removeEventListener('loadingdone', schedule); settingsDispose = null; };
+  renderNavigation(); schedule();
+  return view;
 }
 
 function backupDialog() {
@@ -4296,15 +4340,13 @@ async function boot() {
       if (savePending || JSON.stringify(fresh) === JSON.stringify(S)) return;
       S = fresh;
       applyTheme(); applySections(); updateStatus();
-      // Раздел пересобираем с новыми настройками (раскрытые блоки и прокрутка сохраняются),
+      // Раздел пересобираем с новыми настройками (экран настроек и прокрутка других разделов сохраняются),
       // иначе его кнопки меняли бы уже ненужную копию настроек.
       if (view !== 'overview' && VIEWS[view] && !drawerBody.contains(document.activeElement)) {
-        const scrollTarget = view === 'settings' ? drawerBody.querySelector('.set-grid') : drawerBody;
-        const top = scrollTarget ? scrollTarget.scrollTop : 0;
+        const top = drawerBody.scrollTop;
         Object.keys(sigs).forEach(k => delete sigs[k]);
         drawerBody.replaceChildren(VIEWS[view]());
-        const restoredTarget = view === 'settings' ? drawerBody.querySelector('.set-grid') : drawerBody;
-        if (restoredTarget) restoredTarget.scrollTop = top;
+        drawerBody.scrollTop = view === 'settings' ? 0 : top;
         refreshView();
       }
     } catch (_) { /* не важно */ }
