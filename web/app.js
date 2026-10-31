@@ -1312,6 +1312,7 @@ function renderLanes() {
     return;
   }
   Branches.unmount();
+  box.classList.remove('many-routes');
   renderProcShelf();
   const geo = lanes.map((l, i) => ({ ...l, ny: n === 1 ? Y0 : top + i * (bottom - top) / (n - 1), nx: nodeX[l.key] }));
   geo.forEach(l => {
@@ -1566,6 +1567,7 @@ function renderBranches(lanes) {
   const lb = $('#lanesBox');
   if (!lb) return {};
   const shelf = $('#procShelf'); if (shelf) shelf.replaceChildren();
+  $('#lanesCard')?.classList.toggle('many-routes', lanes.length >= 4);
   const p = phase();
   if (p === 'on' && Date.now() - smartAt > 30000 && S.smartDirect) {
     smartAt = Date.now();

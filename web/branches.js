@@ -1,7 +1,7 @@
 // Живые ветви — главная схема: от компьютера к интернету растут ветки «через сервер», «напрямую»,
 // «zapret» и «Telegram». Толщина ветки — скорость, по ней летят «семена» трафика. На ветках висят
-// сайты, которые сейчас открыты; лист можно перетащить на другую ветку — это станет правилом.
-// Рисуется на canvas (ветки, частицы) с HTML поверх (узлы, листья): так работают перетаскивание,
+// приложения и сайты в компактных метках; метку можно перенести на другой маршрут.
+// Рисуется на canvas (ветки, частицы) с HTML поверх (узлы, метки): так работают перетаскивание,
 // подсказки и клавиатура. Анимация идёт только пока схема на экране.
 
 const Branches = (() => {
@@ -28,8 +28,9 @@ const Branches = (() => {
   function geom(key) {
     const c = rootPoint(), end = netPoint();
     const telegram = !!(br.tg?.active && br.tg.target > 0);
-    const y = { proxy: H * (telegram ? .29 : .22), direct: H * .51, zapret: H * .8, tg: Math.max(36, H * .1) }[key];
-    const x = key === 'tg' ? W * .3 : W * .5;
+    const y = { proxy: H * (telegram ? .32 : .24), direct: H * .54, zapret: H * .83, tg: H * .1 }[key];
+    // Одинаковые X узлов и управляющих точек сохраняют порядок маршрутов на всём пути.
+    const x = W * .5;
     const reach = Math.min(W * .16, (x - c[0]) * .55, (end[0] - x) * .5);
     return [c, [c[0] + reach, c[1]], [x - reach, y], [x, y], [x + reach, y], [end[0] - reach, end[1]], end];
   }
@@ -76,6 +77,7 @@ const Branches = (() => {
     W = r.width; H = r.height; dpr = Math.min(2, devicePixelRatio || 1);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     box.classList.toggle('small', narrow());
+    box.classList.toggle('tight', H < 390);
     // Кнопка подключения стоит на месте узла «Компьютер».
     box.style.setProperty('--pcx', cx0() + 'px'); box.style.setProperty('--pcy', H * 0.5 + 'px');
     placeNodes(); layout();
@@ -178,7 +180,7 @@ const Branches = (() => {
   }
 
   // ---------- листья ----------
-  const LEAF = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M14 2C7 2 2 5.5 2 11c0 1.2.3 2.2.8 3 .6-3.4 3-6.4 6.7-8-3 2.2-4.8 5-5.2 8C11 14 14 9 14 2z"/></svg>';
+  const LEAF = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c4 4 4 12 0 16-4-4-4-12 0-16"/></svg>';
   const routeBranch = r => r === 'direct' ? 'direct' : r === 'zapret' ? 'zapret' : r === 'telegram' ? 'tg' : 'proxy';
   function syncLeaves() {
     const now = Date.now(), d = data;
@@ -217,7 +219,7 @@ const Branches = (() => {
     const el = document.createElement('button');
     el.type = 'button'; el.className = 'br-leaf';
     el.innerHTML = '<span class="br-leaf-body">' + (lf.icon ? `<span class="svc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${lf.icon}"/></svg></span>` : LEAF) + '<span class="h"></span></span><span class="why"></span>';
-    el.dataset.host = lf.host; el.dataset.kind = lf.kind;
+    el.dataset.host = lf.host; el.dataset.kind = lf.kind; el.title = lf.label;
     el.querySelector('.h').textContent = lf.label;
     lf.el = el; leavesEl.append(el); bindDrag(lf);
   }
@@ -251,17 +253,16 @@ const Branches = (() => {
     const placed = [], over = { ...untracked };
     const list = [...leaves.values()].sort((a, b) => (b.drop ? 1 : 0) - (a.drop ? 1 : 0) || a.host.localeCompare(b.host));
     for (const lf of list) {
-      lf.el.style.setProperty('--leaf-tilt', (lf.side > 0 ? 10 : -12) + 'deg');
       const w = lf.el.offsetWidth || 110, h = lf.el.offsetHeight || 24, p = geom(lf.b);
       if (!br[lf.b] || br[lf.b].grow < .6) { lf.over = true; continue; }
       let best = null, bestScore = Infinity;
       const ts = []; for (let t = 0.14; t <= 0.88; t += 0.02) ts.push(+t.toFixed(2));
       ts.sort((a, b) => Math.abs(a - lf.pref) - Math.abs(b - lf.pref));
-      outer: for (const t of ts) for (const side of [lf.side, -lf.side]) for (const off of [14, 32, 50]) {
+      outer: for (const t of ts) for (const side of [lf.side, -lf.side]) for (const off of [6, 14, 24]) {
         const base = bez(p, t), n = norm(p, t);
-        const cx = base[0] + 30 + n[0] * side * (off + h / 2), cy = base[1] + n[1] * side * (off + h / 2);
+        const cx = base[0] + n[0] * side * (off + h / 2), cy = base[1] + n[1] * side * (off + h / 2);
         const r = { x: cx - w / 2 - 3, y: cy - h / 2 - 3, w: w + 6, h: h + 6 };
-        let score = Math.abs(t - lf.pref) * 10 + (off > 14 ? 1 : 0);
+        let score = Math.abs(t - lf.pref) * 10 + (off > 6 ? 1 : 0);
         if (r.x < 4 || r.y < 4 || r.x + r.w > W - 4 || r.y + r.h > H - 4) score += 100;
         for (const b of blocked) if (hit(r, b)) score += 80;
         for (const b of placed) if (hit(r, b)) score += 80;
@@ -269,7 +270,7 @@ const Branches = (() => {
         if (score < bestScore) { bestScore = score; best = { t, side, cx, cy, r, base }; }
         if (score < 1.2) break outer;
       }
-      lf.over = bestScore >= 80 && !lf.drop;
+      lf.over = bestScore >= 80;
       if (!lf.over) placed.push(best.r);
       Object.assign(lf, { t: best.t, side: best.side, pos: [best.cx, best.cy], base: best.base });
       delete lf.drop;
@@ -385,37 +386,17 @@ const Branches = (() => {
   function shape(k, time) {
     const b = br[k], p = geom(k), steps = 80, until = Math.max(2, Math.floor(steps * b.grow));
     const kb = Math.max(0, b.speed) / 1024;
-    const w0 = b.thin ? 2 : b.active ? 3 + Math.min(4, Math.log2(kb + 1) * .42) : 2, w1 = Math.max(1.2, w0 * .38);
+    const w0 = b.thin ? 1.5 : b.active ? 2 + Math.min(1.6, Math.log2(kb + 1) * .2) : 1.5, w1 = Math.max(1, w0 * .5);
     const L = [], R = [];
     for (let i = 0; i <= until; i++) {
       const t = i / steps, pt = bez(p, t), n = norm(p, t);
-      // В покое схема неподвижна; небольшое движение сопровождает только трафик.
-      const motion = !reduce() && b.speed >= 50;
-      const droop = b.droop * Math.sin(Math.PI * t * 2) ** 2 * 14 + (motion ? Math.sin(t * 6 + time * .0011) * .6 : 0);
+      // Геометрия остаётся стабильной; движение трафика показывают частицы.
+      const droop = b.droop * Math.sin(Math.PI * t * 2) ** 2 * 14;
       const w = (w0 + (w1 - w0) * t) / 2;
       L.push([pt[0] + n[0] * w, pt[1] + n[1] * w + droop]);
       R.push([pt[0] - n[0] * w, pt[1] - n[1] * w + droop]);
     }
     return { L, R, w0 };
-  }
-  // Маленькие матовые листочки — декоративные, без подписей и hit targets.
-  function drawFoliage(k, time) {
-    const b = br[k]; if (!b || b.grow < .7) return;
-    const curve = geom(k), col = css(b.active && !data.offline ? b.color : 'var(--faint)', time);
-    for (const [i, t] of [0.34, 0.56, 0.8, 0.98].entries()) {
-      if (t > b.grow || narrow() && i === 1) continue;
-      const base = bez(curve, t), normal = norm(curve, t), side = i % 2 ? 1 : -1;
-      const length = narrow() ? 17 : 24 + i * 3;
-      const tip = [base[0] + normal[0] * side * length + 9, base[1] + normal[1] * side * length];
-      if ([...leaves.values()].some(l => l.pos && !l.over && Math.hypot(l.pos[0] - tip[0], l.pos[1] - tip[1]) < 65)) continue;
-      if ([...nodesEl.children].some(el => { const x = parseFloat(el.style.left), y = parseFloat(el.style.top); return Math.hypot(x - tip[0], y - tip[1]) < 42; })) continue;
-      const angle = Math.atan2(tip[1] - base[1], tip[0] - base[0]);
-      const sway = !reduce() && b.speed > 50 ? Math.sin(time * .001 + i * 2) * .07 : 0;
-      ctx.save(); ctx.translate(base[0], base[1]); ctx.rotate(angle + sway);
-      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.globalAlpha = b.active ? .17 : .07;
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(length * .45, -10, length, 0); ctx.quadraticCurveTo(length * .45, 10, 0, 0); ctx.fill();
-      ctx.globalAlpha *= 1.5; ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(length * .9, 0); ctx.stroke(); ctx.restore();
-    }
   }
   function drawBranch(k, time) {
     const b = br[k];
@@ -437,12 +418,12 @@ const Branches = (() => {
       ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.1; ctx.stroke();
     }
     if (b.grow > .6) for (const lf of leaves.values()) if (lf.b === k && lf.base && !lf.over && lf.pos && !lf.el.classList.contains('drag')) {
-      // Черешок следует за текущей позицией листа, включая CSS-переход при переносе.
+      // Короткая связь следует за меткой, включая CSS-переход при переносе.
       const rect = lf.el.getBoundingClientRect();
-      const tip = [rect.left - frameRect.left + 12, rect.top - frameRect.top + (lf.side > 0 ? 8 : 50)];
+      const tip = [rect.left - frameRect.left + rect.width / 2, rect.top - frameRect.top + (lf.side > 0 ? 0 : rect.height)];
       const by = lf.base[1] + b.droop * Math.sin(Math.PI * lf.t * 2) ** 2 * 14;
       ctx.beginPath(); ctx.moveTo(lf.base[0], by);
-      ctx.quadraticCurveTo(lf.base[0] + 18, by, tip[0], tip[1]);
+      ctx.quadraticCurveTo((lf.base[0] + tip[0]) / 2, by, tip[0], tip[1]);
       ctx.strokeStyle = col; ctx.globalAlpha = .5; ctx.lineWidth = 1.3; ctx.stroke(); ctx.globalAlpha = 1;
     }
     if (dead || reduce() || b.grow < .98) { parts[k] = []; return; }
@@ -526,7 +507,6 @@ const Branches = (() => {
     const key = Object.keys(br).map(k => k + (br[k].grow > .6 ? 1 : 0)).join('');
     if (key !== growKey) { growKey = key; layout(); }
     if (dragging) drawBands(time);
-    for (const k of ['proxy', 'direct', 'zapret', 'tg']) drawFoliage(k, time);
     for (const k of ['tg', 'zapret', 'proxy', 'direct']) drawBranch(k, time);
     drawPulses(time);
     cutHoles();

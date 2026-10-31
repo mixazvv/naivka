@@ -73,7 +73,20 @@ const root = path.resolve(__dirname, '..');
       });
     });
     for(const j of joins) { assert(j.node<6,`${j.key} misses its circle`);assert(j.end<6,`${j.key} misses Internet`); }
-    console.log('Directed download/upload, circle joins and shared Internet: OK');
+    const ordered = await page.evaluate(() => {
+      const names=['tg','proxy','direct','zapret'];
+      const ctx=document.querySelector('canvas').getContext('2d'),styles=getComputedStyle(document.querySelector('#tree'));
+      const curves=names.map(key=>{
+        const lane=treeData.lanes.find(l=>l.key===key);ctx.save();ctx.fillStyle=styles.getPropertyValue(lane.color.slice(4,-1)).trim();const color=ctx.fillStyle;ctx.restore();
+        return branchPolygons.filter(p=>p.color===color).at(-1).points;
+      });
+      const yAt=(points,x)=>{const ys=[];for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];if((a[0]<=x&&b[0]>x)||(b[0]<=x&&a[0]>x))ys.push(a[1]+(b[1]-a[1])*(x-a[0])/(b[0]-a[0]));}return (Math.min(...ys)+Math.max(...ys))/2;};
+      return [200,300,400,500,600,700,800].every(x=>{const y=curves.map(p=>yAt(p,x));return y.every((v,i)=>Number.isFinite(v)&&(!i||v>y[i-1]));});
+    });
+    assert(ordered,'Telegram, proxy, direct and zapret must not cross');
+    const sizes=await page.locator('.br-leaf[data-hidden="false"]').evaluateAll(els=>els.map(el=>({w:el.offsetWidth,h:el.offsetHeight})));
+    assert(sizes.every(s=>s.w<=113&&s.h<=29),'markers must stay compact');
+    console.log('Directed streams, circle joins, ordered branches and compact markers: OK');
     const drag = async (cancel = false, target = leaf) => {
       const a = await target.boundingBox(), box = await page.locator('#tree').boundingBox();
       await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
@@ -113,6 +126,9 @@ const root = path.resolve(__dirname, '..');
       const more = page.locator('.br-more').first(); await more.click();
       assert(await page.evaluate(() => moreOpened), 'overflow must open connections');
     }
+    await page.addStyleTag({content:'#tree{height:320px}'});await page.waitForTimeout(250);await page.evaluate(()=>renderTree());
+    const nodes=await page.locator('.route-node').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,w:r.width,h:r.height}}));
+    for(const a of nodes)for(const b of nodes)if(a!==b)assert(!(a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h),'route labels overlap in a short diagram');
     await page.evaluate(() => { Branches.unmount(); renderTree(); }); await page.waitForTimeout(200);
     assert.equal(await page.locator('.br-canvas').count(), 1); assert.equal(await page.locator('.br-node[data-key="comp"]').count(), 1);
     console.log('Narrow layout and remount: OK'); assert.deepEqual(errors, []);
