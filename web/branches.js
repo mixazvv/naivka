@@ -80,7 +80,7 @@ const Branches = (() => {
   // Узлы — HTML поверх canvas.
   let nodesSig = '', popNodes = false;
   function renderNodes() {
-    const d = data, sig = JSON.stringify([d.phase, d.lanes.map(l => [l.key, l.node && [l.node.title, l.node.sub, l.node.cc], l.active]), d.endSub, d.compSub, narrow()]);
+    const d = data, sig = JSON.stringify([d.phase, d.lanes.map(l => [l.key, l.node && [l.node.title, l.node.sub, l.node.cc], l.active]), d.endSub, d.compSub, d.controlLabel, narrow()]);
     // Узлы на месте и подпись та же — ничего не делаем. Пропали (окно пересобрали, сбой) — рисуем заново.
     if (sig === nodesSig && nodesEl.isConnected && nodesEl.querySelector('[data-key="comp"]')) return;
     const mk = (key, cls, iconPath, title, sub, extra, click) => {
@@ -107,7 +107,8 @@ const Branches = (() => {
     }
     out.push(mk('net', narrow() ? 'end' : 'side', ICONS.globe, 'Интернет', d.endSub));
     const comp = document.createElement('div'); comp.className = 'br-node comp'; comp.dataset.key = 'comp';
-    comp.innerHTML = '<span class="br-txt"><b>Компьютер</b><small></small></span>';
+    comp.innerHTML = '<span class="br-txt"><b></b><small></small></span>';
+    comp.querySelector('b').textContent = d.controlLabel;
     comp.querySelector('small').textContent = d.compSub;
     out.push(comp);
     nodesEl.replaceChildren(...out);
@@ -350,7 +351,9 @@ const Branches = (() => {
     const L = [], R = [], off = data.offline;
     for (let i = 0; i <= until; i++) {
       const t = i / steps, pt = bez(p, t), n = norm(p, t);
-      const droop = off ? t * t * 24 + Math.sin(t * 8 + time * .002) * 2 : (reduce() ? 0 : Math.sin(t * 6 + time * .0011) * 1.2);
+      // В покое схема неподвижна; небольшое движение сопровождает только трафик.
+      const motion = !reduce() && b.speed >= 50;
+      const droop = off ? t * t * 24 : (motion ? Math.sin(t * 6 + time * .0011) * 1.2 : 0);
       const w = (w0 + (w1 - w0) * t) / 2;
       L.push([pt[0] + n[0] * w, pt[1] + n[1] * w + droop]);
       R.push([pt[0] - n[0] * w, pt[1] - n[1] * w + droop]);

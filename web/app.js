@@ -648,7 +648,8 @@ function updateStatusNow() {
   if (tbs) tbs.textContent = TITLES[p] + (p === 'on' ? ' · ' + cs.name : '');
 
   if ($('#statusTitle')) {
-    $('#statusTitle').textContent = zapretOnly() && p === 'on' ? 'zapret работает' : TITLES[p];
+    const title = zapretOnly() && p === 'on' ? 'zapret работает' : TITLES[p];
+    if ($('#statusTitle').textContent !== title) $('#statusTitle').textContent = title;
     let sub = zapretOnly() ? 'Режим «Только zapret»: нажмите на кнопку, чтобы включить zapret.' : 'Трафик идёт как обычно, без сервера.';
     if (p === 'on' && zapretOnly()) sub = 'Без сервера: YouTube, Discord и другие сайты из списков zapret. Остальное — как обычно.';
     else if (p === 'on') sub = (ST.mode === 'tun' ? 'Весь трафик компьютера' : `Системный прокси 127.0.0.1:${ST.mixedPort}`) + `, ${fmtDur(Date.now() / 1000 - sessionStart())}`;
@@ -657,6 +658,7 @@ function updateStatusNow() {
     else if (p === 'revive') sub = 'Связь пропала. Naivka подключится снова сама, как только получится.';
     else if (p === 'blocked') sub = 'Ядро упало, защита от утечек не выпускает трафик напрямую. Naivka пробует восстановить связь.';
     $('#statusSub').textContent = sub;
+    renderHomeServer();
     const btn = $('#connectBtn');
     btn.disabled = p === 'wait';
     btn.setAttribute('aria-label', powerLabel(p));
@@ -1075,14 +1077,14 @@ async function setZapretOnly(v) {
 }
 
 function viewOverview() {
-  return h('div', { class: 'stage-inner' },
+  return h('div', { class: 'stage-inner home-calm' },
     h('div', { class: 'stage-head' },
       h('div', { class: 'stage-status' },
-        h('div', { class: 'status-title', id: 'statusTitle' }, '…'),
-        h('div', { class: 'sub', id: 'statusSub' }),
-        // Подключено — крупная живая скорость под заголовком (подробности — в «Сводке»).
-        h('button', { class: 'live-speed', id: 'liveSpeed', type: 'button', title: 'График скорости и активные сайты', onclick: () => openDiag('now') })),
-      h('div', { class: 'sysline', id: 'sysLine' })),
+        h('span', { class: 'home-eyebrow' }, 'Подключение'),
+        h('div', { class: 'home-state' }, h('span', { class: 'home-led', 'aria-hidden': 'true' }),
+          h('div', { class: 'status-title', id: 'statusTitle', role: 'status' }, '…')),
+        h('div', { class: 'sub', id: 'statusSub' })),
+      h('div', { class: 'home-server', id: 'homeServer' })),
     h('div', { id: 'notices', class: 'stage-notices' }),
     h('div', { class: 'lanes-stage', id: 'lanesCard' },
       h('div', { class: 'lanes-box', id: 'lanesBox' }, h('div', { id: 'lanesSvg' }), powerButton('connectBtn')),
@@ -1092,6 +1094,7 @@ function viewOverview() {
     h('div', { class: 'stage-controls' },
       segmented([['srv', 'Сервер + zapret'], ['zap', 'Только zapret']], () => zapretOnly() ? 'zap' : 'srv', setZapretOnly, 'Режим'),
       pathMenu(),
+      h('div', { class: 'sysline', id: 'sysLine' }),
       h('button', { class: 'btn link stage-help', type: 'button', onclick: () => openDiag('check') }, 'Сайт не открывается?')),
     h('div', { class: 'stage-tiles' },
       h('button', { class: 'tile', type: 'button', id: 'tileSpeed', onclick: () => openDiag('now'), title: 'График скорости и активные сайты' }),
@@ -1101,6 +1104,30 @@ function viewOverview() {
     h('div', { class: 'stage-ready', id: 'stageReady' }),
     // Широкое окно: справа живая колонка — что сейчас качается и каким путём (CSS прячет её в узком).
     h('aside', { class: 'live-col', id: 'liveCol', 'aria-label': 'Сейчас' }));
+}
+
+// Быстрый выбор использует тот же API, что и раздел серверов. Не пересобираем select
+// на каждом тике статистики: раскрытый список и фокус должны оставаться на месте.
+function renderHomeServer() {
+  const box = $('#homeServer');
+  if (!box || !S) return;
+  const servers = serverOrder();
+  patch('homeServer', JSON.stringify([zapretOnly(), S.selected, S.wl.enabled,
+    servers.map(x => [x.id, x.name, x.host])]), () => {
+    if (zapretOnly()) return [h('span', { class: 'home-eyebrow' }, 'Без сервера'),
+      h('b', null, 'Только zapret'),
+      h('button', { class: 'home-server-link', type: 'button', onclick: () => go('bypass') }, 'Открыть «Обход»')];
+    if (!servers.length && !S.wl.enabled) return [h('span', { class: 'home-eyebrow' }, 'Сервер'),
+      h('b', null, 'Нет серверов'),
+      h('button', { class: 'home-server-link', type: 'button', onclick: () => go('servers') }, 'Добавить сервер')];
+    const options = [['auto', 'Автовыбор'], ...servers.map(x => [x.id, x.name || x.host])];
+    if (S.wl.enabled) options.push(['wl', 'Подписка']);
+    if (!options.some(([id]) => id === S.selected)) options.push([S.selected, currentServer().name]);
+    return [h('label', { class: 'home-eyebrow', for: 'homeServerSelect' }, 'Сервер'),
+      h('select', { id: 'homeServerSelect', value: S.selected, onchange: e => selectServer(e.target.value) },
+        options.map(([id, name]) => h('option', { value: id, selected: id === S.selected }, name))),
+      h('button', { class: 'home-server-link', type: 'button', onclick: () => go('servers') }, 'Все серверы')];
+  });
 }
 
 // Меню «Путь»: перехват (прокси или TUN) и маршрут (Россия напрямую или всё через сервер).
@@ -1544,7 +1571,8 @@ function renderBranches(lanes) {
   return Branches.update(lb, {
     phase: p, offline: !!(STATS && STATS.health === 'offline' && p === 'on'), lanes: sp, top,
     endSub: ROUTING[S.routing],
-    compSub: zapretOnly() ? (p === 'on' ? 'zapret включён' : 'нажмите, чтобы включить zapret') : p === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : p === 'revive' ? 'нажмите, чтобы отключить' : 'нажмите, чтобы подключить',
+    controlLabel: powerLabel(p),
+    compSub: zapretOnly() ? 'Только zapret' : 'Компьютер',
     flag: code => flag(code), displayDomain, why: branchWhy, onDrop: branchDrop, onPick: sitePick,
     onNode: k => go(k === 'proxy' ? 'servers' : 'bypass'), toast,
   }) || {};

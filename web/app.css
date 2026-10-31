@@ -1817,3 +1817,51 @@ body[data-state="on"] .live-speed { display: flex; }
   .feedback { height: 30px; }
   .side-foot > .pet:not(.free) { width: 50px; height: 66px; }
 }
+
+/* Главная: спокойная схема и ясно разделённые статус, сервер и маршрут. */
+.home-calm .stage-head { align-items: center; flex-wrap: nowrap; padding: 22px 24px; gap: 28px;
+  border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.home-eyebrow { display: block; color: var(--muted); font: 500 11px/1.4 var(--font); letter-spacing: .12em; text-transform: uppercase; }
+.home-state { display: flex; align-items: center; gap: 12px; margin-top: 9px; }
+.home-led { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+body[data-state="on"] .home-led { background: var(--tunnel); }
+body[data-state="wait"] .home-led, body[data-state="revive"] .home-led { background: var(--warn); }
+body[data-state="err"] .home-led, body[data-state="blocked"] .home-led { background: var(--danger); }
+.home-calm .stage-status { min-width: 0; flex: 1; }
+.home-calm .status-title { font-size: clamp(22px, 2.5vw, 32px); line-height: 1.2; }
+.home-calm .stage-status .sub { margin: 8px 0 0 21px; font-size: 13px; line-height: 1.6; max-width: 48ch; }
+.home-server { flex: 0 1 250px; min-width: 180px; display: flex; flex-direction: column; gap: 7px; border-left: 1px solid var(--line); padding-left: 24px; }
+.home-server > b { font-size: 16px; }
+.home-server select { width: 100%; min-width: 0; font-size: 15px; font-weight: 600; cursor: pointer; }
+.home-server-link { align-self: flex-start; border: 0; padding: 0; background: none; color: var(--muted); font: 500 12px/1.5 var(--font); cursor: pointer; }
+.home-server-link:hover { color: var(--tunnel); }
+.home-server-link:focus-visible { outline: 2px solid var(--tunnel); outline-offset: 4px; border-radius: 2px; }
+/* Скорости остаются в плитке — заголовок больше не повторяет те же числа. */
+.home-calm .live-speed { display: none; }
+.home-calm .lanes-stage { margin-top: 14px; }
+.home-calm .lanes-box.branches::before { display: none; }
+.home-calm .br-disc { box-shadow: none; }
+.home-calm .stage-controls { padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); gap: 12px; }
+.home-calm .sysline { border: 0; background: none; padding: 0; margin-left: auto; font-size: 12px; }
+.home-calm .sl-ms { display: none; }
+.home-calm .stage-help { font-size: 12px; }
+.home-calm .stage-ready { background: none; border: 0; padding-left: 0; padding-right: 0; }
+.home-calm .stage-tiles .tile { background: var(--surface); box-shadow: none; border-radius: 14px; }
+:root[data-skin="gold"] .home-calm .stage-head,
+:root[data-skin="blocks"] .home-calm .stage-head { border-radius: 0; }
+@media (max-width: 1100px) {
+  .home-calm .stage-head { padding: 18px; gap: 20px; }
+  .home-calm .sysline { margin-left: 0; }
+}
+@media (max-width: 820px), (max-height: 640px) {
+  .home-calm .stage-head { padding: 14px 16px; gap: 16px; border-radius: 14px; }
+  .home-calm .home-server { flex-basis: 190px; min-width: 150px; padding-left: 16px; }
+  .home-calm .stage-status .sub { margin-left: 0; font-size: 12px; }
+  .home-calm .status-title { font-size: 22px; }
+  .home-calm .stage-controls { padding: 10px 0; }
+}
+@media (max-width: 620px) {
+  .home-calm .stage-head { flex-wrap: wrap; }
+  .home-calm .stage-status { flex-basis: 100%; }
+  .home-calm .home-server { flex: 1; border-left: 0; border-top: 1px solid var(--line); padding: 12px 0 0; }
+}
