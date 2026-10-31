@@ -7,6 +7,7 @@
 const Branches = (() => {
   let box = null, cv = null, ctx = null, nodesEl = null, leavesEl = null, toastFn = null;
   let W = 0, H = 0, dpr = 1, raf = 0, ro = null;
+  let frameRect = null;
   let data = null;             // последнее состояние из app.js
   let dragOver = null;
   let dragging = false;        // что-то тащат (лист или программу с полки) — ветки показываются широкими дорожками
@@ -14,28 +15,28 @@ const Branches = (() => {
   const parts = {};            // частицы по веткам
   const leaves = new Map();    // host → { host, b, pref, side, t, pos, base, el, seen, pending, over }
   const LEAF_TTL = 45000;      // лист без трафика живёт 45 с
-  const MAX_LEAVES = 10;
+  const MAX_LEAVES = 12;
+  let untracked = {};
   const reduce = () => typeof REDUCE !== 'undefined' && REDUCE.matches;
 
   // ---------- геометрия ----------
   const narrow = () => W < 620;
-  // Справа оставляем место под подпись «Интернет» сбоку: так её не пересекают сходящиеся ветки.
-  // Кнопка подключения (100 px, в узком окне 72) целиком в окне.
-  const cx0 = () => Math.max(W * 0.1, narrow() ? 48 : 68), cx1 = () => narrow() ? Math.min(W * 0.9, W - 34) : W - 150;
+  // Две кривые с общей точкой-узлом: вход и выход касаются кружка по одной касательной.
+  const cx0 = () => Math.max(W * .095, narrow() ? 40 : 52);
+  const netPoint = () => [narrow() ? W - 40 : W - 155, H * .5];
+  const rootPoint = () => [cx0(), H * .5];
   function geom(key) {
-    const c = [cx0(), H * 0.5], n = [cx1(), H * 0.5], top = 64, bot = H - 64;
-    switch (key) {
-      case 'proxy': return [c, [W * 0.3, top - 44], [W * 0.7, top - 44], n];
-      case 'direct': return [c, [W * 0.38, H * 0.6], [W * 0.62, H * 0.4], n];
-      case 'zapret': return [c, [W * 0.3, bot + 30], [W * 0.7, bot + 30], n];
-      // Telegram — дуга над веткой сервера до «Интернета»: tg-ws-proxy тоже ведёт в интернет.
-      // Вершина у верхнего края (y ≈ 26), узел — на ней слева, над веткой сервера.
-      case 'tg': { const y = (26 - 0.125 * H) / 0.75; return [c, [c[0] - 10, y], [n[0] + 10, y], n]; }
-    }
+    const c = rootPoint(), end = netPoint();
+    const telegram = !!(br.tg?.active && br.tg.target > 0);
+    const y = { proxy: H * (telegram ? .29 : .22), direct: H * .51, zapret: H * .8, tg: Math.max(36, H * .1) }[key];
+    const x = key === 'tg' ? W * .3 : W * .5;
+    const reach = Math.min(W * .16, (x - c[0]) * .55, (end[0] - x) * .5);
+    return [c, [c[0] + reach, c[1]], [x - reach, y], [x, y], [x + reach, y], [end[0] - reach, end[1]], end];
   }
-  const TG_T = .3; // где на дуге Telegram стоит его узел
-  const bez = (p, t) => { const u = 1 - t; return [0, 1].map(i => u*u*u*p[0][i] + 3*u*u*t*p[1][i] + 3*u*t*t*p[2][i] + t*t*t*p[3][i]); };
-  const tan = (p, t) => { const u = 1 - t; return [0, 1].map(i => 3*u*u*(p[1][i]-p[0][i]) + 6*u*t*(p[2][i]-p[1][i]) + 3*t*t*(p[3][i]-p[2][i])); };
+  const cubic = (p, t) => { const u = 1 - t; return [0, 1].map(i => u*u*u*p[0][i] + 3*u*u*t*p[1][i] + 3*u*t*t*p[2][i] + t*t*t*p[3][i]); };
+  const cubicTan = (p, t) => { const u = 1 - t; return [0, 1].map(i => 3*u*u*(p[1][i]-p[0][i]) + 6*u*t*(p[2][i]-p[1][i]) + 3*t*t*(p[3][i]-p[2][i])); };
+  const bez = (p, t) => t <= .5 ? cubic(p.slice(0, 4), t * 2) : cubic(p.slice(3), (t - .5) * 2);
+  const tan = (p, t) => t <= .5 ? cubicTan(p.slice(0, 4), t * 2) : cubicTan(p.slice(3), (t - .5) * 2);
   const norm = (p, t) => { const d = tan(p, t), l = Math.hypot(d[0], d[1]) || 1; return [-d[1] / l, d[0] / l]; };
 
   // ---------- построение ----------
@@ -51,7 +52,8 @@ const Branches = (() => {
     box.prepend(cv); box.append(nodesEl, leavesEl);
     // Экран собран заново (ушли в другой раздел и вернулись) — всё рисуем с нуля:
     // иначе узлы считались бы уже нарисованными и пропадали.
-    leaves.clear(); nodesSig = ''; growKey = ''; data = null;
+    leaves.clear(); nodesSig = ''; growKey = ''; data = null; lastPhase = ''; lastFrame = 0; pulses.length = 0;
+    for (const k in parts) delete parts[k];
     for (const k in br) delete br[k];
     ro = new ResizeObserver(resize); ro.observe(box);
     resize();
@@ -62,8 +64,10 @@ const Branches = (() => {
     cancelAnimationFrame(raf); raf = 0;
     if (ro) ro.disconnect();
     cv.remove(); nodesEl.remove(); leavesEl.remove();
+    box.querySelectorAll('.br-more').forEach(el => el.remove());
     box.classList.remove('branches');
-    box = null; leaves.clear();
+    box = null; leaves.clear(); dragging = false; dragOver = null;
+    for (const k in parts) delete parts[k];
   }
   function resize() {
     if (!box) return;
@@ -99,9 +103,10 @@ const Branches = (() => {
     };
     const out = [];
     for (const l of d.lanes) {
-      if (!l.node) continue;
-      const flag = l.node.cc && d.flag ? d.flag(l.node.cc) : null;
-      const el = mk(l.key, l.key === 'tg' ? 'west' : '', ICONS[l.node.icon], l.node.title, l.node.sub, flag, () => d.onNode(l.key));
+      const title = { proxy: 'Сервер', direct: 'Напрямую', zapret: 'zapret', tg: 'Telegram' }[l.key];
+      const extra = l.node?.cc && d.flag ? d.flag(l.node.cc) : null;
+      const el = mk(l.key, 'route-node', ICONS[l.node?.icon] || ICONS.route || ICONS.globe, l.node?.title || title, l.node?.sub || '', extra, () => d.onNode(l.key));
+      el.title = l.node ? [l.node.title, l.node.sub].filter(Boolean).join(' · ') : title;
       if (d.phase !== 'on' || !l.active) el.dataset.off = '';
       out.push(el);
     }
@@ -128,8 +133,7 @@ const Branches = (() => {
       const k = el.dataset.key;
       let p;
       if (k === 'comp') p = [cx0(), H * 0.5 + (narrow() ? 44 : 60)]; // подпись под кнопкой
-      else if (k === 'net') p = [cx1(), H * 0.5];
-      else if (k === 'tg') p = bez(geom('tg'), TG_T);
+      else if (k === 'net') p = netPoint();
       else p = bez(geom(k), .5);
       el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px';
     }
@@ -175,44 +179,52 @@ const Branches = (() => {
 
   // ---------- листья ----------
   const LEAF = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M14 2C7 2 2 5.5 2 11c0 1.2.3 2.2.8 3 .6-3.4 3-6.4 6.7-8-3 2.2-4.8 5-5.2 8C11 14 14 9 14 2z"/></svg>';
-  const routeBranch = r => r === 'direct' ? 'direct' : r === 'zapret' ? 'zapret' : r === 'telegram' ? null : 'proxy';
+  const routeBranch = r => r === 'direct' ? 'direct' : r === 'zapret' ? 'zapret' : r === 'telegram' ? 'tg' : 'proxy';
   function syncLeaves() {
     const now = Date.now(), d = data;
-    if (d.phase !== 'on') { for (const lf of leaves.values()) lf.el.remove(); leaves.clear(); return; }
+    untracked = {};
+    if (!['on', 'revive', 'blocked'].includes(d.phase)) { for (const lf of leaves.values()) lf.el.remove(); leaves.clear(); return; }
     for (const t of d.top) {
       const host = t.key;
       const b = routeBranch(t.route);
-      if (!b || !host || !br[b] || !br[b].active) continue;
+      if (!b || !host || !br[b] || (!br[b].active && d.phase === 'on')) continue;
       let lf = leaves.get(host);
       if (!lf) {
         if (leaves.size >= MAX_LEAVES) {
           // вытесняем самый давний
           let old = null; for (const x of leaves.values()) if (!old || x.seen < old.seen) old = x;
-          if (old && now - old.seen > 4000) { old.el.remove(); leaves.delete(old.host); } else continue;
+          if (old && now - old.seen > 4000) { old.el.remove(); leaves.delete(old.host); } else { untracked[b] = (untracked[b] || 0) + 1; continue; }
         }
-        lf = { host, label: t.label || host, icon: t.icon, b, pref: .2 + Math.random() * .6, side: Math.random() < .5 ? -1 : 1, seen: now, fresh: true };
+        lf = { host, label: t.label || host, icon: t.icon, kind: t.kind || 'site', exe: t.exe, b, pref: .6 + Math.random() * .2, side: Math.random() < .5 ? -1 : 1, seen: now, fresh: true };
         makeLeaf(lf); leaves.set(host, lf);
       }
-      lf.seen = now;
+      if (t.speed > 0 || t.speed === undefined) lf.seen = now;
+      lf.el.dataset.flow = String(t.speed > 50);
       // Пользователь перетащил лист — держим его на новой ветке, пока трафик не пойдёт так же (или 10 минут).
       if (lf.pending && (lf.pending.b === b || now - lf.pending.at > 600000)) lf.pending = null;
       const want = lf.pending ? lf.pending.b : b;
-      if (lf.b !== want) { lf.b = want; lf.pref = .25 + Math.random() * .5; }
+      if (!lf.saving && lf.b !== want) { lf.b = want; lf.pref = .65 + Math.random() * .25; }
       paintLeaf(lf);
     }
-    for (const lf of [...leaves.values()]) if (now - lf.seen > LEAF_TTL && !lf.el.classList.contains('drag')) { lf.el.remove(); leaves.delete(lf.host); }
+    for (const lf of [...leaves.values()]) {
+      const age = d.phase === 'on' ? now - lf.seen : 0;
+      lf.el.classList.toggle('quiet', age > 10000);
+      lf.el.style.setProperty('--leaf-life', Math.max(0, 1 - Math.max(0, age - LEAF_TTL + 6000) / 6000));
+      if (age > LEAF_TTL && !lf.saving && !lf.el.classList.contains('drag')) { lf.el.remove(); leaves.delete(lf.host); }
+    }
   }
   function makeLeaf(lf) {
     const el = document.createElement('button');
     el.type = 'button'; el.className = 'br-leaf';
-    el.innerHTML = (lf.icon ? `<span class="svc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${lf.icon}"/></svg></span>` : LEAF) + '<span class="h"></span><span class="why"></span>';
+    el.innerHTML = '<span class="br-leaf-body">' + (lf.icon ? `<span class="svc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${lf.icon}"/></svg></span>` : LEAF) + '<span class="h"></span></span><span class="why"></span>';
+    el.dataset.host = lf.host; el.dataset.kind = lf.kind;
     el.querySelector('.h').textContent = lf.label;
     lf.el = el; leavesEl.append(el); bindDrag(lf);
   }
-  const BRANCH_NAME = { proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' };
+  const BRANCH_NAME = { proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret', tg: 'Telegram' };
   function paintLeaf(lf) {
     lf.el.style.setProperty('--c', br[lf.b] ? br[lf.b].color : 'var(--faint)');
-    const why = lf.pending ? `Ваше новое правило: ${BRANCH_NAME[lf.pending.b]}. Заработает после переподключения.` : data.why(lf.host, lf.b);
+    const why = lf.saving ? 'Сохраняю правило…' : lf.pending ? `Ваше новое правило: ${BRANCH_NAME[lf.pending.b]}. Правило сохранено.` : data.why(lf.host, lf.b, { kind: lf.kind, exe: lf.exe });
     const w = lf.el.querySelector('.why');
     const parts = [...[why].flat(), 'Перетащите на другую ветку, чтобы изменить.'], sig = parts.join('|');
     if (w.dataset.t !== sig) {
@@ -220,6 +232,7 @@ const Branches = (() => {
       w.replaceChildren(...parts.map(t => { const e = document.createElement('span'); e.textContent = t; return e; }));
       w.dataset.t = sig;
     }
+    lf.el.dataset.branch = lf.b;
     lf.el.setAttribute('aria-label', `${lf.label}: ${BRANCH_NAME[lf.b]}. Enter — выбрать путь`);
   }
 
@@ -235,19 +248,20 @@ const Branches = (() => {
     if (pw) { const r = pw.getBoundingClientRect(); blocked.push({ x: r.left - sr.left - pad, y: r.top - sr.top - pad, w: r.width + pad * 2, h: r.height + pad * 2 }); }
     const curves = {};
     for (const k in br) if (br[k].grow > .5) { const p = geom(k), pts = []; for (let i = 0; i <= 60; i++) pts.push(bez(p, i / 60)); curves[k] = pts; }
-    const placed = [], over = {};
+    const placed = [], over = { ...untracked };
     const list = [...leaves.values()].sort((a, b) => (b.drop ? 1 : 0) - (a.drop ? 1 : 0) || a.host.localeCompare(b.host));
     for (const lf of list) {
+      lf.el.style.setProperty('--leaf-tilt', (lf.side > 0 ? 10 : -12) + 'deg');
       const w = lf.el.offsetWidth || 110, h = lf.el.offsetHeight || 24, p = geom(lf.b);
       if (!br[lf.b] || br[lf.b].grow < .6) { lf.over = true; continue; }
       let best = null, bestScore = Infinity;
-      const ts = []; for (let t = 0.12; t <= 0.88; t += 0.02) ts.push(+t.toFixed(2));
+      const ts = []; for (let t = 0.14; t <= 0.88; t += 0.02) ts.push(+t.toFixed(2));
       ts.sort((a, b) => Math.abs(a - lf.pref) - Math.abs(b - lf.pref));
-      outer: for (const t of ts) for (const side of [lf.side, -lf.side]) for (const off of [20, 38]) {
+      outer: for (const t of ts) for (const side of [lf.side, -lf.side]) for (const off of [14, 32, 50]) {
         const base = bez(p, t), n = norm(p, t);
-        const cx = base[0] + n[0] * side * (off + h / 2), cy = base[1] + n[1] * side * (off + h / 2);
+        const cx = base[0] + 30 + n[0] * side * (off + h / 2), cy = base[1] + n[1] * side * (off + h / 2);
         const r = { x: cx - w / 2 - 3, y: cy - h / 2 - 3, w: w + 6, h: h + 6 };
-        let score = Math.abs(t - lf.pref) * 10 + (off > 20 ? 1 : 0);
+        let score = Math.abs(t - lf.pref) * 10 + (off > 14 ? 1 : 0);
         if (r.x < 4 || r.y < 4 || r.x + r.w > W - 4 || r.y + r.h > H - 4) score += 100;
         for (const b of blocked) if (hit(r, b)) score += 80;
         for (const b of placed) if (hit(r, b)) score += 80;
@@ -266,16 +280,31 @@ const Branches = (() => {
         const tr = `translate(${lf.pos[0] - lf.el.offsetWidth / 2}px, ${lf.pos[1] - lf.el.offsetHeight / 2}px)`;
         if (lf.fresh) {
           // Новый лист появляется сразу на своём месте (а не вылетает из угла) и проявляется.
-          lf.el.classList.add('born'); lf.el.style.transform = tr; void lf.el.offsetWidth;
+          lf.el.classList.add('born', 'sprouting'); lf.el.style.transform = tr; void lf.el.offsetWidth;
           requestAnimationFrame(() => lf.el.classList.remove('born'));
+          setTimeout(() => lf.el.classList.remove('sprouting'), 750);
           lf.fresh = false;
         } else lf.el.style.transform = tr;
       }
+      if (lf.pos) lf.el.style.setProperty('--tip-shift', (Math.max(115, Math.min(W - 115, lf.pos[0])) - lf.pos[0]) + 'px');
       lf.el.classList.toggle('up', !!lf.pos && lf.pos[1] > H * 0.6);
+      lf.el.dataset.side = lf.side > 0 ? 'down' : 'up';
       lf.el.dataset.hidden = String(!!lf.over || !br[lf.b] || br[lf.b].grow < .6);
-      lf.el.dataset.dead = String(!!data.offline);
+      lf.el.dataset.dead = String(!!data.offline || data.phase === 'revive' || data.phase === 'blocked');
     }
     overflow = over;
+    for (const k in br) {
+      let badge = box.querySelector(`.br-more[data-branch="${k}"]`);
+      if (!over[k] || br[k].grow < .9) { if (badge) badge.remove(); continue; }
+      if (!badge) {
+        badge = document.createElement('button'); badge.className = 'br-more'; badge.type = 'button'; badge.dataset.branch = k;
+        badge.title = 'Показать соединения'; badge.setAttribute('aria-label', 'Показать соединения');
+        badge.addEventListener('click', () => { if (data.onMore) data.onMore(k); }); box.append(badge);
+      }
+      const end = bez(geom(k), .72);
+      badge.textContent = '+' + over[k]; badge.style.color = br[k].color;
+      badge.style.left = Math.min(W - 36, end[0] + 12) + 'px'; badge.style.top = end[1] - 12 + 'px';
+    }
   }
   let overflow = {};
 
@@ -283,7 +312,7 @@ const Branches = (() => {
   function nearestBranch(x, y) {
     let best = null, bd = Infinity, bt = .5;
     for (const k of ['proxy', 'direct', 'zapret']) {
-      if (!br[k] || br[k].grow < .6) continue;
+      if (!br[k] || br[k].grow < .6 || !br[k].active || br[k].wilt || data.offline || data.phase !== 'on') continue;
       const p = geom(k);
       for (let i = 4; i <= 56; i++) { const t = i / 60, q = bez(p, t), d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = k; bt = t; } }
     }
@@ -293,7 +322,7 @@ const Branches = (() => {
     let sx, sy, ox, oy, moved = false, id = null;
     const el = lf.el;
     el.addEventListener('pointerdown', e => {
-      if (e.button !== 0 || !lf.pos) return;
+      if (e.button !== 0 || !lf.pos || lf.saving) return;
       id = e.pointerId; el.setPointerCapture(id); moved = false;
       const sr = box.getBoundingClientRect(); sx = e.clientX; sy = e.clientY;
       ox = e.clientX - sr.left - lf.pos[0]; oy = e.clientY - sr.top - lf.pos[1];
@@ -310,7 +339,8 @@ const Branches = (() => {
       if (e.pointerId !== id) return;
       id = null;
       // Просто нажали — меню с выбором пути (тянуть не обязательно).
-      if (!moved) { if (data.onPick) data.onPick({ kind: 'site', key: lf.host, label: lf.label, icon: lf.icon, current: lf.pending ? lf.pending.b : lf.b }, el); return; }
+      if (e.type === 'pointercancel') { el.classList.remove('drag'); dragging = false; dragOver = null; layout(); return; }
+      if (!moved) { if (data.onPick) data.onPick({ kind: lf.kind, exe: lf.exe, key: lf.host, label: lf.label, icon: lf.icon, current: lf.pending ? lf.pending.b : lf.b }, el); return; }
       el.classList.remove('drag'); dragging = false;
       const sr = box.getBoundingClientRect(), x = e.clientX - sr.left - ox, y = e.clientY - sr.top - oy;
       const nb = nearestBranch(x, y); dragOver = null;
@@ -324,16 +354,24 @@ const Branches = (() => {
       if (moved) { el.classList.remove('drag'); dragging = false; dragOver = null; layout(); }
     });
     el.addEventListener('keydown', e => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
+      if (lf.saving || e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
-      if (data.onPick) data.onPick({ kind: 'site', key: lf.host, label: lf.label, icon: lf.icon, current: lf.pending ? lf.pending.b : lf.b }, el);
+      if (data.onPick) data.onPick({ kind: lf.kind, exe: lf.exe, key: lf.host, label: lf.label, icon: lf.icon, current: lf.pending ? lf.pending.b : lf.b }, el);
     });
   }
-  function moveTo(lf, k, t, y) {
+  async function moveTo(lf, k, t, y) {
+    if (lf.saving || !br[k] || !br[k].active) { layout(); return; }
     if (k === lf.b) { lf.pref = t; lf.drop = true; layout(); return; }
-    if (!data.onDrop(lf.host, k)) { layout(); return; }
+    const before = { b: lf.b, pref: lf.pref, side: lf.side, pending: lf.pending };
     lf.b = k; lf.pref = t; lf.drop = true; lf.pending = { b: k, at: Date.now() };
     const base = bez(geom(k), t); lf.side = y !== undefined && y < base[1] ? -1 : 1;
+    lf.saving = true; lf.el.setAttribute('aria-busy', 'true'); paintLeaf(lf); layout();
+    let saved = false;
+    try { saved = await data.onDrop(lf.host, k, { kind: lf.kind, exe: lf.exe }); } catch (_) { /* возвращаем лист */ }
+    lf.saving = false; lf.el.removeAttribute('aria-busy');
+    if (leaves.get(lf.host) !== lf) return;
+    if (!saved) Object.assign(lf, before);
+    else pulse(k, t);
     paintLeaf(lf); layout();
   }
 
@@ -347,18 +385,37 @@ const Branches = (() => {
   function shape(k, time) {
     const b = br[k], p = geom(k), steps = 80, until = Math.max(2, Math.floor(steps * b.grow));
     const kb = Math.max(0, b.speed) / 1024;
-    const w0 = b.thin ? 2.2 : b.active ? 3 + Math.min(12, Math.sqrt(kb) * 0.55) : 2.5, w1 = Math.max(1.8, w0 * 0.45);
-    const L = [], R = [], off = data.offline;
+    const w0 = b.thin ? 2 : b.active ? 3 + Math.min(4, Math.log2(kb + 1) * .42) : 2, w1 = Math.max(1.2, w0 * .38);
+    const L = [], R = [];
     for (let i = 0; i <= until; i++) {
       const t = i / steps, pt = bez(p, t), n = norm(p, t);
       // В покое схема неподвижна; небольшое движение сопровождает только трафик.
       const motion = !reduce() && b.speed >= 50;
-      const droop = off ? t * t * 24 : (motion ? Math.sin(t * 6 + time * .0011) * 1.2 : 0);
+      const droop = b.droop * Math.sin(Math.PI * t * 2) ** 2 * 14 + (motion ? Math.sin(t * 6 + time * .0011) * .6 : 0);
       const w = (w0 + (w1 - w0) * t) / 2;
       L.push([pt[0] + n[0] * w, pt[1] + n[1] * w + droop]);
       R.push([pt[0] - n[0] * w, pt[1] - n[1] * w + droop]);
     }
     return { L, R, w0 };
+  }
+  // Маленькие матовые листочки — декоративные, без подписей и hit targets.
+  function drawFoliage(k, time) {
+    const b = br[k]; if (!b || b.grow < .7) return;
+    const curve = geom(k), col = css(b.active && !data.offline ? b.color : 'var(--faint)', time);
+    for (const [i, t] of [0.34, 0.56, 0.8, 0.98].entries()) {
+      if (t > b.grow || narrow() && i === 1) continue;
+      const base = bez(curve, t), normal = norm(curve, t), side = i % 2 ? 1 : -1;
+      const length = narrow() ? 17 : 24 + i * 3;
+      const tip = [base[0] + normal[0] * side * length + 9, base[1] + normal[1] * side * length];
+      if ([...leaves.values()].some(l => l.pos && !l.over && Math.hypot(l.pos[0] - tip[0], l.pos[1] - tip[1]) < 65)) continue;
+      if ([...nodesEl.children].some(el => { const x = parseFloat(el.style.left), y = parseFloat(el.style.top); return Math.hypot(x - tip[0], y - tip[1]) < 42; })) continue;
+      const angle = Math.atan2(tip[1] - base[1], tip[0] - base[0]);
+      const sway = !reduce() && b.speed > 50 ? Math.sin(time * .001 + i * 2) * .07 : 0;
+      ctx.save(); ctx.translate(base[0], base[1]); ctx.rotate(angle + sway);
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.globalAlpha = b.active ? .17 : .07;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(length * .45, -10, length, 0); ctx.quadraticCurveTo(length * .45, 10, 0, 0); ctx.fill();
+      ctx.globalAlpha *= 1.5; ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(length * .9, 0); ctx.stroke(); ctx.restore();
+    }
   }
   function drawBranch(k, time) {
     const b = br[k];
@@ -374,32 +431,56 @@ const Branches = (() => {
     // «Всё через сервер»: прямая ветка остаётся целой, но тонкой и бледной — по ней идёт только локальная сеть и ваши правила.
     ctx.globalAlpha = dead ? .55 : b.thin ? .35 : (dragOver && dragOver !== k ? .4 : 1);
     ctx.fill(); ctx.restore();
-    if (!dead && w0 > 6) {
+    if (!dead && w0 > 4) {
       ctx.beginPath();
       for (let i = 0; i < L.length; i++) { const x = (L[i][0] + R[i][0]) / 2, y = (L[i][1] + R[i][1]) / 2 - 1; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
       ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.1; ctx.stroke();
     }
     if (b.grow > .6) for (const lf of leaves.values()) if (lf.b === k && lf.base && !lf.over && lf.pos && !lf.el.classList.contains('drag')) {
-      const tip = lf.pos, by = lf.base[1] + (data.offline ? lf.t * lf.t * 24 : 0);
+      // Черешок следует за текущей позицией листа, включая CSS-переход при переносе.
+      const rect = lf.el.getBoundingClientRect();
+      const tip = [rect.left - frameRect.left + 12, rect.top - frameRect.top + (lf.side > 0 ? 8 : 50)];
+      const by = lf.base[1] + b.droop * Math.sin(Math.PI * lf.t * 2) ** 2 * 14;
       ctx.beginPath(); ctx.moveTo(lf.base[0], by);
-      ctx.quadraticCurveTo(lf.base[0] + (tip[0] - lf.base[0]) * .2, tip[1], tip[0], tip[1]);
+      ctx.quadraticCurveTo(lf.base[0] + 18, by, tip[0], tip[1]);
       ctx.strokeStyle = col; ctx.globalAlpha = .5; ctx.lineWidth = 1.3; ctx.stroke(); ctx.globalAlpha = 1;
     }
-    if (dead || reduce() || b.grow < .98 || b.speed < 50) { parts[k] = []; return; }
-    const list = parts[k] || (parts[k] = []), kb = b.speed / 1024;
-    const want = Math.min(60, Math.round(Math.log2(kb + 1) * 5) + 2), p = geom(k);
-    while (list.length < want) list.push({ t: Math.random(), v: .0014 + Math.random() * .0014, r: 1.2 + Math.random() * 1.5 });
-    list.length = Math.min(list.length, want);
-    const pace = 0.6 + Math.min(2.4, Math.log10(kb + 1) / 1.6);
-    ctx.fillStyle = '#fff';
-    for (const q of list) {
-      q.t += q.v * pace; if (q.t > 1) q.t -= 1;
-      const pt = bez(p, q.t), d = tan(p, q.t);
-      ctx.save(); ctx.translate(pt[0], pt[1] + Math.sin(q.t * 6 + time * .0011) * 1.2); ctx.rotate(Math.atan2(d[1], d[0]));
-      ctx.globalAlpha = .85 * Math.sin(Math.PI * q.t);
-      ctx.beginPath(); ctx.ellipse(0, 0, q.r * 2.1, q.r * .8, 0, 0, 7); ctx.fill(); ctx.restore();
+    if (dead || reduce() || b.grow < .98) { parts[k] = []; return; }
+    // Загрузка течёт к компьютеру (t уменьшается), отдача — к интернету.
+    const list = parts[k] || (parts[k] = []), p = geom(k);
+    for (const direction of [-1, 1]) {
+      const speed = direction < 0 ? b.down : b.up;
+      const want = speed < 50 ? 0 : Math.min(16, Math.ceil(Math.log2(speed / 1024 + 1) * 1.7));
+      let stream = list.filter(q => q.direction === direction);
+      while (stream.length < want) { const q = { t: Math.random(), direction }; list.push(q); stream.push(q); }
+      for (const q of stream.slice(want)) list.splice(list.indexOf(q), 1);
+      const pace = .12 + Math.min(.18, Math.log10(speed / 1024 + 1) * .04);
+      for (const q of stream.slice(0, want)) {
+        q.t = (q.t + direction * pace * frameDt + 1) % 1;
+        const pt = bez(p, q.t), tangent = tan(p, q.t);
+        ctx.save(); ctx.translate(pt[0], pt[1]);
+        ctx.rotate(Math.atan2(tangent[1], tangent[0]) + (direction < 0 ? Math.PI : 0));
+        ctx.fillStyle = col; ctx.globalAlpha = Math.sin(Math.PI * q.t) * .9;
+        ctx.beginPath(); ctx.ellipse(0, 0, 4, 1.7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.globalAlpha *= .7; ctx.beginPath(); ctx.arc(2, 0, 1, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
     }
-    ctx.globalAlpha = 1;
+  }
+  const pulses = [];
+  function pulse(k, t = 0) {
+    if (reduce()) return;
+    pulses.push({ k, t, at: performance.now() });
+    if (pulses.length > 8) pulses.shift();
+  }
+  function drawPulses(time) {
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const q = pulses[i], progress = (time - q.at) / 1300;
+      if (progress >= 1 || reduce()) { pulses.splice(i, 1); continue; }
+      const b = br[q.k]; if (!b || b.grow < .9) continue;
+      const t = q.t + (1 - q.t) * progress, pos = bez(geom(q.k), t);
+      ctx.save(); ctx.strokeStyle = css(b.color, time); ctx.globalAlpha = (1 - progress) * .7; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(pos[0], pos[1], 3 + progress * 7, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    }
   }
   // Пока что-то тащат, ветки — широкие подписанные дорожки: в них легко попасть.
   const BAND_NAME = { proxy: 'ЧЕРЕЗ СЕРВЕР', direct: 'НАПРЯМУЮ', zapret: 'ЧЕРЕЗ ZAPRET' };
@@ -424,30 +505,39 @@ const Branches = (() => {
   let growKey = '';
   // Подключение — одно движение: ветки вырастают из кнопки по очереди, узлы раскрываются следом.
   const GROW_DELAY = { proxy: 250, tg: 450, zapret: 650, direct: 0 };
-  let onAt = 0, lastPhase = '';
+  let onAt = 0, lastPhase = '', lastFrame = 0, frameDt = 1 / 60;
   function frame(time) {
     raf = requestAnimationFrame(frame);
-    if (!box || !box.isConnected || document.hidden || !data) return;
+    if (!box || !box.isConnected || document.hidden || box.closest('[inert]') || !data) { lastFrame = 0; return; }
+    frameDt = lastFrame ? Math.min(.05, (time - lastFrame) / 1000) : 1 / 60; lastFrame = time;
+    frameRect = box.getBoundingClientRect();
     ctx.clearRect(0, 0, W, H);
     const since = performance.now() - onAt;
     for (const k in br) {
       const b = br[k];
       const target = b.target > 0 && since < (GROW_DELAY[k] || 0) && !reduce() ? 0 : b.target;
-      b.grow += (target - b.grow) * (reduce() ? 1 : 0.07);
+      b.grow += (target - b.grow) * (reduce() ? 1 : 1 - Math.exp(-frameDt * 7));
       if (Math.abs(target - b.grow) < .002) b.grow = target;
-      b.speed += (b.want - b.speed) * 0.08;
+      const ease = reduce() ? 1 : 1 - Math.exp(-frameDt * 6);
+      b.speed += (b.want - b.speed) * ease;
+      b.down += (b.wantDown - b.down) * ease; b.up += (b.wantUp - b.up) * ease;
+      b.droop += ((data.offline || data.phase === 'revive' || data.phase === 'blocked' ? 1 : 0) - b.droop) * ease;
     }
     const key = Object.keys(br).map(k => k + (br[k].grow > .6 ? 1 : 0)).join('');
     if (key !== growKey) { growKey = key; layout(); }
     if (dragging) drawBands(time);
+    for (const k of ['proxy', 'direct', 'zapret', 'tg']) drawFoliage(k, time);
     for (const k of ['tg', 'zapret', 'proxy', 'direct']) drawBranch(k, time);
+    drawPulses(time);
     cutHoles();
   }
 
   // ---------- вход из app.js раз в секунду ----------
   function update(container, d) {
     mount(container, d);
-    if (d.phase === 'on' && lastPhase && lastPhase !== 'on') { onAt = performance.now(); popNodes = true; }
+    if (d.phase === 'on' && lastPhase !== 'on') { if (!['revive', 'blocked'].includes(lastPhase)) onAt = performance.now(); popNodes = true; pulse('proxy'); }
+    else if (d.phase === 'on' && data && (data.offline && !d.offline || data.lanes.find(l => l.key === 'proxy')?.node?.title !== d.lanes.find(l => l.key === 'proxy')?.node?.title)) pulse('proxy', .4);
+    box.dataset.phase = d.phase;
     lastPhase = d.phase;
     data = d;
     // Размер схемы сверяем каждую секунду, а не только по ResizeObserver: после сворачивания в трей
@@ -456,9 +546,10 @@ const Branches = (() => {
     if (r.width > 0 && r.height > 0 && (Math.abs(r.width - W) > 1 || Math.abs(r.height - H) > 1)) resize();
     const keys = new Set(d.lanes.map(l => l.key));
     for (const l of d.lanes) {
-      const b = br[l.key] || (br[l.key] = { grow: 0, speed: 0 });
+      const b = br[l.key] || (br[l.key] = { grow: 0, speed: 0, down: 0, up: 0, droop: 0 });
       Object.assign(b, { color: l.color, active: l.active, want: l.active ? l.speed : 0, wilt: l.wilt,
-        thin: !!l.thin, target: d.phase === 'on' || l.key === 'direct' ? 1 : 0 });
+        wantDown: l.active ? Math.max(0, l.down ?? l.speed) : 0, wantUp: l.active ? Math.max(0, l.up || 0) : 0,
+        thin: !!l.thin, target: ['on', 'revive', 'blocked'].includes(d.phase) || l.key === 'direct' ? 1 : 0 });
     }
     for (const k in br) if (!keys.has(k)) br[k].target = 0;
     try { renderNodes(); } catch (e) { nodesSig = ''; console.error('branches: nodes', e); }
@@ -482,9 +573,12 @@ const Branches = (() => {
   function moveLeaf(host, k) {
     const lf = leaves.get(host);
     if (!lf || !br[k]) return;
-    lf.b = k; lf.pref = .3 + Math.random() * .4; lf.drop = true; lf.pending = { b: k, at: Date.now() };
-    paintLeaf(lf); layout();
+    lf.b = k; lf.pref = .65 + Math.random() * .25; lf.drop = true; lf.pending = { b: k, at: Date.now() };
+    pulse(k, lf.pref); paintLeaf(lf); layout();
   }
 
-  return { update, unmount, hoverAt, endHover, moveLeaf };
+  function clearLeaf(host) {
+    const lf = leaves.get(host); if (lf) lf.pending = null;
+  }
+  return { update, unmount, hoverAt, endHover, moveLeaf, clearLeaf };
 })();

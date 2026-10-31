@@ -1312,6 +1312,7 @@ function renderLanes() {
     return;
   }
   Branches.unmount();
+  renderProcShelf();
   const geo = lanes.map((l, i) => ({ ...l, ny: n === 1 ? Y0 : top + i * (bottom - top) / (n - 1), nx: nodeX[l.key] }));
   geo.forEach(l => {
     const share = total > 0 ? l.speed / total : 0;
@@ -1516,15 +1517,26 @@ function ruleNote(action) {
   if (!(ST && ST.running)) return 'Заработает при подключении.';
   return action === 'zapret' ? 'Уже работает — zapret перезапустился на секунду.' : 'Уже работает, переподключаться не нужно.';
 }
-function branchDrop(key, b) {
+let branchSaving = false;
+async function branchDrop(key, b) {
+  if (branchSaving) return false;
   if (b === 'zapret' && !zapretOn()) { toast('zapret выключен — на эту ветку сейчас нельзя'); return false; }
   const e = branchLeaves[key] || { label: key, domains: [key] };
   // Для известного сервиса правило ставится на все его адреса — иначе видео пошло бы одним путём, а сайт другим.
   const sv = SERVICES.find(x => x.name === key);
   const doms = sv ? sv.domains : e.domains;
+  const before = S.rules;
   S.rules = S.rules.filter(r => !(r.kind === 'domain' && doms.includes(r.value.toLowerCase())));
   for (const d of doms) S.rules.push({ kind: 'domain', value: d, action: b });
+  const changed = S.rules;
+  branchSaving = true;
   save(0);
+  let saved;
+  try { saved = await saveNow(); } finally { branchSaving = false; }
+  if (!saved) {
+    if (S.rules === changed) S.rules = before;
+    return false;
+  }
   toast(`${e.label} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. ${ruleNote(b)}`);
   unlockAchv('route');
   return true;
@@ -1553,7 +1565,7 @@ function siteGroups() {
 function renderBranches(lanes) {
   const lb = $('#lanesBox');
   if (!lb) return {};
-  renderProcShelf();
+  const shelf = $('#procShelf'); if (shelf) shelf.replaceChildren();
   const p = phase();
   if (p === 'on' && Date.now() - smartAt > 30000 && S.smartDirect) {
     smartAt = Date.now();
@@ -1563,9 +1575,19 @@ function renderBranches(lanes) {
   const top = siteGroups().map(g => {
     branchLeaves[g.key] = g;
     const route = Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][0];
-    return { key: g.key, label: g.label, route, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'] };
+    return { key: g.key, label: g.label, route, speed: g.speed, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'] };
   });
+  const apps = procList().filter(x => x.speed > 0 || x.total > 0).slice(0, 4).map(x => {
+    const label = procName(x.exe.toLowerCase()) || x.exe;
+    const route = Object.entries(x.routes || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || 'proxy';
+    return { key: 'proc:' + x.exe.toLowerCase(), kind: 'process', exe: x.exe, label, route, speed: x.speed,
+      icon: SVC_ICONS[PROC_ICON[label] || 'app'] };
+  });
+  top.unshift(...apps);
+  const rates = lastSpeeds();
+  const directions = { proxy: [rates.pd, rates.pu], direct: [rates.dd, rates.du], zapret: [rates.zd, rates.zu], tg: [rates.td, rates.tu] };
   const sp = lanes.map(l => ({ ...l,
+    down: l.speed > 0 ? directions[l.key][0] : 0, up: l.speed > 0 ? directions[l.key][1] : 0,
     thin: l.key === 'direct' && p === 'on' && S.routing === 'global',
     wilt: l.key === 'zapret' && AD && AD.zapret && AD.zapret.degraded }));
   return Branches.update(lb, {
@@ -1573,8 +1595,19 @@ function renderBranches(lanes) {
     endSub: ROUTING[S.routing],
     controlLabel: powerLabel(p),
     compSub: zapretOnly() ? 'Только zapret' : 'Компьютер',
-    flag: code => flag(code), displayDomain, why: branchWhy, onDrop: branchDrop, onPick: sitePick,
-    onNode: k => go(k === 'proxy' ? 'servers' : 'bypass'), toast,
+    onMore: () => openDiag('conns'),
+    flag: code => flag(code), displayDomain, why: (key, route, item) => item?.kind === 'process' ? ['Вся программа целиком', item.exe] : branchWhy(key, route),
+    onDrop: (key, route, item) => item?.kind === 'process' ? setProcRoute(item.exe, route) : branchDrop(key, route),
+    onPick: (item, el) => {
+      if (item.kind !== 'process') { sitePick(item, el); return; }
+      routePicker(el, { title: item.label, sub: 'Вся программа целиком', current: item.current, onPick: async k => {
+        if (await setProcRoute(item.exe, k)) {
+          if (k !== 'auto') Branches.moveLeaf(item.key, k);
+          else Branches.clearLeaf(item.key);
+        }
+      } });
+    },
+    onNode: k => go(k === 'proxy' ? 'servers' : k === 'direct' ? 'rules' : 'bypass'), toast,
   }) || {};
 }
 
@@ -1605,19 +1638,26 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && routePop) 
 // Сайт (лист на схеме): меню вместо обязательного перетаскивания.
 function sitePick(item, el) {
   const label = branchLeaves[item.key] ? branchLeaves[item.key].label : item.label;
-  routePicker(el, { title: label, sub: 'Этот сервис — все его адреса', current: item.current, onPick: k => {
-    if (k === 'auto') { siteClear(item.key); return; }
-    if (k !== item.current && branchDrop(item.key, k)) Branches.moveLeaf(item.key, k);
+  routePicker(el, { title: label, sub: 'Этот сервис — все его адреса', current: item.current, onPick: async k => {
+    if (k === 'auto') { await siteClear(item.key); return; }
+    if (k !== item.current && await branchDrop(item.key, k)) Branches.moveLeaf(item.key, k);
   } });
 }
-function siteClear(key) {
+async function siteClear(key) {
+  if (branchSaving) return false;
   const e = branchLeaves[key] || { label: key, domains: [key] };
   const sv = SERVICES.find(x => x.name === key);
   const doms = sv ? sv.domains : e.domains;
-  const before = S.rules.length;
+  const before = S.rules;
   S.rules = S.rules.filter(r => !(r.kind === 'domain' && doms.includes(r.value.toLowerCase())));
-  save(0);
-  toast(before === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. ${ruleNote('')}`);
+  const changed = S.rules;
+  branchSaving = true; save(0);
+  let saved;
+  try { saved = await saveNow(); } finally { branchSaving = false; }
+  if (!saved) { if (S.rules === changed) S.rules = before; return false; }
+  Branches.clearLeaf(key);
+  toast(before.length === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. ${ruleNote('')}`);
+  return true;
 }
 
 // Программы с трафиком — полка под схемой. Программа отправляется целиком (правило по процессу).
@@ -1628,26 +1668,36 @@ function procList() {
   for (const t of (STATS && STATS.top) || []) {
     const exe = (t.proc || '').split(/[\\/]/).pop();
     if (!exe || PROC_SKIP.test(exe)) continue;
-    const x = m.get(exe.toLowerCase()) || { exe, speed: 0, total: 0 };
+    const x = m.get(exe.toLowerCase()) || { exe, speed: 0, total: 0, routes: {} };
+    const route = t.route === 'direct' || t.route === 'zapret' || t.route === 'telegram' ? t.route : 'proxy';
+    x.routes[route] = (x.routes[route] || 0) + (t.speed || 0) + 1;
     x.speed += t.speed || 0; x.total += t.total || 0; m.set(exe.toLowerCase(), x);
   }
   for (const r of S.rules) if (r.kind === 'process' && !m.has(r.value.toLowerCase())) m.set(r.value.toLowerCase(), { exe: r.value, speed: 0, total: 0 });
   return [...m.values()].filter(x => procRule(x.exe) || x.speed >= 20 * 1024 || x.total >= 2 * 1024 * 1024)
     .sort((a, b) => b.speed - a.speed).slice(0, 8);
 }
-function setProcRoute(exe, k) {
+async function setProcRoute(exe, k) {
+  if (branchSaving) return false;
   const name = procName(exe.toLowerCase()) || exe;
-  if (k === 'zapret' && !zapretOn()) { toast('zapret выключен — на эту ветку сейчас нельзя'); return; }
+  if (k === 'zapret' && !zapretOn()) { toast('zapret выключен — на эту ветку сейчас нельзя'); return false; }
+  const before = S.rules;
   S.rules = S.rules.filter(r => !(r.kind === 'process' && r.value.toLowerCase() === exe.toLowerCase()));
   if (k !== 'auto') S.rules.push({ kind: 'process', value: exe, action: k });
-  save(0);
+  const changed = S.rules;
+  branchSaving = true; save(0);
+  let saved;
+  try { saved = await saveNow(); } finally { branchSaving = false; }
+  if (!saved) { if (S.rules === changed) S.rules = before; return false; }
   toast(k === 'auto' ? `${name} — снова как решит Naivka. ${ruleNote('')}` : `Вся программа ${name} — ${ROUTE_SAY[k]}. ${ruleNote(k)}`);
   if (k !== 'auto') unlockAchv('route');
   renderProcShelf(true);
+  return true;
 }
 function renderProcShelf(force) {
   const box = $('#procShelf');
   if (!box || !S) return;
+  if ($('#lanesBox')?.classList.contains('branches')) { box.replaceChildren(); return; }
   const list = phase() === 'on' && !zapretOnly() ? procList() : [];
   const sig = JSON.stringify(list.map(x => [x.exe, (procRule(x.exe) || {}).action]));
   if (!force && box.dataset.sig === sig) return;
@@ -1742,7 +1792,7 @@ function renderLive() {
         key: 'site:' + g.key, label: g.label, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'], route: groupRoute(g), rule: siteRule(g),
         sub: g.procs.slice(0, 2).join(', '),
         pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto' }, el),
-        drop: k => { if (branchDrop(g.key, k)) Branches.moveLeaf(g.key, k); },
+        drop: async k => { if (await branchDrop(g.key, k)) Branches.moveLeaf(g.key, k); },
       })),
       procs.length ? h('div', { class: 'live-sec' }, 'Программы целиком') : null,
       ...procs.map(x => {

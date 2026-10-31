@@ -210,6 +210,7 @@ function powerButton(id, size) {
       s('rect', { class: 'pw-core pw-h', x: 18, y: 18, width: 84, height: 84 }),
       s('path', { class: 'pw-ticks pw-h', d: 'M1 17V1h16M103 1h16v16M119 103v16h-16M17 119H1v-16' }),
       pxPowerParts(),
+      s('path', { class: 'pw-device', d: 'M37 38h46v33H37zM48 82h24M60 71v11' }),
       s('path', { class: 'pw-icon', d: 'M60 37v21M46 44.5a21 21 0 1 0 28 0' })));
 }
 

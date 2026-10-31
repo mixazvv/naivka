@@ -113,3 +113,79 @@
   :root:not([data-skin]) *, :root:not([data-skin]) *::before, :root:not([data-skin]) *::after { scroll-behavior: auto !important; }
 }
 :root:not([data-skin]) .set-card { animation: none; }
+
+/* Живое дерево: лист раскрывается вокруг своей жилки; позицию задаёт схема. */
+.br-leaf { padding: 0; border: 0; background: none; box-shadow: none; opacity: var(--leaf-life, 1); }
+.br-leaf-body { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, var(--line)); border-radius: 5px 22px 5px 22px;
+  background: color-mix(in srgb, var(--c) 9%, var(--surface)); color: var(--ink); transform: rotate(var(--leaf-tilt, -3deg));
+  transform-origin: 8% 70%; transition: transform .3s ease, background .3s, opacity .6s; }
+.br-leaf-body::after { content: ''; position: absolute; left: 10px; right: 12px; bottom: 4px; height: 1px;
+  background: linear-gradient(90deg, var(--c), transparent); opacity: .3; transform: rotate(-4deg); }
+.br-leaf .svc { display: inline-grid; place-items: center; width: 19px; height: 19px; }
+.br-leaf .svc svg { width: 16px; height: 16px; fill: none; stroke: var(--c); stroke-width: 1.7; }
+.br-leaf.sprouting .br-leaf-body { animation: leafUnfold .7s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes leafUnfold { from { opacity: 0; transform: rotate(-18deg) scale(.35); } to { opacity: 1; transform: rotate(var(--leaf-tilt, -3deg)) scale(1); } }
+.br-leaf:hover .br-leaf-body, .br-leaf:focus-visible .br-leaf-body { transform: rotate(0deg) translateY(-3px); background: color-mix(in srgb, var(--c) 16%, var(--surface)); }
+.br-leaf:focus-visible { outline: 2px solid var(--c); outline-offset: 4px; border-radius: 8px; }
+.br-leaf.drag { box-shadow: none; }
+.br-leaf.drag .br-leaf-body { transform: rotate(-7deg) scale(1.07); box-shadow: 0 12px 24px rgba(0,0,0,.25); }
+.br-leaf[aria-busy="true"] .br-leaf-body { opacity: .6; }
+.br-leaf.quiet .br-leaf-body { opacity: .55; }
+.br-leaf[data-dead="true"] .br-leaf-body { transform: rotate(8deg); }
+.br-leaf[data-hidden="true"] { opacity: 0; }
+.br-leaf .why { z-index: 10; }
+.branches[data-phase="on"] .br-node .br-disc { transition: border-color .4s, background .4s; }
+@media (prefers-reduced-motion: reduce) {
+  .br-leaf, .br-leaf-body { transition: none !important; animation: none !important; }
+  .br-leaf-body, .br-leaf:hover .br-leaf-body, .br-leaf:focus-visible .br-leaf-body { transform: none; }
+  .br-node.pop-in { animation: none; }
+}
+
+/* Мягкая органика: листовые пластины и компактный компьютер. */
+.pw-device { display: none; }
+.lanes-box.branches .power { width: 80px; }
+.lanes-box.branches.small .power { width: 68px; }
+.lanes-box.branches .power .pw-icon, .lanes-box.branches .power .pw-halo { display: none; }
+.lanes-box.branches .power .pw-device { display: block; stroke: var(--ink); stroke-width: 2.6; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.lanes-box.branches .power .pw-ring { opacity: .35; stroke-width: 1.5; }
+.lanes-box.branches .power .pw-core { fill: var(--surface); }
+.lanes-box.branches .power .pw-track { stroke: var(--direct); stroke-width: 1.5; opacity: .65; }
+.br-node[data-key="direct"] { --c: var(--direct); }
+.br-leaf-body { width: 88px; height: 78px; padding: 0; display: block; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.br-leaf-body::before { content: ''; position: absolute; inset: 0 4px 22px; border-radius: 80% 3px 80% 5px;
+  background: var(--surface);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--c) 23%, var(--surface)), color-mix(in srgb, var(--c) 6%, var(--surface)));
+  border: 1px solid var(--line); border-color: color-mix(in srgb, var(--c) 50%, var(--line)); box-shadow: inset 0 1px 12px color-mix(in srgb, var(--c) 8%, transparent); }
+.br-leaf-body::after { left: 15px; right: 14px; bottom: auto; top: 30px; transform: rotate(-28deg); opacity: .28; }
+.br-leaf .svc { position: absolute; top: 14px; left: 31px; width: 26px; height: 26px; z-index: 1; }
+.br-leaf .svc svg { width: 24px; height: 24px; stroke-width: 1.6; }
+.br-leaf .br-leaf-body > svg { position: absolute; top: 16px; left: 33px; width: 24px; height: 24px; }
+.br-leaf .h { position: absolute; bottom: 2px; left: 0; width: 88px; font-size: 11px; font-weight: 500; line-height: 18px;
+  text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.br-leaf:hover .br-leaf-body, .br-leaf:focus-visible .br-leaf-body { background: none; }
+.br-leaf:hover .h, .br-leaf:focus-visible .h { color: var(--ink); }
+.br-leaf.drag .br-leaf-body { box-shadow: none; }
+.br-leaf .why { left: calc(50% + var(--tip-shift, 0px)); }
+.br-leaf[data-flow="true"]:not([data-dead="true"]):not(.quiet):not(.sprouting):not(.drag):not(:hover):not(:focus-within) .br-leaf-body { animation: leafSway 5s ease-in-out infinite alternate; }
+@keyframes leafSway { from { transform: rotate(calc(var(--leaf-tilt, -10deg) - 2deg)); } to { transform: rotate(calc(var(--leaf-tilt, -10deg) + 2deg)); } }
+@media (prefers-reduced-motion: reduce) { .br-leaf .br-leaf-body { animation: none !important; transform: none !important; } }
+.br-leaf[data-side="down"] .br-leaf-body::before { border-radius: 5px 80% 3px 80%; }
+.br-leaf[data-side="down"] .br-leaf-body::after { transform: rotate(28deg); }
+.br-more { position: absolute; z-index: 4; padding: 3px 7px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface);
+  font: 500 11px/1.5 var(--font); cursor: pointer; }
+.br-more:hover { background: var(--raised); }
+
+[inert] .br-leaf-body { animation-play-state: paused; }
+
+/* Маршруты проходят через круглые узлы и сходятся в общий Интернет. */
+.br-node.route-node { transform: translate(-50%, -22px); }
+.br-node.route-node .br-disc { display: grid; width: 44px; height: 44px; border-width: 1.5px; background: var(--surface); }
+.br-node.route-node .br-txt { max-width: 160px; }
+.br-node.route-node .br-txt b { display: block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.br-node.route-node .br-txt small { max-width: 155px; font-size: 10px; }
+.br-node[data-key="net"] .br-disc { border-width: 1.5px; background: var(--surface); }
+.br-leaf[data-kind="process"] .svc { border-radius: 6px; background: color-mix(in srgb, var(--c) 15%, transparent); }
+.br-leaf[data-kind="process"] .h { font-weight: 650; }
+
+.br-node[data-key="net"].side { width: 170px; }
