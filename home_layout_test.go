@@ -78,3 +78,11 @@ func TestHomeLayoutCoordinatesMigrationAndCollisions(t *testing.T) {
 		}
 	}
 }
+
+func TestHomeLayoutRejectsOverflowCoordinates(t *testing.T) {
+	l := HomeLayout{Version: 2, Wide: []HomeWidget{{ID: "controls", Span: 3, Col: int(^uint(0) >> 1), Row: 1}}}
+	l.normalize()
+	if l.Wide[0].Col != 1 || l.Wide[0].Row != 1 {
+		t.Fatal("overflow moved controls outside grid", l.Wide[0])
+	}
+}

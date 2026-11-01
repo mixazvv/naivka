@@ -233,6 +233,9 @@ func (w *WL) inUse(s *Settings) bool { return s.Selected == "wl" || w.Active() }
 
 // engage: свои серверы не отвечают — переходим на подписку.
 func (w *WL) engage() {
+	if w.a.repair.busy() {
+		return
+	}
 	s := w.a.settingsCopy()
 	if !s.WL.Enabled || !s.WL.Fallback || w.Active() || s.Selected == "wl" || len(w.Servers(s)) == 0 || len(s.Servers) == 0 {
 		return
@@ -251,6 +254,9 @@ func (w *WL) engage() {
 
 // checkOwn: пока работаем через подписку, раз в 2 минуты проверяем свои серверы.
 func (w *WL) checkOwn(cl *Clash) {
+	if w.a.repair.busy() {
+		return
+	}
 	if !w.Active() {
 		return
 	}

@@ -61,7 +61,7 @@ func (l *HomeLayout) normalize() {
 	place := func(in []HomeWidget, cols int) []HomeWidget {
 		occupied := map[[2]int]bool{}
 		fits := func(row, col, span int) bool {
-			if row < 1 || row > 64 || col < 1 || col+span-1 > cols {
+			if row < 1 || row > 64 || col < 1 || col > cols || col+span-1 > cols {
 				return false
 			}
 			for x := col; x < col+span; x++ {

@@ -592,7 +592,12 @@ func (a *App) addInstalledServers(servers []Server) ([]string, error) {
 	a.mu.Unlock()
 	if err == nil {
 		a.selectionRev++
+		wasRepairing := a.repair.busy()
 		a.scores.reset()
+		_ = a.repair.stop("")
+		if wasRepairing && !a.isRestarting() {
+			a.applySelectionNowLocked()
+		}
 	}
 	return names, err
 }

@@ -26,3 +26,5 @@
 @media(prefers-reduced-motion:reduce){.route-group,.route-lines path,.route-server{transition:none!important;animation:none!important;}}
 
 .route-still .route-group,.route-still .route-lines path,.route-still .route-server{transition:none!important;animation:none!important;}
+
+[data-diagram="orbit"] .route-scene::before{content:"";position:absolute;left:50%;top:43%;width:68%;height:65%;border:1px dashed var(--line);border-radius:50%;transform:translate(-50%,-50%);opacity:.35;pointer-events:none;}

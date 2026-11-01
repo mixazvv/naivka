@@ -119,6 +119,7 @@ func (a *App) disconnect() {
 
 // pause — остановить ядро, не меняя желания пользователя (сон, перезапуск с правами).
 func (a *App) pause() {
+	_ = a.repair.stop("")
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
 	a.core.Stop()
@@ -144,6 +145,7 @@ func (a *App) resume(gen int64) (done bool, err error) {
 // restartCore перезапускает ядро, если пользователь хочет быть подключённым. Если перезапуск
 // уже идёт, второй не начинается — идущий просто повторится один раз в конце с самыми свежими настройками.
 func (a *App) restartCore() {
+	_ = a.repair.stop("")
 	gen := a.life.gen.Load()
 	a.restarter.Run(func() {
 		a.life.mu.Lock()

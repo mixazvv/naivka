@@ -89,7 +89,8 @@ const RouteDiagrams = (() => {
     }
     for(const [key,b]of leaves)if(!seen.has(key)){b.remove();leaves.delete(key);}
     for(const [key,r]of routes){r.more?.remove();if(over[key]){r.more=document.createElement('button');r.more.type='button';r.more.className='route-more';r.more.textContent='Ещё '+over[key];r.more.onclick=()=>data.onMore();r.list.append(r.more);}}
-    const nodes=(d.servers||[]).slice(0,compact?3:6),ids=new Set(nodes.map(s=>s.id));
+    const allServers=d.servers||[],activeServer=allServers.find(s=>s.active);
+    const nodes=(activeServer?[activeServer,...allServers.filter(s=>s!==activeServer)]:allServers).slice(0,compact?3:6),ids=new Set(nodes.map(s=>s.id));
     for(const [id,b]of servers)if(!ids.has(id)){b.remove();servers.delete(id);serverLinks.get(id)?.remove();serverLinks.delete(id);}
     nodes.forEach((server,i)=>{
       let b=servers.get(server.id);if(!b){b=document.createElement('button');b.type='button';b.className='route-server';b.dataset.server=server.id;servers.set(server.id,b);surface.append(b);

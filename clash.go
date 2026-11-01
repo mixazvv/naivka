@@ -90,7 +90,8 @@ type ProxyView struct {
 	Delays   map[string]int `json:"delays"`   // тег -> последняя задержка, 0 = нет ответа
 }
 
-func (c *Clash) Proxies() (*ProxyView, error) {
+func (c *Clash) Proxies() (*ProxyView, error) { return c.proxiesContext(context.Background()) }
+func (c *Clash) proxiesContext(ctx context.Context) (*ProxyView, error) {
 	var raw struct {
 		Proxies map[string]struct {
 			Type    string `json:"type"`
@@ -100,7 +101,7 @@ func (c *Clash) Proxies() (*ProxyView, error) {
 			} `json:"history"`
 		} `json:"proxies"`
 	}
-	if err := c.do("GET", "/proxies", nil, &raw); err != nil {
+	if err := c.doContext(ctx, "GET", "/proxies", nil, &raw); err != nil {
 		return nil, err
 	}
 	v := &ProxyView{Delays: map[string]int{}}
@@ -142,9 +143,12 @@ func (c *Clash) Delay(tag, testURL string) (int, error) {
 // GroupDelay проверяет сразу все серверы группы (параллельно в ядре).
 // Ответ — тег → задержка в мс; не ответившие серверы в ответ не попадают.
 func (c *Clash) GroupDelay(group, testURL string, timeoutMs int) (map[string]int, error) {
+	return c.groupDelayContext(context.Background(), group, testURL, timeoutMs)
+}
+func (c *Clash) groupDelayContext(ctx context.Context, group, testURL string, timeoutMs int) (map[string]int, error) {
 	out := map[string]int{}
 	q := url.Values{"timeout": {fmt.Sprint(timeoutMs)}, "url": {testURL}}
-	err := c.do("GET", "/group/"+url.PathEscape(group)+"/delay?"+q.Encode(), nil, &out)
+	err := c.doContext(ctx, "GET", "/group/"+url.PathEscape(group)+"/delay?"+q.Encode(), nil, &out)
 	return out, err
 }
 
