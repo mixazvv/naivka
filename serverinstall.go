@@ -561,6 +561,8 @@ func sudoFailed(lines []string) bool {
 
 // addInstalledServers добавляет серверы; повторная установка на тот же адрес и порт заменяет прежние.
 func (a *App) addInstalledServers(servers []Server) ([]string, error) {
+	a.selectionMu.Lock()
+	defer a.selectionMu.Unlock()
 	a.mu.Lock()
 	ns := a.settings.clone()
 	var names []string
@@ -583,9 +585,15 @@ func (a *App) addInstalledServers(servers []Server) ([]string, error) {
 		a.mu.Unlock()
 		return nil, err
 	}
-	a.settings = ns
 	err := SaveSettings(a.dir, ns)
+	if err == nil {
+		a.settings = ns
+	}
 	a.mu.Unlock()
+	if err == nil {
+		a.selectionRev++
+		a.scores.reset()
+	}
 	return names, err
 }
 

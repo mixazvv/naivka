@@ -604,7 +604,7 @@ function currentServer() {
       return sv ? { ...sv, auto: true } : { name: 'Автовыбор', host: 'проверяю серверы' };
     }
     const sv = serverByTag(PX.selected);
-    if (sv) return sv;
+    if (sv) return S.smartSelect && S.selected === 'auto' ? { ...sv, auto: true } : sv;
   }
   if (S.selected === 'auto') return { name: 'Автовыбор', host: count(S.servers.length, 'сервер', 'сервера', 'серверов') };
   return serverById(S.selected) || { name: 'Автовыбор', host: '' };
@@ -2537,18 +2537,19 @@ function renderServers(force) {
   const xr = xrayReady();
   // Перерисовываем, только если что-то видимое изменилось: иначе сбивались бы наведение и фокус.
   const sig = JSON.stringify([S.servers, S.selected, S.wl.enabled, nowTag, delays, PX && PX.delays, PX && PX.wlNow, srvGeo,
-    STATS && STATS.delays, noNaive, xr, WL && [WL.used, WL.active]]);
+    STATS && STATS.delays, S.smartSelect, noNaive, xr, WL && [WL.used, WL.active]]);
   patch('srvList', sig, () => {
     const cards = [];
     if (S.servers.length > 1 || S.selected === 'auto') {
-      const now = PX && PX.autoNow ? serverByTag(PX.autoNow) : null;
+      const smartAuto = S.smartSelect && S.selected === 'auto' && PX && (PX.selected || '').startsWith('s-');
+      const now = PX ? serverByTag(smartAuto ? PX.selected : PX.autoNow) : null;
       cards.push(srvCardBase('auto', 'wide', [
         h('div', { class: 'scard-top' },
           h('span', { class: 'scard-ico' }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: 'M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4' }))),
           h('div', { class: 'scard-title' }, h('b', null, 'Автовыбор'),
-            h('small', null, now ? `Сейчас: ${now.name}` : 'Самый быстрый рабочий сервер'))),
-        h('div', { class: 'scard-sub' }, 'Берёт самый быстрый сервер, в том числе другого протокола, и переключается сам, если текущий перестал отвечать.')],
-      { live: running && PX && PX.selected === 'auto' }));
+            h('small', null, now ? `Сейчас: ${now.name}` : S.smartSelect ? 'Собираю историю контрольных запросов' : 'Самый быстрый рабочий сервер'))),
+        h('div', { class: 'scard-sub' }, S.smartSelect ? 'Учитывает успешность запросов, медиану и p95. Переключается при подтверждённом улучшении или повторных сбоях.' : 'Берёт самый быстрый сервер, в том числе другого протокола, и переключается сам, если текущий перестал отвечать.')],
+      { live: running && PX && (PX.selected === 'auto' || smartAuto) }));
     }
     for (const sv of serverOrder()) {
       const geo = srvGeo[sv.id] && srvGeo[sv.id].info;
@@ -4071,6 +4072,8 @@ function viewSettings() {
         check('killSwitch', 'Защита от утечек', 'Если соединение упадёт, трафик не пойдёт мимо сервера.'),
         check('watchdog', 'Следить за соединением', 'Переподключаться после сбоев и смены сети.'),
         check('failover', 'Переходить на рабочий сервер', 'Если выбранный сервер перестал отвечать — временно работать через другой свой, потом вернуться.'),
+        check('smartSelect', 'Умный выбор своих серверов', 'Проверять раз в минуту: история успешных запросов, медиана и p95, карантин и защита от частых переключений. Работает в «Автовыборе» и при выборе резерва; ручной выбор сохраняется. Скорость загрузки не измеряется.'),
+        h('button', { class: 'btn small', onclick: () => serverScoresDialog() }, 'Качество серверов'),
         check('sleepReconnect', 'Отключаться перед сном', 'После пробуждения компьютера Naivka подключится снова.')),
       page('Действия',
         check('autoApply', 'Применять изменения сразу', 'Если изменению нужно переподключение, Naivka переподключится сама — без кнопки «Переподключить».'),

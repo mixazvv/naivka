@@ -148,6 +148,7 @@ func (m *Monitor) run() {
 		}
 		if n%60 == 0 {
 			m.recordDelays(cl)
+			go m.a.scoreTick(cl)
 			go m.a.failback(cl)
 		}
 		if n%120 == 0 {
@@ -489,11 +490,21 @@ func probeVia(port int, u string) bool {
 }
 
 func (m *Monitor) healthCheck(s *Settings, force bool) {
+	gen := m.a.life.gen.Load()
+	checkedCore := m.a.core.Clash()
+	if checkedCore == nil {
+		return
+	}
 	_, proxyPort := m.a.core.ProbePorts()
 	if proxyPort == 0 {
 		return
 	}
 	ok := probeVia(proxyPort, s.TestURL) || probeVia(proxyPort, spareTestURL(s.TestURL))
+	latest := m.a.settingsCopy()
+	live := m.a.core.Clash()
+	if gen != m.a.life.gen.Load() || !m.a.life.want.Load() || live == nil || live.secret != checkedCore.secret || latest.Selected != s.Selected || latest.fingerprint() != s.fingerprint() {
+		return
+	}
 	// Не открылось ничего, даже напрямую, — пропал сам интернет. Сервер тут ни при чём:
 	// не переходим на другой сервер и не перезапускаем ядро, а ждём сеть.
 	offline := !ok && !m.a.internetUp()

@@ -111,6 +111,7 @@ func (a *App) disconnect() {
 		a.zapretOnlyOff()
 	}
 	a.fo.clear()
+	a.scores.reset()
 	a.mu.Lock()
 	a.applied = ""
 	a.mu.Unlock()
