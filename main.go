@@ -48,15 +48,18 @@ type App struct {
 	installer *serverInstaller
 	friends   friendsSessions // SSH к своим серверам для «Друзей» (friends.go)
 
-	restarter  serialRunner  // перезапуски ядра — по одному
-	life       lifeState     // включение и выключение — по одному, и чего хочет пользователь
-	fo         failoverState // временный переход на другой сервер
-	dnsg       dnsGuard      // запасной DNS, если прямой перестал отвечать
-	ytdns      youtubeDNS    // DNS Google для адресов YouTube
-	smart      *Smart        // автоопределение: что открывается из России напрямую
-	self       selfUpdater   // обновление самой Naivka
-	proxyGuard proxyGuard
-	zr         zapretRouteState // куда сейчас идут сайты zapret    // чтобы чужая программа не перехватила системный прокси
+	restarter    serialRunner  // перезапуски ядра — по одному
+	life         lifeState     // включение и выключение — по одному, и чего хочет пользователь
+	fo           failoverState // временный переход на другой сервер
+	scores       serverScores
+	selectionMu  sync.Mutex
+	selectionRev uint64      // guarded by selectionMu; invalidates pending automatic choices
+	dnsg         dnsGuard    // запасной DNS, если прямой перестал отвечать
+	ytdns        youtubeDNS  // DNS Google для адресов YouTube
+	smart        *Smart      // автоопределение: что открывается из России напрямую
+	self         selfUpdater // обновление самой Naivka
+	proxyGuard   proxyGuard
+	zr           zapretRouteState // куда сейчас идут сайты zapret    // чтобы чужая программа не перехватила системный прокси
 
 	probeMu sync.Mutex
 	probes  map[string]int // служебные входы теста скорости: тег → порт
@@ -304,6 +307,7 @@ func (a *App) connectLocked(gen int64) error {
 		a.core.Stop()
 		return err
 	}
+	a.scores.reset()
 	mode := "системный прокси"
 	if s.Mode == "tun" {
 		mode = "весь трафик (TUN)"

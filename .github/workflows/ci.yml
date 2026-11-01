@@ -24,6 +24,7 @@ jobs:
         run: |
           node tests/pet-mind.cjs
           node tests/vps-ui.cjs
+          node tests/server-scores.cjs
       - name: go vet
         run: |
           go vet -mod=vendor ./...

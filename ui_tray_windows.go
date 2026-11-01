@@ -82,12 +82,9 @@ func (a *App) trayCommand(id int) {
 		}
 		a.ui.Refresh()
 	case id == cmdWL:
-		a.mu.Lock()
-		a.settings.Selected = "wl"
-		_ = SaveSettings(a.dir, a.settings)
-		a.mu.Unlock()
-		a.fo.clear()
-		a.applySelection()
+		if err := a.selectServer("wl"); err != nil {
+			a.notify("Не удалось сохранить выбор сервера: "+firstLine(err.Error()), true)
+		}
 		a.ui.Refresh()
 	case id >= cmdAuto:
 		s := a.settingsCopy()
@@ -95,12 +92,9 @@ func (a *App) trayCommand(id int) {
 		if i := id - cmdServer0; id != cmdAuto && i >= 0 && i < len(s.Servers) {
 			sel = s.Servers[i].ID
 		}
-		a.mu.Lock()
-		a.settings.Selected = sel
-		_ = SaveSettings(a.dir, a.settings)
-		a.mu.Unlock()
-		a.fo.clear()
-		a.applySelection()
+		if err := a.selectServer(sel); err != nil {
+			a.notify("Не удалось сохранить выбор сервера: "+firstLine(err.Error()), true)
+		}
 		a.ui.Refresh()
 	}
 }

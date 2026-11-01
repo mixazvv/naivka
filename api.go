@@ -220,6 +220,14 @@ func (a *App) routes() http.Handler {
 		}
 		return cl.Proxies()
 	})
+	api("GET", "/api/server-scores", func(*http.Request) (any, error) {
+		s := a.settingsCopy()
+		rows := []serverRating{}
+		if cl := a.core.Clash(); s.SmartSelect && cl != nil {
+			rows = a.scores.viewFor(scoreEpoch(s, cl), time.Now())
+		}
+		return map[string]any{"enabled": s.SmartSelect, "rows": rows}, nil
+	})
 	api("POST", "/api/select", a.apiSelect)
 	api("POST", "/api/test", a.apiTest)
 	api("GET", "/api/test/results", func(*http.Request) (any, error) { return serverTests.view(), nil })
@@ -506,6 +514,8 @@ func decode(r *http.Request, v any) error {
 }
 
 func (a *App) apiSaveSettings(r *http.Request) (any, error) {
+	a.selectionMu.Lock()
+	defer a.selectionMu.Unlock()
 	ns := DefaultSettings()
 	if err := decode(r, ns); err != nil {
 		return nil, err
@@ -529,9 +539,20 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 	}
 	a.settings = ns
 	a.mu.Unlock()
-	if prevSel != ns.Selected {
-		a.fo.clear()
-		a.applySelection()
+	if prevSel != ns.Selected || prev.SmartSelect != ns.SmartSelect || prev.Failover != ns.Failover || prev.fingerprint() != ns.fingerprint() {
+		a.selectionRev++
+		a.scores.reset()
+		if prevSel != ns.Selected || prev.Failover != ns.Failover {
+			a.fo.clear()
+		}
+		if prevSel != ns.Selected {
+			a.wl.setActive(false)
+		}
+		if prevSel != ns.Selected || prev.SmartSelect != ns.SmartSelect || prev.Failover != ns.Failover {
+			if !a.isRestarting() {
+				a.applySelectionNowLocked()
+			}
+		}
 	}
 	a.core.SetKeepProxyOnCrash(ns.KillSwitch) // применяется сразу, без переподключения
 	go func() {
@@ -581,6 +602,11 @@ func (a *App) applySelection() {
 
 // applySelectionNow выставляет выбор сервера в ядре сейчас же (вызывается и из подключения).
 func (a *App) applySelectionNow() {
+	a.selectionMu.Lock()
+	defer a.selectionMu.Unlock()
+	a.applySelectionNowLocked()
+}
+func (a *App) applySelectionNowLocked() {
 	cl := a.core.Clash()
 	if cl == nil || !a.core.Running() {
 		return
@@ -598,6 +624,11 @@ func (a *App) applySelectionNow() {
 	if strings.HasPrefix(a.settings.Selected, "w-") && !a.wl.Active() {
 		tag = a.settings.Selected
 	}
+	if tag == tagAuto && a.settings.SmartSelect {
+		if hold := a.scores.held(scoreEpoch(a.settings, cl)); hold != "" {
+			tag = hold
+		}
+	}
 	if from, to := a.fo.get(); from != "" && from == tag {
 		tag = to // выбранный сервер не отвечает — пока работаем через замену
 	}
@@ -608,6 +639,8 @@ func (a *App) applySelectionNow() {
 }
 
 func (a *App) apiImport(r *http.Request) (any, error) {
+	a.selectionMu.Lock()
+	defer a.selectionMu.Unlock()
 	var req struct {
 		Text string `json:"text"`
 	}
@@ -628,6 +661,8 @@ func (a *App) apiImport(r *http.Request) (any, error) {
 	}
 	a.settings = ns
 	a.mu.Unlock()
+	a.selectionRev++
+	a.scores.reset()
 	if errs == nil {
 		errs = []string{}
 	}
@@ -641,20 +676,31 @@ func (a *App) apiSelect(r *http.Request) (any, error) {
 	if err := decode(r, &req); err != nil {
 		return nil, err
 	}
+	return nil, a.selectServer(req.ID)
+}
+
+// Both the tray and HTTP UI publish manual intent through the same serialized path.
+func (a *App) selectServer(id string) error {
+	a.selectionMu.Lock()
+	defer a.selectionMu.Unlock()
 	a.mu.Lock()
 	ns := a.settings.clone()
-	ns.Selected = req.ID
+	ns.Selected = id
 	ns.normalize()
-	a.wl.setActive(false) // выбрал сам — автоматика подписки не мешает
 	if err := SaveSettings(a.dir, ns); err != nil {
 		a.mu.Unlock()
-		return nil, err
+		return err
 	}
 	a.settings = ns
 	a.mu.Unlock()
+	a.wl.setActive(false)
+	a.selectionRev++
+	a.scores.reset()
 	a.fo.clear()
-	a.applySelection()
-	return nil, nil
+	if !a.isRestarting() {
+		a.applySelectionNowLocked()
+	}
+	return nil
 }
 
 type testResult struct {
@@ -863,6 +909,8 @@ func keepRisky(ns, cur *Settings) {
 }
 
 func (a *App) apiRestore(r *http.Request) (any, error) {
+	a.selectionMu.Lock()
+	defer a.selectionMu.Unlock()
 	var req struct {
 		Text     string `json:"text"`
 		Password string `json:"password"`
@@ -917,11 +965,22 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 	a.mu.Lock()
 	ns.Window = a.settings.Window
 	prev := a.settings.clone()
-	a.settings = ns
 	err = SaveSettings(a.dir, ns)
+	if err == nil {
+		a.settings = ns
+	}
 	a.mu.Unlock()
 	if err != nil {
 		return nil, err
+	}
+	a.selectionRev++
+	a.scores.reset()
+	a.fo.clear()
+	if a.wl != nil {
+		a.wl.setActive(false)
+	}
+	if a.core != nil && prev.fingerprint() == ns.fingerprint() && !a.isRestarting() {
+		a.applySelectionNowLocked()
 	}
 	_ = a.applyAutostart(prev, ns)
 	a.mon.Event("info", fmt.Sprintf("Настройки восстановлены из копии: %d серверов, %d правил", len(ns.Servers), len(ns.Rules)), false)

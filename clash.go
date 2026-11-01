@@ -121,6 +121,9 @@ func (c *Clash) Proxies() (*ProxyView, error) {
 }
 
 func (c *Clash) Select(tag string) error { return c.SelectIn(tagProxy, tag) }
+func (c *Clash) SelectContext(ctx context.Context, tag string) error {
+	return c.doContext(ctx, "PUT", "/proxies/"+url.PathEscape(tagProxy), map[string]string{"name": tag}, nil)
+}
 
 // SelectIn переключает группу-переключатель group на tag.
 func (c *Clash) SelectIn(group, tag string) error {
