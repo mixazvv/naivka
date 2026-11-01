@@ -204,6 +204,7 @@ func (e *ExperienceSettings) normalize() {
 }
 
 type Settings struct {
+	Layout     HomeLayout         `json:"layout"`
 	Experience ExperienceSettings `json:"experience"`
 	Servers    []Server           `json:"servers"`
 	Selected   string             `json:"selected"` // "auto" или ID сервера
@@ -480,6 +481,7 @@ func (s *Settings) fingerprint() string {
 	c.ExitWithWindow = false
 	c.Window = nil
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
+	c.Layout = HomeLayout{}
 	c.Experience = ExperienceSettings{}
 	c.Wall = WallSettings{}
 	c.Custom = CustomTheme{}
@@ -506,6 +508,7 @@ func (s *Settings) fingerprint() string {
 
 func (s *Settings) normalize() {
 	d := DefaultSettings()
+	s.Layout.normalize()
 	s.Experience.normalize()
 	s.Wall.normalize()
 	if s.Mode != "proxy" && s.Mode != "tun" {

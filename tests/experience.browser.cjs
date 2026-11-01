@@ -79,6 +79,19 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('[data-diagram="tree"]').count(),1);
     await page.evaluate(()=>RouteDiagrams.unmount());
     assert.equal(await page.locator('.route-scene').count(),0);
+    await page.evaluate(()=>{
+      S.layout={};main.replaceChildren(h('div',{class:'stage-inner'},h('div',{class:'stage-head'},'Статус'),h('div',{id:'lanesCard'},'Подключение'),h('div',{class:'stage-controls'},'Путь'),h('div',{class:'stage-tiles'},h('button',{id:'tileIp'},'IP'))));
+      HomeLayout.edit();
+    });
+    await page.getByRole('button',{name:'Минимализм',exact:true}).click();
+    assert(await page.locator('[aria-label="Схема подключения: показывать"]').isDisabled());
+    assert.equal(await page.locator('#tileIp').getAttribute('data-layout-hidden'),'');
+    assert(await page.locator('#lanesCard').isVisible());
+    await page.getByRole('button',{name:'Готово',exact:true}).click();
+    await page.evaluate(()=>HomeLayout.edit());
+    await page.getByRole('button',{name:'Стандартный',exact:true}).click();
+    assert.equal(await page.locator('.home-custom').count(),0);
+    assert.equal(await page.locator('#tileIp').getAttribute('data-layout-hidden'),null);
     assert.deepEqual(errors,[]);console.log('Presentation policy, event deduplication, reduced motion, local atmosphere and controls: OK');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());

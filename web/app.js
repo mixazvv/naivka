@@ -628,7 +628,8 @@ window.naivkaPetBack = (x, y, vx, vy) => {
   else Pet.appear(x, y, vx, vy);
 };
 
-function updateStatus() { guard(updateStatusNow, 'updateStatus'); }
+function updateStatus() {
+  if (typeof HomeLayout !== 'undefined') HomeLayout.apply(); guard(updateStatusNow, 'updateStatus'); }
 function updateStatusNow() {
   if (!ST || !S) return;
   const p = phase();
@@ -4028,6 +4029,7 @@ function viewSettings() {
         action('Своя тема', 'Собственные цвета, шрифт и готовые палитры.', editCustomTheme)),
       page('Фон', wallBox()),
       page('Эффекты и звуки', experienceSettings()),
+      page('Главный экран', h('button', {class:'btn',onclick:()=>HomeLayout.edit()}, 'Настроить экран'), h('p',{class:'hint'},'Порядок, ширина и видимость карточек. Отдельные раскладки для широкого и узкого окна.')),
       page('Цвета', h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
         h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'), accentPicker(),
         h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme))),

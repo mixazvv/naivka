@@ -1,0 +1,11 @@
+.home-custom.stage-inner { display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr)) !important;grid-template-rows:none !important;gap:12px !important;overflow:auto;align-content:start;padding-bottom:24px; }
+.home-custom.stage-inner > * { grid-row:auto !important;min-width:0; }
+.home-custom .stage-tiles {display:contents !important;}
+.home-custom .tile {min-height:90px;}
+.home-custom #lanesCard {min-height:320px;}
+.home-custom #liveCol {display:flex;max-height:260px;grid-row:auto;}
+.home-custom [data-layout-hidden] {display:none !important;}
+body[data-state="off"] .home-custom .tile {display:none;}
+.layout-editor-row {display:flex;align-items:center;gap:8px;margin:8px 0;padding:8px;border-bottom:1px solid var(--line,#38404a);flex-wrap:wrap;}
+.layout-editor-row > b {flex:1;min-width:120px;}
+@media(max-width:720px){.home-custom.stage-inner {grid-template-columns:minmax(0,1fr) !important;}.home-custom #lanesCard {min-height:280px;}}
