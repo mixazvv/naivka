@@ -44,3 +44,46 @@ if [ -r /etc/sing-box/naivka-hy2.crt ] && command -v openssl >/dev/null 2>&1; th
     else printf 'certificate=expired\n'; fi
   fi
 fi
+
+# Debian/Ubuntu only: use existing APT indexes, never refresh/download/install.
+# Do not source os-release as shell code. Disk cache generation is disabled.
+os_id=$(awk -F= '$1=="ID" {gsub(/["\047]/,"",$2); print $2; exit}' /etc/os-release 2>/dev/null)
+case "$os_id" in
+  debian|ubuntu)
+    index_times=$(for index in /var/lib/apt/lists/*_Packages*; do
+      [ -f "$index" ] && [ -r "$index" ] && stat -c '%Y' "$index" 2>/dev/null
+    done | awk '/^[0-9]+$/ {if(!n || $1<oldest) oldest=$1; if($1>newest) newest=$1; n++} END {if(n) printf "apt_index_oldest=%.0f\napt_index_newest=%.0f\n",oldest,newest}')
+    if [ -n "$index_times" ] && command -v apt >/dev/null 2>&1; then
+      printf '%s\n' "$index_times"
+      { apt -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= -o Debug::NoLocking=1 list --upgradable 2>/dev/null; printf '__exit=%s\n' "$?"; } |
+        awk '/^Listing\.\.\./ {header=1; next} /^__exit=/ {status=substr($0,8); next}
+          /\[upgradable from: / && $1 ~ /\// {n++; next} NF {bad=1}
+          END {if(status=="0" && header && !bad) printf "os_updates=apt_cached\napt_updates=%d\n",n;
+               else print "os_updates=cache_error"}'
+    else printf 'os_updates=missing_indexes\n'; fi
+    ;;
+  *) printf 'os_updates=unsupported\n';;
+esac
+
+# Local socket inventory, NOT an external reachability scan. No process names/IPs
+# leave the server. Retain at most 128 distinct protocol/port/binding tuples.
+if command -v ss >/dev/null 2>&1; then
+  { ss -H -lntu 2>/dev/null; printf '__exit=%s\n' "$?"; } | awk '
+    /^__exit=/ {status=substr($0,8); next}
+    ($1=="tcp" && $2=="LISTEN") || ($1=="udp" && $2=="UNCONN") {
+      endpoint=$5; port=endpoint; sub(/^.*:/,"",port)
+      if(port !~ /^[0-9]+$/ || (port+0)<1 || (port+0)>65535) {bad=1; next}
+      address=endpoint; sub(/:[^:]*$/,"",address); gsub(/[\[\]]/,"",address); sub(/%.*/,"",address)
+      binding="specific"
+      if(address=="*" || address=="0.0.0.0" || address=="::") binding="wildcard"
+      else if(address ~ /^127\./ || address=="::1" || address=="0:0:0:0:0:0:0:1" || address ~ /^::ffff:127\./) binding="loopback"
+      key=$1 "|" (port+0) "|" binding
+      if(key in seen) next
+      if(n>=128) {truncated=1; next}
+      seen[key]=1; entries[++n]=key; next
+    }
+    NF {bad=1}
+    END {if(status!="0" || bad) exit
+         print "local_listeners=" (truncated ? "truncated" : "observed")
+         for(i=1;i<=n;i++) print "listener=" entries[i]}'
+fi

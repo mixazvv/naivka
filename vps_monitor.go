@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,9 +27,24 @@ type vpsCheck struct {
 	Level string `json:"level"`
 	Value string `json:"value"`
 }
+type vpsUpdates struct {
+	Provider    string `json:"provider"`
+	Count       int    `json:"count"`
+	OldestIndex int64  `json:"oldestIndex"`
+	NewestIndex int64  `json:"newestIndex"`
+}
+
+type vpsListener struct {
+	Protocol string `json:"protocol"`
+	Port     int    `json:"port"`
+	Binding  string `json:"binding"`
+}
+
 type vpsReport struct {
 	CheckedAt int64              `json:"checkedAt"`
 	Metrics   map[string]float64 `json:"metrics"`
+	Updates   *vpsUpdates        `json:"updates,omitempty"`
+	Listeners []vpsListener      `json:"listeners"`
 	Checks    []vpsCheck         `json:"checks"`
 }
 
@@ -94,10 +110,38 @@ func parseVPSReport(raw string) (vpsReport, error) {
 		return r, errors.New("Слишком большой отчёт VPS")
 	}
 	values := map[string]string{}
+	listeners := map[vpsListener]bool{}
+	listenerInvalid, listenerOverflow := false, false
 	for _, line := range strings.Split(raw, "\n") {
 		k, v, ok := strings.Cut(line, "=")
+		if ok && k == "listener" && len(v) >= 80 {
+			listenerInvalid = true
+			continue
+		}
 		if ok && len(k) < 40 && len(v) < 80 {
-			values[k] = v
+			if k == "listener" {
+				parts := strings.Split(v, "|")
+				valid := false
+				if len(parts) == 3 && (parts[0] == "tcp" || parts[0] == "udp") && (parts[2] == "loopback" || parts[2] == "wildcard" || parts[2] == "specific") {
+					port, err := strconv.Atoi(parts[1])
+					if err == nil && port >= 1 && port <= 65535 && strconv.Itoa(port) == parts[1] {
+						valid = true
+						item := vpsListener{parts[0], port, parts[2]}
+						if _, exists := listeners[item]; !exists {
+							if len(listeners) < 128 {
+								listeners[item] = true
+							} else {
+								listenerOverflow = true
+							}
+						}
+					}
+				}
+				if !valid {
+					listenerInvalid = true
+				}
+			} else {
+				values[k] = v
+			}
 		}
 	}
 	if values["protocol"] != "1" {
@@ -139,8 +183,50 @@ func parseVPSReport(raw string) (vpsReport, error) {
 	}
 	r.Checks = append(r.Checks, c)
 	add("certificate", map[string]string{"valid_30d": "info", "expires_30d": "warning", "expired": "warning"})
-	// These need distro-specific update metadata and external reachability probes.
-	r.Checks = append(r.Checks, vpsCheck{"os_updates", "unknown", "unknown"}, vpsCheck{"external_ports", "unknown", "unknown"})
+	updatesCheck := vpsCheck{"os_updates", "unknown", "unknown"}
+	if values["os_updates"] == "unsupported" {
+		updatesCheck.Value = "unsupported"
+	}
+	if values["os_updates"] == "apt_cached" {
+		count, errCount := strconv.Atoi(values["apt_updates"])
+		oldest, errOld := strconv.ParseInt(values["apt_index_oldest"], 10, 64)
+		newest, errNew := strconv.ParseInt(values["apt_index_newest"], 10, 64)
+		if errCount == nil && count >= 0 && count <= 1000000 && errOld == nil && errNew == nil && oldest >= 946684800 && newest >= oldest && newest <= r.CheckedAt+300 {
+			r.Updates = &vpsUpdates{"apt_cached", count, oldest, newest}
+			updatesCheck = vpsCheck{"os_updates", "info", "none_in_cache"}
+			if count > 0 {
+				updatesCheck.Level = "warning"
+				updatesCheck.Value = "available_in_cache"
+			}
+		}
+	}
+	r.Checks = append(r.Checks, updatesCheck)
+	if listenerInvalid {
+		values["local_listeners"] = "unknown"
+	}
+	if listenerOverflow && values["local_listeners"] == "observed" {
+		values["local_listeners"] = "truncated"
+	}
+	add("local_listeners", map[string]string{"observed": "info", "truncated": "info"})
+	if values["local_listeners"] == "observed" || values["local_listeners"] == "truncated" {
+		r.Listeners = make([]vpsListener, 0, len(listeners))
+		for listener := range listeners {
+			r.Listeners = append(r.Listeners, listener)
+		}
+		sort.Slice(r.Listeners, func(i, j int) bool {
+			a, b := r.Listeners[i], r.Listeners[j]
+			if a.Port != b.Port {
+				return a.Port < b.Port
+			}
+			if a.Protocol != b.Protocol {
+				return a.Protocol < b.Protocol
+			}
+			return a.Binding < b.Binding
+		})
+	}
+	// Local binding does not establish internet reachability through NAT/firewalls.
+	r.Checks = append(r.Checks, vpsCheck{"external_ports", "unknown", "unknown"})
+
 	return r, nil
 }
 
