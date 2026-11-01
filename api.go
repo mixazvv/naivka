@@ -106,6 +106,21 @@ func (a *App) routes() http.Handler {
 		return nil, nil
 	})
 	api("POST", "/api/repair/start", func(*http.Request) (any, error) { return a.startRepair() })
+	api("POST", "/api/repair/confirm", func(r *http.Request) (any, error) {
+		var req struct {
+			Action           string `json:"action"`
+			OperationID      string `json:"operationId"`
+			ExpectedRevision uint64 `json:"expectedRevision"`
+			Target           string `json:"target"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		if req.Action != "temporary_failover" {
+			return nil, errors.New("UNSUPPORTED_REPAIR_ACTION")
+		}
+		return a.confirmRepair(req.OperationID, req.ExpectedRevision, req.Target)
+	})
 	api("GET", "/api/repair/status", func(*http.Request) (any, error) { return a.repair.snapshot(), nil })
 	api("POST", "/api/repair/cancel", func(r *http.Request) (any, error) {
 		var req struct {
@@ -537,18 +552,23 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 	if ns.Window == nil {
 		ns.Window = a.settings.Window
 	}
+	repairWasActive := a.repair.busy()
+	if prevSel != ns.Selected || prev.KillSwitch != ns.KillSwitch || prev.SmartSelect != ns.SmartSelect || prev.Failover != ns.Failover || prev.fingerprint() != ns.fingerprint() {
+		_ = a.repair.stop("")
+	}
 	a.settings = ns
 	a.mu.Unlock()
-	if prevSel != ns.Selected || prev.SmartSelect != ns.SmartSelect || prev.Failover != ns.Failover || prev.fingerprint() != ns.fingerprint() {
+	if prevSel != ns.Selected || prev.KillSwitch != ns.KillSwitch || prev.SmartSelect != ns.SmartSelect || prev.Failover != ns.Failover || prev.fingerprint() != ns.fingerprint() {
 		a.selectionRev++
 		a.scores.reset()
+		_ = a.repair.stop("")
 		if prevSel != ns.Selected || prev.Failover != ns.Failover {
 			a.fo.clear()
 		}
 		if prevSel != ns.Selected {
 			a.wl.setActive(false)
 		}
-		if prevSel != ns.Selected || prev.SmartSelect != ns.SmartSelect || prev.Failover != ns.Failover {
+		if repairWasActive || prevSel != ns.Selected || prev.SmartSelect != ns.SmartSelect || prev.Failover != ns.Failover {
 			if !a.isRestarting() {
 				a.applySelectionNowLocked()
 			}
@@ -629,10 +649,11 @@ func (a *App) applySelectionNowLocked() {
 			tag = hold
 		}
 	}
-	if from, to := a.fo.get(); from != "" && from == tag {
+	if from, to := a.fo.get(); from != "" && (from == tag || (a.settings.Selected == "auto" && a.fo.autoRoute())) {
 		tag = to // выбранный сервер не отвечает — пока работаем через замену
 	}
 	a.mu.Unlock()
+	a.selectionRev++
 	if err := cl.Select(tag); err != nil {
 		a.core.logs.Add("[naivka] не удалось переключить сервер: " + err.Error())
 	}
@@ -662,7 +683,12 @@ func (a *App) apiImport(r *http.Request) (any, error) {
 	a.settings = ns
 	a.mu.Unlock()
 	a.selectionRev++
+	wasRepairing := a.repair.busy()
 	a.scores.reset()
+	_ = a.repair.stop("")
+	if wasRepairing && !a.isRestarting() {
+		a.applySelectionNowLocked()
+	}
 	if errs == nil {
 		errs = []string{}
 	}
@@ -696,6 +722,7 @@ func (a *App) selectServer(id string) error {
 	a.wl.setActive(false)
 	a.selectionRev++
 	a.scores.reset()
+	_ = a.repair.stop("")
 	a.fo.clear()
 	if !a.isRestarting() {
 		a.applySelectionNowLocked()
@@ -974,12 +1001,14 @@ func (a *App) apiRestore(r *http.Request) (any, error) {
 		return nil, err
 	}
 	a.selectionRev++
+	wasRepairing := a.repair.busy()
 	a.scores.reset()
+	_ = a.repair.stop("")
 	a.fo.clear()
 	if a.wl != nil {
 		a.wl.setActive(false)
 	}
-	if a.core != nil && prev.fingerprint() == ns.fingerprint() && !a.isRestarting() {
+	if a.core != nil && (wasRepairing || prev.fingerprint() == ns.fingerprint()) && !a.isRestarting() {
 		a.applySelectionNowLocked()
 	}
 	_ = a.applyAutostart(prev, ns)

@@ -84,3 +84,19 @@ VPS-фикстуры также проверяют кэш APT на Debian/Ubuntu
 `node tests/server-scores.cjs` проверяет окно результатов без браузера: честные
 подписи HTTP/ICMP/неизвестной скорости, явное чтение API и игнорирование позднего
 ответа после закрытия. Смена сервера на настоящем Windows VPN остаётся ручной проверкой.
+
+Для исправлений котёнка, компоновки и мастера 2.26.0:
+
+- `go test -race -mod=vendor -run '^Test(Repair|HomeLayout|UnknownHomeLayout)' ./...`
+  — транзакции/отмена/откат/идемпотентность/планы, DNS-wire, таблица маршрутов и сетка.
+- `node tests/pet-offline.browser.cjs` — захват/потеря указателя, Settings drawer,
+  смена опор/вкладок, игры/модальные окна и remount, без HTTP listener.
+- `node tests/layout-diagrams.browser.cjs` — координаты/высоты, узлы серверов,
+  внешние drop-мишени, сохранение/отклонение правил, reduced motion и teardown.
+- `node tests/repair-transaction.browser.cjs` — настоящий UI с локальным API fixture:
+  подтверждение, проверка результата, откат, отмена и устаревшие планы. VPN не запускается.
+
+`ui-regressions` в GitHub Actions устанавливает закреплённый Playwright и Chromium.
+Локальный Chromium в managed sandbox может завершаться на setsockopt до создания
+страницы: тогда браузерная проверка выполняется в CI. Нельзя считать fake HTTP
+доказательством отсутствия утечек или проверки настоящего Windows TUN.

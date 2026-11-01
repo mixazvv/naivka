@@ -490,6 +490,9 @@ func probeVia(port int, u string) bool {
 }
 
 func (m *Monitor) healthCheck(s *Settings, force bool) {
+	if m.a.repair.busy() {
+		return
+	}
 	gen := m.a.life.gen.Load()
 	checkedCore := m.a.core.Clash()
 	if checkedCore == nil {
@@ -500,6 +503,9 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 		return
 	}
 	ok := probeVia(proxyPort, s.TestURL) || probeVia(proxyPort, spareTestURL(s.TestURL))
+	if m.a.repair.busy() {
+		return
+	}
 	latest := m.a.settingsCopy()
 	live := m.a.core.Clash()
 	if gen != m.a.life.gen.Load() || !m.a.life.want.Load() || live == nil || live.secret != checkedCore.secret || latest.Selected != s.Selected || latest.fingerprint() != s.fingerprint() {
@@ -543,6 +549,9 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 			m.mu.Lock()
 			m.fails = 0
 			m.mu.Unlock()
+			return
+		}
+		if m.a.repair.busy() {
 			return
 		}
 		m.Event("warn", "Нет связи через сервер — переподключаю соединения", true)

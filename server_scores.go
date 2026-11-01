@@ -300,6 +300,9 @@ func (a *App) choiceSnapshot() selectionSnapshot {
 // Lifecycle lock precedes selectionMu. Disconnect cancels the HTTP operation;
 // a manual selection queued during it always writes last. Probes hold neither lock.
 func (a *App) commitChoice(snap selectionSnapshot, cl *Clash, fn func(context.Context, *Settings) bool) bool {
+	if a.repair.busy() {
+		return false
+	}
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
 	ctx, cancel, err := a.life.operation(snap.gen, true)
@@ -309,6 +312,9 @@ func (a *App) commitChoice(snap selectionSnapshot, cl *Clash, fn func(context.Co
 	defer cancel()
 	a.selectionMu.Lock()
 	defer a.selectionMu.Unlock()
+	if a.repair.busy() {
+		return false
+	}
 	current := a.settingsCopy()
 	a.mu.Lock()
 	applied := a.applied
@@ -341,6 +347,9 @@ func (a *App) scoreTick(cl *Clash) {
 		now := time.Now()
 		epoch := scoreEpoch(current, cl)
 		a.scores.observe(epoch, serverScoreTags(current), delays, now)
+		if from, _ := a.fo.get(); from != "" {
+			return false
+		}
 		if current.Selected != "auto" {
 			return false
 		} // explicit server remains the user's choice
@@ -359,6 +368,7 @@ func (a *App) scoreTick(cl *Clash) {
 		if err := cl.SelectContext(ctx, next); err != nil || ctx.Err() != nil {
 			return false
 		}
+		a.selectionRev++
 		a.scores.commit(epoch, next, now)
 		a.mon.Event("info", "Умный выбор: «"+a.serverName(actual)+"» → «"+a.serverName(next)+"»: "+why, false)
 		return true

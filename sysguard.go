@@ -22,6 +22,9 @@ func (g *proxyGuard) reset() {
 }
 
 func (a *App) guardSystemProxy() {
+	if a.repair.busy() {
+		return
+	}
 	// Под общей очередью: не вмешиваемся в подключение или отключение, которое идёт сейчас.
 	if !a.life.mu.TryLock() {
 		return

@@ -1553,6 +1553,7 @@ function siteGroups() {
   }
   return [...groups.values()];
 }
+function serverTagForDiagram(id){return 's-'+id;}
 function renderBranches(lanes) {
   const lb = $('#lanesBox');
   if (!lb) return {};
@@ -1584,6 +1585,8 @@ function renderBranches(lanes) {
     wilt: l.key === 'zapret' && AD && AD.zapret && AD.zapret.degraded }));
   return RouteDiagrams.update(lb, {
     phase: p, offline: !!(STATS && STATS.health === 'offline' && p === 'on'), lanes: sp, top,
+    servers:S.servers.map(sv=>({id:sv.id,name:sv.name||sv.host,active:serverTagForDiagram(sv.id)===(PX?.selected==='auto'?PX?.autoNow:PX?.selected)})),
+    onServer: id=>selectServer(id),
     endSub: ROUTING[S.routing],
     controlLabel: powerLabel(p),
     compSub: zapretOnly() ? 'Только zapret' : 'Компьютер',
@@ -1594,8 +1597,8 @@ function renderBranches(lanes) {
       if (item.kind !== 'process') { sitePick(item, el); return; }
       routePicker(el, { title: item.label, sub: 'Вся программа целиком', current: item.current, onPick: async k => {
         if (await setProcRoute(item.exe, k)) {
-          if (k !== 'auto') Branches.moveLeaf(item.key, k);
-          else Branches.clearLeaf(item.key);
+          if (k !== 'auto') diagramMoveLeaf(item.key, k);
+          else diagramClearLeaf(item.key);
         }
       } });
     },
@@ -1632,7 +1635,7 @@ function sitePick(item, el) {
   const label = branchLeaves[item.key] ? branchLeaves[item.key].label : item.label;
   routePicker(el, { title: label, sub: 'Этот сервис — все его адреса', current: item.current, onPick: async k => {
     if (k === 'auto') { await siteClear(item.key); return; }
-    if (k !== item.current && await branchDrop(item.key, k)) Branches.moveLeaf(item.key, k);
+    if (k !== item.current && await branchDrop(item.key, k)) diagramMoveLeaf(item.key, k);
   } });
 }
 async function siteClear(key) {
@@ -1647,7 +1650,7 @@ async function siteClear(key) {
   let saved;
   try { saved = await saveNow(); } finally { branchSaving = false; }
   if (!saved) { if (S.rules === changed) S.rules = before; return false; }
-  Branches.clearLeaf(key);
+  diagramClearLeaf(key);
   toast(before.length === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. ${ruleNote('')}`);
   return true;
 }
@@ -1716,12 +1719,17 @@ function procChip(x) {
 // Перетаскивание программы или сайта на ветку схемы: короткое нажатие — tap(), перетаскивание — призрак
 // под курсором и drop(ветка). Призрак убирается при любом исходе: отпустили, отменили, элемент
 // пересоздали или окно потеряло фокус — иначе он «зависал» над схемой, а ветки оставались дорожками.
+function alternateDiagram(){return (S.experience?.diagram||'branches')!=='branches'&&S.theme!=='blocks';}
+function diagramMoveLeaf(key,route){Branches.moveLeaf(key,route);RouteDiagrams.moveLeaf(key,route);}
+function diagramClearLeaf(key){Branches.clearLeaf(key);RouteDiagrams.clearLeaf(key);}
+function diagramHoverAt(x,y){return alternateDiagram()?RouteDiagrams.hoverAt(x,y):Branches.hoverAt(x,y);}
+function diagramEndHover(){const a=RouteDiagrams.endHover(),b=Branches.endHover();return alternateDiagram()?a:b;}
 let liveDrag = 0;
 // Страховка: отпустили мышь, а тащить уже нечего (строку убрали вместе с разделом) — убираем осиротевший призрак.
 addEventListener('pointerup', () => setTimeout(() => {
   if (!document.querySelector('.proc-ghost') || document.querySelector('.lifted')) return;
   document.querySelectorAll('.proc-ghost').forEach(g => g.remove());
-  liveDrag = 0; Branches.endHover();
+  liveDrag = 0; diagramEndHover();
 }), true);
 function ghostDrag(el, makeGhost, tap, drop) {
   let sx, sy, ghost = null, id = null;
@@ -1731,7 +1739,7 @@ function ghostDrag(el, makeGhost, tap, drop) {
     ghost.remove(); ghost = null; el.classList.remove('lifted');
     liveDrag = Math.max(0, liveDrag - 1);
     removeEventListener('blur', cancel);
-    return Branches.endHover();
+    return diagramEndHover();
   };
   const cancel = () => { if (id !== null || ghost) finish(); };
   el.addEventListener('pointerdown', e => { if (e.button !== 0) return; id = e.pointerId; el.setPointerCapture(id); sx = e.clientX; sy = e.clientY; });
@@ -1743,7 +1751,7 @@ function ghostDrag(el, makeGhost, tap, drop) {
       liveDrag++; addEventListener('blur', cancel);
     }
     ghost.style.left = (e.clientX - 20) + 'px'; ghost.style.top = (e.clientY - 14) + 'px';
-    Branches.hoverAt(e.clientX, e.clientY);
+    diagramHoverAt(e.clientX, e.clientY);
   });
   el.addEventListener('pointerup', e => {
     if (e.pointerId !== id) return;
@@ -1784,7 +1792,7 @@ function renderLive() {
         key: 'site:' + g.key, label: g.label, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'], route: groupRoute(g), rule: siteRule(g),
         sub: g.procs.slice(0, 2).join(', '),
         pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto' }, el),
-        drop: async k => { if (await branchDrop(g.key, k)) Branches.moveLeaf(g.key, k); },
+        drop: async k => { if (await branchDrop(g.key, k)) diagramMoveLeaf(g.key, k); },
       })),
       procs.length ? h('div', { class: 'live-sec' }, 'Программы целиком') : null,
       ...procs.map(x => {
@@ -2477,9 +2485,9 @@ function serverOrder() {
 }
 
 async function selectServer(id) {
-  S.selected = id;
-  renderServers();
-  try { await api('/api/select', { id }); PXAt = 0; updateStatus(); } catch (e) { toast(e.message, true); }
+  const previous=S.selected;S.selected=id;renderServers();
+  try {await api('/api/select',{id});PXAt=0;await refreshProxies();updateStatus();return true;}
+  catch(e){if(S.selected===id)S.selected=previous;renderServers();updateStatus();toast(e.message,true);return false;}
 }
 
 // moveServer ставит сервер from перед to или после него (в том порядке, который видно на экране).
@@ -5346,44 +5354,47 @@ function wlNowLine() {
 
 // Read-only repair wizard. Polling stops as soon as its panel leaves the DOM.
 function viewRepair() {
-  const out = h('div', { role: 'status', 'aria-live': 'polite' });
-  let current = null, timer = 0;
-  const labels = { LOCAL_ADAPTER: 'Сетевой адаптер', DIRECT_INTERNET: 'Прямой интернет', DNS: 'DNS', CORE: 'Ядро', HTTPS_A: 'HTTPS: проверка 1', HTTPS_B: 'HTTPS: проверка 2' };
-  const diagnoses = { UNKNOWN: 'Причина пока не определена.', CORE_NOT_RUNNING: 'Ядро не запущено.', VPN_NOT_APPLICABLE: 'В режиме «Только zapret» диагностика VPN неприменима.', PATH_REACHABLE: 'Оба контрольных адреса доступны через локальный прокси.', PARTIAL_REACHABILITY: 'Доступен один контрольный адрес. Это не доказывает отказ сервера.', STALE_STATE: 'Состояние подключения изменилось. Запустите проверку заново.' };
-  const paint = v => {
-    current = v;
-    const active = v.operationId && !['PLAN_READY', 'CANCELLED'].includes(v.phase);
-    start.disabled = !!active; cancel.disabled = !active; copy.disabled = !v.operationId;
-    out.replaceChildren(...(v.checks || []).map(c => h('p', { class: 'hint' }, `${labels[c.name] || c.name}: ${c.status === 'OK' ? 'доступно' : c.status === 'DOWN' ? 'не запущено' : 'не определено'}`)),
-      h('p', null, v.phase === 'CANCELLED' ? 'Проверка отменена.' : diagnoses[v.diagnosis] || (active ? 'Проверяем…' : '')));
+  const out=h('div',{role:'status','aria-live':'polite'}),proposal=h('div');
+  let current=null,timer=0;
+  const terminal=new Set(['PLAN_READY','CANCELLED','COMMITTED','ROLLED_BACK','ROLLBACK_FAILED']);
+  const labels={LOCAL_ADAPTER:'Сетевой адаптер',DIRECT_INTERNET:'Прямой интернет (когда разрешён)',DNS_DIRECT:'DNS напрямую',DNS_PROXY:'Настроенный DNS через сервер',CORE:'Ядро',TUN_ADAPTER:'Адаптер TUN',TUN_IPV4_ROUTES:'Маршруты IPv4 через TUN',SYSTEM_PROXY:'Системный прокси',KILL_SWITCH:'Настройка защиты от утечек',TUN_LEAK_POLICY:'Аудит утечек вне прокси в TUN',PRIMARY_PATH:'Основной сервер',USER_PATH:'Обычный локальный прокси',HTTPS_A:'HTTPS: проверка 1',HTTPS_B:'HTTPS: проверка 2',TARGET_PATH:'Резерв: HTTPS и DNS',ROLLBACK_USER_PATH:'Контроль после отката',SWITCHING:'Переключение',VERIFYING:'Проверка после переключения',ROLLING_BACK:'Откат'};
+  const status={OK:'подтверждено',DOWN:'не запущено',PARTIAL:'частично доступно',UNKNOWN:'не определено',MISSING:'не найдены',UNCHANGED:'не изменена',CHANGED:'изменён другой программой',RUNNING:'выполняется',TIMEOUT:'тайм-аут',TRANSPORT_ERROR:'ошибка передачи',REDIRECT:'перенаправление, успех не подтверждён',UNEXPECTED_HTTP:'неожиданный ответ',NXDOMAIN:'имя не найдено (NXDOMAIN)',NO_ANSWER:'нет адреса в ответе',DNS_ERROR:'ошибка DNS',DNS_HTTP_ERROR:'ошибка DNS-сервиса',INVALID_RESPONSE:'некорректный ответ',UNEXPECTED_ANSWER:'неожиданный адрес в DNS'};
+  const diagnoses={DIAGNOSTIC_TIMEOUT:'Истёк общий тайм-аут диагностики. Повторите проверку после стабилизации сети.',UNKNOWN:'Причина пока не определена.',TUN_ROUTES_MISSING:'В Windows не найдены маршруты IPv4 через TUN. Смена сервера не исправит эту проблему.',TUN_ADAPTER_UNAVAILABLE:'Адаптер Naivka в режиме TUN не найден или не активен. Смена сервера не предлагается.',CAPTIVE_PORTAL_POSSIBLE:'Прямая проверка перенаправлена. Возможно, сеть требует входа через браузер; смена сервера не предлагается.',CORE_NOT_RUNNING:'Ядро не запущено. Используйте обычную кнопку подключения.',CORE_API_UNAVAILABLE:'Ядро не отвечает на служебные запросы. Повторный перезапуск не запускается.',LOCAL_NETWORK_DOWN:'Не найден активный сетевой адаптер. Смена сервера не предлагается.',VPN_NOT_APPLICABLE:'В режиме «Только zapret» переключение VPN неприменимо.',UNSUPPORTED_CURRENT_ROUTE:'Текущий маршрут не относится к доступным своим серверам.',PROXY_CHANGED:'Системный прокси изменён другой программой. Мастер не перезаписывает чужие настройки.',DNS_FAILURE:'Контрольные HTTPS-запросы проходят, но настроенный DNS не дал корректного ответа. Смена сервера не предлагается.',PATH_REACHABLE:'Контрольные HTTPS-запросы и DNS проходят через основной сервер и обычный локальный прокси.',SITE_SPECIFIC_FAILURE:'Часть контрольных адресов доступна. Этого недостаточно для смены сервера.',LOCAL_PROXY_PATH_FAILURE:'Основной сервер доступен, но обычный локальный прокси не прошёл проверки. Смена сервера не предлагается.',PRIMARY_UNREACHABLE:'Основной путь не отвечает; найден проверенный резерв.',NO_VERIFIED_BACKUP:'Среди проверенных альтернатив нет подтверждённого резерва (за один запуск проверяются до трёх).',STALE_STATE:'Состояние подключения изменилось. Запустите проверку заново.',PRIMARY_RECOVERED:'Основной путь снова отвечает. Переключение отменено.',CANDIDATE_NO_LONGER_HEALTHY:'Резерв больше не проходит проверки. Запустите диагностику заново.',CONTROL_PATH_CONFIRMED:'Переключение выполнено: контрольные HTTPS-запросы и DNS проходят. Доступность остальных сайтов этим не подтверждается.',ORIGINAL_CONFIGURATION_PRESENT:'Исходный маршрут уже на месте. Доступность интернета не подтверждена.',ORIGINAL_CONFIGURATION_RESTORED:'Исходный маршрут восстановлен. Доступность интернета не подтверждена.',RESERVE_PATH_RESTORED:'Прежний резерв восстановлен и снова проходит контрольные проверки.',USER_OR_CORE_CHANGED:'Операция прервана после изменения выбора, сети или ядра. Новый выбор не перезаписывается.',ROLLBACK_FAILED:'Не удалось подтвердить откат. Проверьте выбранный сервер и состояние подключения; настройки защиты и DNS мастер не менял.',OWNERSHIP_UNVERIFIED:'Не удалось подтвердить владение маршрутом для отката. Неизвестный выбор не перезаписывается.',CANCELLED:'Операция отменена.'};
+  const errorText=e=>({STALE_PLAN:'Предложение устарело. Повторите диагностику.',REPAIR_BUSY:'Другая операция восстановления ещё выполняется.',UNVERIFIED_CANDIDATE:'Этот резерв не подтверждён проверкой.'}[e.message]||e.message);
+  const paint=v=>{
+    current=v;const active=!!v.operationId&&!terminal.has(v.phase);
+    start.disabled=active;cancel.disabled=!active;copy.disabled=!v.operationId;
+    out.replaceChildren(...(v.checks||[]).map(c=>h('p',{class:'hint'},`${labels[c.name]||(/^BACKUP_/.test(c.name)?'Резерв '+c.name.slice(7):c.name)}: ${status[c.status]||'не определено'}`)),
+      h('p',{class:v.phase==='ROLLBACK_FAILED'?'err-text':''},v.phase==='CANCELLING'?'Останавливаю проверку; при необходимости выполняю безопасный откат…':v.phase==='CANCELLED'?(diagnoses[v.diagnosis]||'Проверка отменена.'):diagnoses[v.diagnosis]||(active?'Проверяем…':'')));
+    proposal.replaceChildren();
+    if(v.phase==='PLAN_READY'&&v.proposal==='TEMPORARY_FAILOVER'&&(v.candidates||[]).length){
+      const choice=h('select',{'aria-label':'Проверенный резерв'},v.candidates.map(c=>h('option',{value:c.id},serverById(c.id)?.name||'Резерв '+c.id)));
+      const confirm=h('button',{class:'btn primary',onclick:async()=>{
+        confirm.disabled=true;
+        try{paint(await api('/api/repair/confirm',{operationId:v.operationId,expectedRevision:v.expectedRevision,action:'temporary_failover',target:choice.value}));poll();}
+        catch(e){out.append(h('p',{class:'err-text'},errorText(e)));confirm.disabled=false;}
+      }},'Подтвердить временное переключение');
+      proposal.append(h('p',{class:'hint'},'Предложение действительно 2 минуты. Изменится только текущий выход через сервер. Сохранённый выбор, DNS и защита не изменятся. Существующие соединения могут кратко прерваться. После смены будут повторены проверки; при неудаче — откат, если вы не выбрали другой маршрут и не отключились.'),choice,confirm);
+    }
   };
-  const poll = async () => {
-    if (!panel.isConnected) return;
-    try {
-      const v = await api('/api/repair/status');
-      if (!panel.isConnected) return;
-      paint(v);
-      if (v.operationId && !['PLAN_READY', 'CANCELLED'].includes(v.phase)) timer = setTimeout(poll, 500);
-    } catch (e) { out.textContent = e.message; start.disabled = false; }
+  const poll=async()=>{
+    clearTimeout(timer);if(!panel.isConnected)return;
+    try{const v=await api('/api/repair/status');if(!panel.isConnected)return;paint(v);if(v.operationId&&!terminal.has(v.phase))timer=setTimeout(poll,500);}
+    catch(e){out.textContent=errorText(e);start.disabled=false;}
   };
-  const start = h('button', { class: 'btn', onclick: async () => {
-    clearTimeout(timer); start.disabled = true;
-    try { paint(await api('/api/repair/start', {})); poll(); }
-    catch (e) { out.textContent = e.message; start.disabled = false; }
-  } }, 'Проверить соединение');
-  const cancel = h('button', { class: 'btn', disabled: true, onclick: async () => {
-    try { await api('/api/repair/cancel', { operationId: current.operationId }); clearTimeout(timer); poll(); }
-    catch (e) { toast(e.message, true); }
-  } }, 'Отмена');
-  const copy = h('button', { class: 'btn', disabled: true, onclick: async () => {
-    try { await navigator.clipboard.writeText(JSON.stringify(current, null, 2)); toast('Отчёт скопирован'); }
-    catch (_) { toast('Не удалось скопировать', true); }
-  } }, 'Скопировать безопасный отчёт');
-  const panel = h('section', { class: 'card mt' }, h('h3', null, 'Восстановление соединения'),
-    h('p', { class: 'hint' }, 'Первая фаза: только диагностика. Настройки и сервер не меняются. DNS, резервы и отсутствие утечек пока не проверяются.'),
-    h('div', { class: 'row' }, start, cancel, copy), out);
-  setTimeout(poll, 0);
-  return panel;
+  const start=h('button',{class:'btn',onclick:async()=>{
+    clearTimeout(timer);start.disabled=true;
+    try{paint(await api('/api/repair/start',{}));poll();}catch(e){out.textContent=errorText(e);start.disabled=false;}
+  }},'Проверить соединение');
+  const cancel=h('button',{class:'btn',disabled:true,onclick:async()=>{
+    try{await api('/api/repair/cancel',{operationId:current.operationId});poll();}catch(e){toast(errorText(e),true);}
+  }},'Отмена');
+  const copy=h('button',{class:'btn',disabled:true,onclick:async()=>{
+    try{await navigator.clipboard.writeText(JSON.stringify(current,null,2));toast('Отчёт скопирован');}catch(_){toast('Не удалось скопировать',true);}
+  }},'Скопировать безопасный отчёт');
+  const panel=h('section',{class:'card mt'},h('h3',null,'Восстановление соединения'),
+    h('p',{class:'hint'},'Проверка не меняет маршрут. Резервы проверяются через отдельные входы, переключение — после вашего подтверждения. При включённой защите прямые проверки пропускаются. Контроль через локальный прокси не является полным аудитом утечек TUN.'),h('div',{class:'row'},start,cancel,copy),out,proposal);
+  setTimeout(poll,0);return panel;
 }
 
 boot();
