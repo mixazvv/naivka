@@ -53,11 +53,28 @@ func TestSumFor(t *testing.T) {
 }
 
 func TestExeCandidates(t *testing.T) {
+	if legacyBuild {
+		t.Skip("modern release test")
+	}
 	if got := exeCandidates("Naivka-debug.exe"); got[0] != "Naivka-debug.exe" || got[len(got)-1] != "Naivka.exe" {
 		t.Error(got)
 	}
 	if releaseAsset("v2.3.4") != "Naivka-v2.3.4-windows.zip" {
 		t.Error(releaseAsset("v2.3.4"))
+	}
+}
+
+func TestExeCandidatesArchitecture(t *testing.T) {
+	for _, name := range []string{"renamed.exe", "Naivka-win7-32.exe", "Naivka-win7-64.exe", "backup32.exe"} {
+		for _, tc := range []struct{ arch, want string }{{"386", "Naivka-win7-32.exe"}, {"amd64", "Naivka-win7-64.exe"}} {
+			got := exeCandidatesFor(name, true, tc.arch)
+			if len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("%s/%s: %v", name, tc.arch, got)
+			}
+		}
+	}
+	if got := exeCandidatesFor("Naivka.exe", true, "arm64"); len(got) != 0 {
+		t.Fatal(got)
 	}
 }
 

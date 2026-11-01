@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -218,7 +220,12 @@ func (a *App) url() string {
 }
 
 // connectLocked — подключение; вызывать только под a.life.mu (см. lifecycle.go).
-func (a *App) connectLocked() error {
+func (a *App) connectLocked(gen int64) error {
+	ctx, cancel, err := a.life.operation(gen, true)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	a.mu.Lock()
 	s := a.settings.clone()
 	a.mu.Unlock()
@@ -229,8 +236,17 @@ func (a *App) connectLocked() error {
 			a.mon.Event("warn", "zapret не запустился: "+firstLine(err.Error())+" — его сайты пойдут через сервер", false)
 		}
 	}
-	if err := a.core.Start(s); err != nil {
-		a.mon.Event("error", "Не удалось подключиться: "+firstLine(err.Error()), false)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := a.core.StartContext(ctx, s); err != nil {
+		if !errors.Is(err, context.Canceled) {
+			a.mon.Event("error", "Не удалось подключиться: "+firstLine(err.Error()), false)
+		}
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		a.core.Stop()
 		return err
 	}
 	mode := "системный прокси"
@@ -251,16 +267,10 @@ func (a *App) connectLocked() error {
 
 func (a *App) Quit() {
 	a.quitOnce.Do(func() {
-		a.life.want.Store(false)
-		a.life.gen.Add(1)
-		// Если сейчас идёт подключение, ждём его (недолго): иначе оно могло бы включить
-		// системный прокси уже после нашей остановки ядра — и интернет пропал бы до следующего запуска.
-		locked := false
-		for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
-			if locked = a.life.mu.TryLock(); locked {
-				break
-			}
-		}
+		a.life.stopIntent(true)
+		// Не чистим системное состояние параллельно с запуском. Отмена выше
+		// прерывает ожидание проверки конфига и готовности ядра.
+		a.life.mu.Lock()
 		a.core.Stop()
 		a.traffic.save(true)
 		restoreSystemProxy(a.dir)
@@ -273,9 +283,7 @@ func (a *App) Quit() {
 		removeInstance(a.dir, a.token)
 		a.core.Stop()
 		restoreSystemProxy(a.dir) // последним шагом: что бы ни успело случиться за время остановки
-		if locked {
-			a.life.mu.Unlock()
-		}
+		a.life.mu.Unlock()
 		log.Println("exit")
 		os.Exit(0)
 	})

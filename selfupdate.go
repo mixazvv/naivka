@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -246,16 +247,26 @@ func (u *selfUpdater) fetch(tag, exeName string) (exe []byte, debug []byte, err 
 	return exe, debug, nil
 }
 
-// exeCandidates — какой exe из архива ставить: с тем же именем, что запущенный, иначе основной этой сборки.
+// Архитектура legacy определяется сборкой, а не (произвольно меняемым) именем EXE.
 func exeCandidates(current string) []string {
-	names := []string{current}
-	if legacyBuild {
-		if strings.Contains(current, "32") {
-			names = append(names, "Naivka-win7-32.exe")
+	return exeCandidatesFor(current, legacyBuild, runtime.GOARCH)
+}
+
+func exeCandidatesFor(current string, legacy bool, arch string) []string {
+	if legacy {
+		switch arch {
+		case "386":
+			return []string{"Naivka-win7-32.exe"}
+		case "amd64":
+			return []string{"Naivka-win7-64.exe"}
+		default:
+			return nil
 		}
-		return append(names, "Naivka-win7-64.exe")
 	}
-	return append(names, "Naivka.exe")
+	if current == "Naivka-debug.exe" {
+		return []string{current, "Naivka.exe"}
+	}
+	return []string{"Naivka.exe"}
 }
 
 // writeExe пишет новый exe рядом со старым (в ту же папку, тот же диск) и подменяет его.

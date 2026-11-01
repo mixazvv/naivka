@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"runtime"
 	"sync"
@@ -14,10 +15,54 @@ import (
 // want — чего хочет пользователь: сторож и пробуждение подключают снова только если он
 // не нажимал «Отключить»; gen растёт при каждом отключении, чтобы старые попытки сторожа прекратились.
 type lifeState struct {
-	mu     sync.Mutex
-	want   atomic.Bool
-	gen    atomic.Int64
-	trying atomic.Int32 // сколько сейчас идёт попыток восстановить соединение (для окна)
+	mu       sync.Mutex
+	want     atomic.Bool
+	gen      atomic.Int64
+	trying   atomic.Int32 // сколько сейчас идёт попыток восстановить соединение (для окна)
+	intentMu sync.Mutex   // намерение пользователя и отмена текущего запуска
+	closing  bool
+	cancel   context.CancelFunc
+}
+
+var errLifecycleCancelled = errors.New("Подключение отменено")
+
+func (l *lifeState) requestConnect() (int64, error) {
+	l.intentMu.Lock()
+	defer l.intentMu.Unlock()
+	if l.closing {
+		return 0, errLifecycleCancelled
+	}
+	l.want.Store(true)
+	return l.gen.Load(), nil
+}
+
+// Сначала запрещаем новые/устаревшие запуски и отменяем текущий, затем ждём mu.
+func (l *lifeState) stopIntent(closing bool) {
+	l.intentMu.Lock()
+	defer l.intentMu.Unlock()
+	l.closing = l.closing || closing
+	l.want.Store(false)
+	l.gen.Add(1)
+	if l.cancel != nil {
+		l.cancel()
+	}
+}
+
+// Вызывается только под mu; длительная работа не держит intentMu.
+func (l *lifeState) operation(gen int64, requireWant bool) (context.Context, context.CancelFunc, error) {
+	l.intentMu.Lock()
+	defer l.intentMu.Unlock()
+	if l.closing || l.gen.Load() != gen || (requireWant && !l.want.Load()) {
+		return nil, nil, errLifecycleCancelled
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	l.cancel = cancel
+	return ctx, func() {
+		cancel()
+		l.intentMu.Lock()
+		l.cancel = nil
+		l.intentMu.Unlock()
+	}, nil
 }
 
 // connect — подключиться по просьбе пользователя (или автоподключение при запуске).
@@ -26,28 +71,36 @@ func (a *App) connect() error {
 	if a.settingsCopy().ZapretOnly {
 		return a.zapretOnlyOn()
 	}
-	a.life.want.Store(true)
+	gen, err := a.life.requestConnect()
+	if err != nil {
+		return err
+	}
 	a.dnsg.fallback.Store(false) // пользователь подключается сам — снова пробуем DNS из настроек
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
-	return a.connectLocked()
+	return a.connectLocked(gen)
 }
 
 // reconnect — переподключиться заново с текущими настройками.
 func (a *App) reconnect() error {
-	a.life.want.Store(true)
+	gen, err := a.life.requestConnect()
+	if err != nil {
+		return err
+	}
 	a.dnsg.fallback.Store(false) // пользователь подключается сам — снова пробуем DNS из настроек
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
+	if a.life.gen.Load() != gen {
+		return errLifecycleCancelled
+	}
 	a.core.Stop()
-	return a.connectLocked()
+	return a.connectLocked(gen)
 }
 
 // disconnect — пользователь отключился: сторож и пробуждение больше не подключают.
 func (a *App) disconnect() {
-	a.life.want.Store(false)
+	a.life.stopIntent(false)
 	a.dnsg.fallback.Store(false)
-	a.life.gen.Add(1)
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
 	a.core.Stop()
@@ -78,7 +131,7 @@ func (a *App) resume(gen int64) (done bool, err error) {
 	if a.core.Running() {
 		return true, nil
 	}
-	if err := a.connectLocked(); err != nil {
+	if err := a.connectLocked(gen); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -87,14 +140,15 @@ func (a *App) resume(gen int64) (done bool, err error) {
 // restartCore перезапускает ядро, если пользователь хочет быть подключённым. Если перезапуск
 // уже идёт, второй не начинается — идущий просто повторится один раз в конце с самыми свежими настройками.
 func (a *App) restartCore() {
+	gen := a.life.gen.Load()
 	a.restarter.Run(func() {
 		a.life.mu.Lock()
 		defer a.life.mu.Unlock()
-		if !a.life.want.Load() {
+		if !a.life.want.Load() || a.life.gen.Load() != gen {
 			return
 		}
 		a.core.Stop()
-		if err := a.connectLocked(); err != nil {
+		if err := a.connectLocked(gen); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errLifecycleCancelled) {
 			a.mon.Event("error", "Перезапуск не удался: "+firstLine(err.Error()), true)
 		}
 	})
@@ -189,8 +243,14 @@ func (a *App) keepTrying(gen int64, first int) {
 // zapretOnlyOn — режим «Только zapret»: включить zapret (запомнить в настройках, чтобы он поднимался
 // вместе с Naivka) и Telegram, если он включён. Ядро не запускается.
 func (a *App) zapretOnlyOn() error {
+	gen := a.life.gen.Load()
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()
+	ctx, cancel, err := a.life.operation(gen, false)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	a.core.Stop() // если до этого было подключение через сервер
 	if a.zapret.root() == "" {
 		return errors.New("Сначала установите zapret в разделе «Обход»")
@@ -203,10 +263,16 @@ func (a *App) zapretOnlyOn() error {
 	ns := a.settings.clone()
 	a.mu.Unlock()
 	_ = SaveSettings(a.dir, ns)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !a.zapret.Running() && !a.zapret.busy() {
 		if err := a.zapret.Start(ns); err != nil {
 			return err
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if ns.Telegram.Enabled && a.tgws.snapshot().Installed != "" && !a.tgws.Running() {
 		if err := a.tgws.Start(ns); err != nil {
