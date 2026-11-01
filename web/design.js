@@ -16,7 +16,7 @@ const HOST = (() => {
   return h;
 })();
 const MINI = !!HOST.mini;
-const REDUCE = matchMedia('(prefers-reduced-motion: reduce)');
+const REDUCE = window.NaivkaExperience?.motion || matchMedia('(prefers-reduced-motion: reduce)');
 
 function hostCmd(cmd, extra) {
   try { window.chrome.webview.postMessage(JSON.stringify({ cmd, ...extra })); } catch (_) { /* не в окне Naivka */ }
@@ -154,12 +154,20 @@ function fxStart() {
   FX.raf = requestAnimationFrame(fxFrame);
 }
 
+REDUCE.addEventListener('change', () => {
+  if (REDUCE.matches) {
+    cancelAnimationFrame(FX.raf); FX.raf = 0;
+    for (const f of FX.flows.values()) { f.parts.forEach(p => p.el.remove()); f.parts = []; }
+  } else fxStart();
+});
 function fxFrame(now) {
+  if (REDUCE.matches) { FX.raf = 0; return; }
   const dt = Math.min(0.1, (now - FX.last) / 1000);
   FX.last = now;
   let busy = false;
   for (const f of FX.flows.values()) {
     const tg = flowTargets(f.target);
+    tg.rate *= window.NaivkaExperience?.scale ?? 1;
     const k = Math.min(1, dt * 1.6);
     f.rate += (tg.rate - f.rate) * k;
     f.tps += (tg.tps - f.tps) * k;

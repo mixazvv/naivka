@@ -9,7 +9,7 @@
 // Выключается в «Настройках» → «Внешний вид». Место, куда его унесли, хранится в настройках.
 const Pet = (() => {
   'use strict';
-  const REDUCE = matchMedia('(prefers-reduced-motion: reduce)');
+  const REDUCE = window.NaivkaExperience?.motion || matchMedia('(prefers-reduced-motion: reduce)');
   const NS = 'http://www.w3.org/2000/svg';
   const ATL = PET_ATLAS, FR = ATL.frames, IMG = 'cat-atlas.webp';
   const K = 64 / 120; // единиц SVG на пиксель атласа: сидящий кот ростом 113 px — около 60 единиц

@@ -166,9 +166,41 @@ type WindowGeom struct {
 	Max        bool
 }
 
+type ExperienceSettings struct {
+	Effects    string `json:"effects"`
+	Sound      string `json:"sound"`
+	Volume     int    `json:"volume"`
+	Atmosphere string `json:"atmosphere"`
+}
+
+func (e *ExperienceSettings) normalize() {
+	switch e.Effects {
+	case "off", "low", "balanced", "full":
+	default:
+		e.Effects = "balanced"
+	}
+	switch e.Sound {
+	case "off", "quiet", "digital", "retro":
+	default:
+		e.Sound = "off"
+	}
+	switch e.Atmosphere {
+	case "off", "auto", "morning", "day", "evening", "night":
+	default:
+		e.Atmosphere = "off"
+	}
+	if e.Volume < 0 {
+		e.Volume = 0
+	}
+	if e.Volume > 100 {
+		e.Volume = 100
+	}
+}
+
 type Settings struct {
-	Servers  []Server `json:"servers"`
-	Selected string   `json:"selected"` // "auto" или ID сервера
+	Experience ExperienceSettings `json:"experience"`
+	Servers    []Server           `json:"servers"`
+	Selected   string             `json:"selected"` // "auto" или ID сервера
 
 	Mode string `json:"mode"` // proxy | tun
 	// ProxyPAC — системный прокси через PAC-скрипт: без Naivka (сбой, выключение) интернет идёт напрямую.
@@ -245,6 +277,7 @@ type Settings struct {
 
 func DefaultSettings() *Settings {
 	return &Settings{
+		Experience:      ExperienceSettings{Effects: "balanced", Sound: "off", Volume: 20, Atmosphere: "off"},
 		Servers:         []Server{},
 		Selected:        "auto",
 		Mode:            "proxy",
@@ -441,6 +474,7 @@ func (s *Settings) fingerprint() string {
 	c.ExitWithWindow = false
 	c.Window = nil
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
+	c.Experience = ExperienceSettings{}
 	c.Wall = WallSettings{}
 	c.Custom = CustomTheme{}
 	c.Mascot, c.PetTaskbar, c.PetHopOff, c.Achievements, c.Achv, c.PetSpot = false, false, false, false, nil, nil
@@ -466,6 +500,7 @@ func (s *Settings) fingerprint() string {
 
 func (s *Settings) normalize() {
 	d := DefaultSettings()
+	s.Experience.normalize()
 	s.Wall.normalize()
 	if s.Mode != "proxy" && s.Mode != "tun" {
 		s.Mode = d.Mode

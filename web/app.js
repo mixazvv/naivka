@@ -194,6 +194,7 @@ document.addEventListener('contextmenu', e => {
 // ---------- тема ----------
 let themeSent = '';
 function applyTheme() {
+  window.NaivkaExperience?.configure(S?.experience);
   // «Никогда не проси об этом» и «Пиксели» — стили поверх тёмной темы со своей палитрой.
   const gold = !!S && S.theme === 'gold';
   const blocks = !!S && S.theme === 'blocks';
@@ -465,13 +466,14 @@ async function saveNow() {
 
 // ---------- опрос ----------
 async function refreshState() {
-  try { ST = await api('/api/state'); } catch (_) { return; }
+  try { ST = await api('/api/state'); window.NaivkaExperience?.observe(ST, PX?.selected === "auto" ? PX?.autoNow : PX?.selected); } catch (_) { return; }
   updateStatus();
 }
 
 async function refreshProxies() {
   try { PX = await api('/api/proxies'); PXAt = Date.now(); } catch (_) { return; }
   if (PX && PX.running === false) PX = null;
+  window.NaivkaExperience?.observe(ST, PX?.selected === 'auto' ? PX?.autoNow : PX?.selected);
   updateStatus();
   if (view === 'servers') renderServers();
 }
@@ -3999,6 +4001,19 @@ async function showSettingsConfig() {
   } catch (e) { toast(e.message, true); }
 }
 
+function experienceSettings() {
+  S.experience ||= { effects: 'balanced', sound: 'off', volume: 20, atmosphere: 'off' };
+  const choose = (key, title, values) => h('label', { class: 'field' }, h('span', null, title),
+    h('select', { 'aria-label': title, onchange: e => { S.experience[key] = e.target.value; window.NaivkaExperience.configure(S.experience); save(); } },
+      values.map(([value, text]) => h('option', { value, selected: S.experience[key] === value }, text))));
+  return h('div', null,
+    choose('effects', 'Интенсивность эффектов', [['off','Выкл.'],['low','Минимум'],['balanced','Баланс'],['full','Полный']]),
+    choose('sound', 'Звуковая тема', [['off','Без звука'],['quiet','Тихий'],['digital','Цифровой'],['retro','Ретро']]),
+    h('label', { class: 'field' }, h('span', null, 'Громкость'), h('input', { type:'range', min:0, max:100, value:S.experience.volume, 'aria-label':'Громкость', oninput:e=>{ S.experience.volume=Number(e.target.value); window.NaivkaExperience.configure(S.experience); save(); } })),
+    choose('atmosphere', 'Атмосфера', [['off','Выключена'],['auto','По времени суток'],['morning','Утро'],['day','День'],['evening','Вечер'],['night','Ночь']]),
+    h('p', { class:'hint' }, 'Уменьшенное движение и скрытое окно останавливают декоративную анимацию. Атмосфера работает локально, без сервиса погоды.'));
+}
+
 function viewSettings() {
   const page = (title, ...items) => ({ title, items: items.filter(Boolean) });
   const section = (title, ...pages) => ({ title, pages: pages.filter(Boolean) });
@@ -4010,6 +4025,7 @@ function viewSettings() {
       page('Тема', themeTiles(),
         action('Своя тема', 'Собственные цвета, шрифт и готовые палитры.', editCustomTheme)),
       page('Фон', wallBox()),
+      page('Эффекты и звуки', experienceSettings()),
       page('Цвета', h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
         h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'), accentPicker(),
         h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme))),
