@@ -52,6 +52,33 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.getByLabel('Интенсивность эффектов').inputValue(),'low');
     await page.getByLabel('Интенсивность эффектов').selectOption('off');
     assert.equal(await page.evaluate(()=>S.experience.effects),'off');
+    await page.evaluate(() => {
+      S.experience.diagram='orbit';
+      const box=document.createElement('div');box.id='routeFixture';box.style.cssText='width:600px;height:360px;position:relative';main.replaceChildren(box);
+      window.actions=[];
+      window.model={phase:'on',lanes:[{key:'proxy',active:true,color:'#80ff80',speed:1000,node:{title:'Сервер'}},{key:'direct',active:true,color:'#80aaff'}],top:[{key:'example',label:'Сервис',route:'proxy',speed:1000}],onNode:k=>actions.push(k),why:()=>['Правило'],onPick:i=>actions.push(i.current),onDrop:async()=>false};
+      RouteDiagrams.update(box,model,'orbit');
+    });
+    await page.getByRole('button',{name:'Сервер',exact:true}).click();
+    await page.getByRole('button',{name:'Сервис: Через сервер',exact:true}).press('Enter');
+    assert.deepEqual(await page.evaluate(()=>actions),['proxy','proxy']);
+    assert.equal(await page.locator('.route-group').count(),2);
+    const drop = async () => page.evaluate(() => {
+      const dt=new DataTransfer(), leaf=document.querySelector('.route-service'), target=document.querySelector('[data-route="direct"]');
+      leaf.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
+      target.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));
+    });
+    await drop(); await page.waitForTimeout(50);
+    assert.equal(await page.locator('.route-service').getAttribute('data-route'),'proxy','rejected save must retain route');
+    await page.evaluate(()=>model.onDrop=async()=>true);
+    await drop(); await page.waitForTimeout(50);
+    assert.equal(await page.locator('.route-service').getAttribute('data-route'),'direct','successful save applies temporary presentation choice');
+
+    await page.evaluate(()=>{const b=document.querySelector('#routeFixture');RouteDiagrams.update(b,model,'tree');RouteDiagrams.update(b,model,'tree');});
+    assert.equal(await page.locator('.route-scene').count(),1);
+    assert.equal(await page.locator('[data-diagram="tree"]').count(),1);
+    await page.evaluate(()=>RouteDiagrams.unmount());
+    assert.equal(await page.locator('.route-scene').count(),0);
     assert.deepEqual(errors,[]);console.log('Presentation policy, event deduplication, reduced motion, local atmosphere and controls: OK');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());

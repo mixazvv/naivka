@@ -1291,6 +1291,7 @@ function renderLanes() {
     renderLaneLegend(lanes, total, renderBranches(lanes));
     return;
   }
+  RouteDiagrams.unmount();
   Branches.unmount();
   box.classList.remove('many-routes');
   renderProcShelf();
@@ -1579,7 +1580,7 @@ function renderBranches(lanes) {
     down: l.speed > 0 ? directions[l.key][0] : 0, up: l.speed > 0 ? directions[l.key][1] : 0,
     thin: l.key === 'direct' && p === 'on' && S.routing === 'global',
     wilt: l.key === 'zapret' && AD && AD.zapret && AD.zapret.degraded }));
-  return Branches.update(lb, {
+  return RouteDiagrams.update(lb, {
     phase: p, offline: !!(STATS && STATS.health === 'offline' && p === 'on'), lanes: sp, top,
     endSub: ROUTING[S.routing],
     controlLabel: powerLabel(p),
@@ -1597,7 +1598,7 @@ function renderBranches(lanes) {
       } });
     },
     onNode: k => go(k === 'proxy' ? 'servers' : k === 'direct' ? 'rules' : 'bypass'), toast,
-  }) || {};
+  }, S.experience?.diagram || 'branches') || {};
 }
 
 // ---------- выбор пути: меню по щелчку и программы целиком ----------
@@ -4007,6 +4008,7 @@ function experienceSettings() {
     h('select', { 'aria-label': title, onchange: e => { S.experience[key] = e.target.value; window.NaivkaExperience.configure(S.experience); save(); } },
       values.map(([value, text]) => h('option', { value, selected: S.experience[key] === value }, text))));
   return h('div', null,
+    choose('diagram', 'Схема маршрутов', [['branches','Ветви'],['orbit','Орбита'],['tree','Дерево']]),
     choose('effects', 'Интенсивность эффектов', [['off','Выкл.'],['low','Минимум'],['balanced','Баланс'],['full','Полный']]),
     choose('sound', 'Звуковая тема', [['off','Без звука'],['quiet','Тихий'],['digital','Цифровой'],['retro','Ретро']]),
     h('label', { class: 'field' }, h('span', null, 'Громкость'), h('input', { type:'range', min:0, max:100, value:S.experience.volume, 'aria-label':'Громкость', oninput:e=>{ S.experience.volume=Number(e.target.value); window.NaivkaExperience.configure(S.experience); save(); } })),

@@ -167,6 +167,7 @@ type WindowGeom struct {
 }
 
 type ExperienceSettings struct {
+	Diagram    string `json:"diagram"`
 	Effects    string `json:"effects"`
 	Sound      string `json:"sound"`
 	Volume     int    `json:"volume"`
@@ -174,6 +175,11 @@ type ExperienceSettings struct {
 }
 
 func (e *ExperienceSettings) normalize() {
+	switch e.Diagram {
+	case "branches", "orbit", "tree":
+	default:
+		e.Diagram = "branches"
+	}
 	switch e.Effects {
 	case "off", "low", "balanced", "full":
 	default:
@@ -277,7 +283,7 @@ type Settings struct {
 
 func DefaultSettings() *Settings {
 	return &Settings{
-		Experience:      ExperienceSettings{Effects: "balanced", Sound: "off", Volume: 20, Atmosphere: "off"},
+		Experience:      ExperienceSettings{Diagram: "branches", Effects: "balanced", Sound: "off", Volume: 20, Atmosphere: "off"},
 		Servers:         []Server{},
 		Selected:        "auto",
 		Mode:            "proxy",
