@@ -5302,7 +5302,6 @@ function wlNowLine() {
   return out;
 }
 
-boot();
 
 
 // Read-only repair wizard. Polling stops as soon as its panel leaves the DOM.
@@ -5346,3 +5345,5 @@ function viewRepair() {
   setTimeout(poll, 0);
   return panel;
 }
+
+boot();
