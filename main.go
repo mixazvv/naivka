@@ -63,6 +63,7 @@ type App struct {
 	ui      uiHost         // окно и значок в трее (зависит от платформы)
 	sleep   sleepState     // сон и пробуждение компьютера
 
+	repair   repairState
 	quitOnce sync.Once
 }
 
@@ -268,6 +269,7 @@ func (a *App) connectLocked(gen int64) error {
 func (a *App) Quit() {
 	a.quitOnce.Do(func() {
 		a.life.stopIntent(true)
+		_ = a.repair.stop("")
 		// Не чистим системное состояние параллельно с запуском. Отмена выше
 		// прерывает ожидание проверки конфига и готовности ядра.
 		a.life.mu.Lock()

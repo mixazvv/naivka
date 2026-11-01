@@ -100,6 +100,7 @@ func (a *App) reconnect() error {
 // disconnect — пользователь отключился: сторож и пробуждение больше не подключают.
 func (a *App) disconnect() {
 	a.life.stopIntent(false)
+	_ = a.repair.stop("")
 	a.dnsg.fallback.Store(false)
 	a.life.mu.Lock()
 	defer a.life.mu.Unlock()

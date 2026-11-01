@@ -2248,7 +2248,7 @@ function viewDiag() {
       updateConnTable();
       if (ST && ST.running) refreshConns();
     } else if (diagTab === 'check') {
-      body.replaceChildren(viewCheck());
+      body.replaceChildren(viewRepair(), viewCheck());
     } else if (diagTab === 'speed') {
       body.replaceChildren(viewSpeed());
       refreshSpeed();
@@ -5303,3 +5303,46 @@ function wlNowLine() {
 }
 
 boot();
+
+
+// Read-only repair wizard. Polling stops as soon as its panel leaves the DOM.
+function viewRepair() {
+  const out = h('div', { role: 'status', 'aria-live': 'polite' });
+  let current = null, timer = 0;
+  const labels = { LOCAL_ADAPTER: 'Сетевой адаптер', DIRECT_INTERNET: 'Прямой интернет', DNS: 'DNS', CORE: 'Ядро', HTTPS_A: 'HTTPS: проверка 1', HTTPS_B: 'HTTPS: проверка 2' };
+  const diagnoses = { UNKNOWN: 'Причина пока не определена.', CORE_NOT_RUNNING: 'Ядро не запущено.', VPN_NOT_APPLICABLE: 'В режиме «Только zapret» диагностика VPN неприменима.', PATH_REACHABLE: 'Оба контрольных адреса доступны через локальный прокси.', PARTIAL_REACHABILITY: 'Доступен один контрольный адрес. Это не доказывает отказ сервера.', STALE_STATE: 'Состояние подключения изменилось. Запустите проверку заново.' };
+  const paint = v => {
+    current = v;
+    const active = v.operationId && !['PLAN_READY', 'CANCELLED'].includes(v.phase);
+    start.disabled = !!active; cancel.disabled = !active; copy.disabled = !v.operationId;
+    out.replaceChildren(...(v.checks || []).map(c => h('p', { class: 'hint' }, `${labels[c.name] || c.name}: ${c.status === 'OK' ? 'доступно' : c.status === 'DOWN' ? 'не запущено' : 'не определено'}`)),
+      h('p', null, v.phase === 'CANCELLED' ? 'Проверка отменена.' : diagnoses[v.diagnosis] || (active ? 'Проверяем…' : '')));
+  };
+  const poll = async () => {
+    if (!panel.isConnected) return;
+    try {
+      const v = await api('/api/repair/status');
+      if (!panel.isConnected) return;
+      paint(v);
+      if (v.operationId && !['PLAN_READY', 'CANCELLED'].includes(v.phase)) timer = setTimeout(poll, 500);
+    } catch (e) { out.textContent = e.message; start.disabled = false; }
+  };
+  const start = h('button', { class: 'btn', onclick: async () => {
+    clearTimeout(timer); start.disabled = true;
+    try { paint(await api('/api/repair/start', {})); poll(); }
+    catch (e) { out.textContent = e.message; start.disabled = false; }
+  } }, 'Проверить соединение');
+  const cancel = h('button', { class: 'btn', disabled: true, onclick: async () => {
+    try { await api('/api/repair/cancel', { operationId: current.operationId }); clearTimeout(timer); poll(); }
+    catch (e) { toast(e.message, true); }
+  } }, 'Отмена');
+  const copy = h('button', { class: 'btn', disabled: true, onclick: async () => {
+    try { await navigator.clipboard.writeText(JSON.stringify(current, null, 2)); toast('Отчёт скопирован'); }
+    catch (_) { toast('Не удалось скопировать', true); }
+  } }, 'Скопировать безопасный отчёт');
+  const panel = h('section', { class: 'card mt' }, h('h3', null, 'Восстановление соединения'),
+    h('p', { class: 'hint' }, 'Первая фаза: только диагностика. Настройки и сервер не меняются. DNS, резервы и отсутствие утечек пока не проверяются.'),
+    h('div', { class: 'row' }, start, cancel, copy), out);
+  setTimeout(poll, 0);
+  return panel;
+}

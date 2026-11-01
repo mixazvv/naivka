@@ -105,6 +105,20 @@ func (a *App) routes() http.Handler {
 		a.ui.SetLogo(c)
 		return nil, nil
 	})
+	api("POST", "/api/repair/start", func(*http.Request) (any, error) { return a.startRepair() })
+	api("GET", "/api/repair/status", func(*http.Request) (any, error) { return a.repair.snapshot(), nil })
+	api("POST", "/api/repair/cancel", func(r *http.Request) (any, error) {
+		var req struct {
+			OperationID string `json:"operationId"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		if req.OperationID == "" {
+			return nil, errors.New("OPERATION_ID_REQUIRED")
+		}
+		return nil, a.repair.stop(req.OperationID)
+	})
 	api("GET", "/api/state", a.apiState)
 	api("GET", "/api/settings", func(*http.Request) (any, error) {
 		a.mu.Lock()
