@@ -20,6 +20,9 @@ type repairCapture struct {
 	ports                                         map[string]int
 	network                                       uint64
 	networkOK                                     bool
+	proxyOwned                                    bool
+	tunPresent                                    bool
+	tunRoutes                                     string
 	restoring                                     bool
 	operationID                                   string
 }
@@ -109,6 +112,13 @@ func (a *App) captureRepair(ctx context.Context, cl *Clash) (*repairCapture, err
 	s := choice.settings
 	snap := &repairCapture{choice: choice, cl: cl, mixedPort: s.MixedPort, network: repairNetwork(), networkOK: networkUp(), doh: repairDoH(s)}
 	snap.from, snap.to = a.fo.get()
+	if s.Mode == "proxy" {
+		snap.proxyOwned, _ = systemProxyOurs(s.MixedPort)
+	}
+	if s.Mode == "tun" {
+		snap.tunPresent = repairTUNPresent()
+		snap.tunRoutes = repairTUNRoutes()
+	}
 	if cl == nil || !a.core.Running() {
 		return snap, errors.New("CORE_NOT_RUNNING")
 	}
@@ -147,7 +157,8 @@ func (d appRepairIO) owned(snap *repairCapture) bool {
 	defer a.selectionMu.Unlock()
 	return a.repairOwnedLocked(snap)
 }
-func (a *App) repairOwnedLocked(snap *repairCapture) bool {
+func (a *App) repairOwnedLocked(snap *repairCapture) bool { return a.repairCurrentLocked(snap, true) }
+func (a *App) repairCurrentLocked(snap *repairCapture, checkPolicy bool) bool {
 	current := a.settingsCopy()
 	cl := a.core.Clash()
 	from, to := a.fo.get()
@@ -157,16 +168,38 @@ func (a *App) repairOwnedLocked(snap *repairCapture) bool {
 	if cl == nil || cl.secret != snap.cl.secret || a.life.gen.Load() != snap.choice.gen || !a.life.want.Load() || a.selectionRev != snap.choice.rev || current.Selected != snap.choice.settings.Selected || current.KillSwitch != snap.choice.settings.KillSwitch || current.fingerprint() != snap.choice.settings.fingerprint() || (applied != "" && applied != current.fingerprint()) || from != snap.from || to != snap.to || a.wl.Active() || repairNetwork() != snap.network {
 		return false
 	}
-	if current.Mode == "tun" && (!repairTUNPresent() || repairTUNRoutes() == "MISSING") {
+	if current.Mode == "proxy" {
+		ours, _ := systemProxyOurs(current.MixedPort)
+		if ours != snap.proxyOwned {
+			return false
+		}
+	}
+	if current.Mode == "tun" && (repairTUNPresent() != snap.tunPresent || repairTUNRoutes() != snap.tunRoutes) {
 		return false
 	}
-	if current.Mode == "proxy" {
+	if checkPolicy && current.Mode == "tun" && (!repairTUNPresent() || repairTUNRoutes() == "MISSING") {
+		return false
+	}
+	if checkPolicy && current.Mode == "proxy" {
 		ours, _ := systemProxyOurs(current.MixedPort)
 		if !ours {
 			return false
 		}
 	}
 	return true
+}
+
+// Diagnostic observations may themselves discover a broken proxy/TUN policy.
+// Do not replace those diagnoses with STALE_STATE merely because policy is bad.
+func (d appRepairIO) observed(ctx context.Context, snap *repairCapture) bool {
+	d.a.selectionMu.Lock()
+	current := d.a.repairCurrentLocked(snap, false)
+	d.a.selectionMu.Unlock()
+	if !current || ctx.Err() != nil {
+		return false
+	}
+	px, err := snap.cl.proxiesContext(ctx)
+	return err == nil && px.Selected == snap.selector && (snap.selector != tagAuto || px.AutoNow == snap.effective)
 }
 func (d appRepairIO) fresh(ctx context.Context, snap *repairCapture, expected string) bool {
 	if ctx.Err() != nil || !d.owned(snap) {
@@ -263,10 +296,13 @@ func (a *App) diagnoseRepair(ctx context.Context, id string) {
 	defer func() {
 		stale := false
 		if snap != nil && snap.cl != nil && snap.selector != "" {
-			stale = !(appRepairIO{a}).fresh(ctx, snap, snap.selector)
+			stale = !(appRepairIO{a}).observed(ctx, snap)
 		}
 		if stale && ctx.Err() == nil {
 			diagnosis = "STALE_STATE"
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			diagnosis = "DIAGNOSTIC_TIMEOUT"
 		}
 		a.repair.finish(id, diagnosis, ctx.Err() != nil || stale)
 	}()

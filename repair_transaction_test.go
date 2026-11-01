@@ -307,3 +307,22 @@ func TestRepairLinkedCancellation(t *testing.T) {
 		t.Fatal("lifecycle cancellation not propagated")
 	}
 }
+
+func TestRepairDiagnosticFaultIsNotStaleness(t *testing.T) {
+	a, cl := qualityApp(t)
+	a.settings.Mode = "tun"
+	cl.hc = &http.Client{Transport: scoreTransport(func(*http.Request) (*http.Response, error) {
+		return scoreResponse(`{"proxies":{"proxy":{"now":"s-a"}}}`), nil
+	})}
+	snap, err := a.captureRepair(context.Background(), cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !(appRepairIO{a}).observed(context.Background(), snap) {
+		t.Fatal("missing TUN policy was confused with stale user/core state")
+	}
+	a.life.stopIntent(false)
+	if (appRepairIO{a}).observed(context.Background(), snap) {
+		t.Fatal("new disconnect was ignored")
+	}
+}
