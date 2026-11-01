@@ -285,7 +285,13 @@ func runUpdateSupervisor(input io.Reader, output io.Writer) error {
 	if p, e := filepath.EvalSymlinks(own); e == nil {
 		own = p
 	}
-	if !samePath(own, cfg.Exe+".old") || !filepath.IsAbs(cfg.Exe) || !filepath.IsAbs(cfg.Dir) || filepath.Dir(cfg.Intent) != cfg.Dir || !strings.HasPrefix(filepath.Base(cfg.Intent), "update-intent-") || len(cfg.Token) != 48 || parseVer(cfg.Version) == nil {
+	if !filepath.IsAbs(cfg.Exe) || !sameUpdateFile(own, cfg.Exe+".old") {
+		return errors.New("UPDATE_INVALID_EXECUTABLE")
+	}
+	if !filepath.IsAbs(cfg.Dir) || !sameUpdateFile(filepath.Dir(cfg.Intent), cfg.Dir) {
+		return errors.New("UPDATE_INVALID_INTENT_DIRECTORY")
+	}
+	if !strings.HasPrefix(filepath.Base(cfg.Intent), "update-intent-") || len(cfg.Token) != 48 || parseVer(cfg.Version) == nil {
 		return errors.New("UPDATE_INVALID_HANDOFF")
 	}
 	defer os.Remove(cfg.Exe + ".debug.new")
@@ -603,4 +609,15 @@ func (a *App) startupReady() bool {
 		return host.Ready()
 	}
 	return true
+}
+
+// Windows can spell the same path with an 8.3 name or a long directory name.
+// File identity also handles symlink aliases without accepting unrelated targets.
+func sameUpdateFile(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	return err == nil && os.SameFile(ai, bi)
 }

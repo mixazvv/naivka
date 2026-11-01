@@ -100,7 +100,7 @@ func main() {
 		_ = os.Unsetenv(updateHandshakeEnv)
 	}
 	dir, err := appDataDir()
-	if candidate && filepath.Dir(handshake.Intent) != dir {
+	if candidate && !sameUpdateFile(filepath.Dir(handshake.Intent), dir) {
 		os.Exit(1)
 	}
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -266,7 +267,8 @@ func TestMain(m *testing.M) {
 	if os.Getenv("NAIVKA_TEST_ACTUAL_UPDATE") == "1" {
 		for _, arg := range os.Args[1:] {
 			if arg == "--update-supervisor" {
-				if runUpdateSupervisor(os.Stdin, os.Stdout) != nil {
+				if err := runUpdateSupervisor(os.Stdin, os.Stdout); err != nil {
+					fmt.Fprintln(os.Stderr, err)
 					os.Exit(2)
 				}
 				os.Exit(0)
@@ -319,6 +321,7 @@ func TestSupervisorWaitsForParentPipe(t *testing.T) {
 			}
 			ack := filepath.Join(dir, "ack.json")
 			cmd := exec.Command(backup, "--update-supervisor")
+			cmd.Stderr = os.Stderr
 			cmd.Env = append(os.Environ(), "NAIVKA_TEST_ACTUAL_UPDATE=1", "NAIVKA_TEST_UPDATE_ACK="+ack)
 			input, err := cmd.StdinPipe()
 			if err != nil {
@@ -445,5 +448,23 @@ func TestUpdateRollbackRestartFailure(t *testing.T) {
 	b, _ := os.ReadFile(exe)
 	if string(b) != "old" {
 		t.Fatal("working exe not restored despite launch failure")
+	}
+}
+
+func TestUpdateFileIdentity(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "one.exe")
+	b := filepath.Join(dir, "other.exe")
+	if err := os.WriteFile(a, []byte("same bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("same bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !sameUpdateFile(a, a) || sameUpdateFile(a, b) || sameUpdateFile(a, filepath.Join(dir, "missing")) {
+		t.Fatal("file identity check is not strict")
+	}
+	if !sameUpdateFile(dir, filepath.Join(dir, ".")) {
+		t.Fatal("directory alias rejected")
 	}
 }
