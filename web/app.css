@@ -1358,11 +1358,12 @@ body[data-state="wait"] .wall.react .wall-tint::after, body[data-state="revive"]
 .pet-spark path { fill: var(--warn); }
 .pet-dust { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
 
-/* Спит: над головой «z», чуть приглушён. Дышит и ворочается сам — кадрами. */
+/* Дыхание не меняет рисунок и палитру шерсти. Лапы остаются на опоре. */
 .pet[data-mood="off"] .pet-zzz { opacity: 1; }
 .pet[data-mood="off"] .pet-zzz text { animation: petZ 3s ease-in-out infinite; }
 .pet[data-mood="off"] .pet-zzz text:nth-child(2) { animation-delay: .6s; } .pet[data-mood="off"] .pet-zzz text:nth-child(3) { animation-delay: 1.2s; }
-.pet[data-mood="off"] .pet-sprite { filter: brightness(.85) saturate(.8); }
+.pet[data-mood="off"] .pet-jump, .pet.nap .pet-jump { animation: petBreathe 3.8s ease-in-out infinite; }
+@keyframes petBreathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.012); } }
 @keyframes petZ { 0%, 100% { opacity: 0; transform: translateY(3px); } 40%, 60% { opacity: 1; transform: none; } }
 
 /* Бежит: тень пульсирует в такт шагам, позади пыль. */

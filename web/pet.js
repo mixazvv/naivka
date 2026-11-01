@@ -13,7 +13,7 @@ const Pet = (() => {
   const NS = 'http://www.w3.org/2000/svg';
   const ATL = PET_ATLAS, FR = ATL.frames, IMG = 'cat-atlas.webp';
   const K = 64 / 120; // единиц SVG на пиксель атласа: сидящий кот ростом 113 px — около 60 единиц
-  let root = null, svg = null, bubble = null, body = null, home = null, sprite = null, clipRect = null;
+  let root = null, svg = null, bubble = null, body = null, home = null, sprite = null, clipRect = null, spriteFilter = null, tone = [];
   let state = '', prev = '', say = () => '', onPurr = null, onMove = null, exit = null;
 
   const el = (tag, attrs = {}, ...kids) => {
@@ -27,22 +27,42 @@ const Pet = (() => {
   const chance = p => Math.random() < p;
   const seq = (base, n, from = 1) => Array.from({ length: n }, (_, i) => base + '_' + (i + from));
   const night = () => (h => h >= 23 || h < 6)(new Date().getHours());
+  // All delayed gestures belong to this mount; an old greeting must never affect
+  // a newly enabled mascot or resume an animation after it has been removed.
+  const timers = new Set();
+  function later(fn, ms) {
+    const owner = root;
+    const id = setTimeout(() => { timers.delete(id); if (root && root === owner) fn(); }, ms);
+    timers.add(id);
+    return id;
+  }
+  function cancel(id) { clearTimeout(id); timers.delete(id); }
 
   // ---------- кадр ----------
   // Кадр ставится точкой опоры в (32; 80) — лапы на «полу», или в (32; 4) — висит под рукой.
   let cur = '', box = { x: 0, y: 0, w: 0, h: 0 }, flip = false;
   function show(name) {
+    name = ATL.fallbacks?.[name] || name;
     const f = FR[name];
     if (!f || !sprite) return;
+    if (cur === name) return;
     cur = name;
     // below — сколько пикселей кадра ниже опоры (хвост или лапа свисают с края карточки).
     const [x, y, w, h, ax, top, below = 0] = f;
-    const left = 32 - ax * K, tp = top ? 4 : 80 - (h - below) * K;
-    box = { x: left, y: tp, w: w * K, h: h * K };
-    sprite.setAttribute('x', left - x * K);
-    sprite.setAttribute('y', tp - y * K);
+    const [scale, r, g, b] = ATL.render?.[name] || [1, 1, 1, 1];
+    const k = K * scale;
+    const left = 32 - ax * k, tp = top || held ? 4 : 80 - (h - below) * k;
+    box = { x: left, y: tp, w: w * k, h: h * k };
+    root.dataset.frame = name;
+    sprite.setAttribute('x', left - x * k);
+    sprite.setAttribute('y', tp - y * k);
+    sprite.setAttribute('width', ATL.w * k); sprite.setAttribute('height', ATL.h * k);
     clipRect.setAttribute('x', left); clipRect.setAttribute('y', tp);
-    clipRect.setAttribute('width', w * K); clipRect.setAttribute('height', h * K);
+    clipRect.setAttribute('width', w * k); clipRect.setAttribute('height', h * k);
+    // Restrict the filter to this frame, rather than allocating a surface for
+    // the whole atlas. Alpha 150 in the source is a residual matte, not fur.
+    for (const [key, value] of Object.entries({ x: left, y: tp, width: w * k, height: h * k })) spriteFilter.setAttribute(key, value);
+    [r, g, b].forEach((value, i) => tone[i].setAttribute('slope', value));
   }
   function setFlip(v) { flip = !!v; if (body) body.setAttribute('transform', v ? 'translate(64 0) scale(-1 1)' : ''); }
   // Где на экране сейчас нарисован кадр — для «за какую часть тела взяли».
@@ -65,14 +85,18 @@ const Pet = (() => {
   function makeBody() {
     sprite = el('image', { class: 'pet-sprite', href: IMG, width: ATL.w * K, height: ATL.h * K, preserveAspectRatio: 'none' });
     clipRect = el('rect', { x: 0, y: 0, width: 1, height: 1 });
+    tone = ['R', 'G', 'B'].map(channel => el('feFunc' + channel, { type: 'linear', slope: 1 }));
+    spriteFilter = el('filter', { id: 'petClean', filterUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' },
+      el('feComponentTransfer', {}, ...tone, el('feFuncA', { type: 'discrete', tableValues: '0 0 1' })));
     body = el('g', { class: 'pet-body' }, el('g', { 'clip-path': 'url(#petClip)' }, sprite));
-    return [el('clipPath', { id: 'petClip' }, clipRect), body];
+    sprite.setAttribute('filter', 'url(#petClean)');
+    return [el('defs', {}, el('clipPath', { id: 'petClip' }, clipRect), spriteFilter), body];
   }
 
   // ---------- проигрыватель ----------
   // Шаг — имя кадра или [имя, мс]. Новая последовательность прерывает прежнюю.
   let animTimer = 0, busy = false;
-  function stopAnim() { clearTimeout(animTimer); busy = false; }
+  function stopAnim() { cancel(animTimer); busy = false; }
   function play(steps, ms, done) {
     stopAnim();
     stopWatching(); // любое действие главнее «смотрит на курсор»
@@ -84,7 +108,7 @@ const Pet = (() => {
       const s = steps[i++];
       const [name, t] = Array.isArray(s) ? s : [s, ms];
       show(name);
-      animTimer = setTimeout(step, t);
+      animTimer = later(step, t);
     };
     step();
   }
@@ -100,7 +124,7 @@ const Pet = (() => {
     root.classList.remove(cls);
     void root.offsetWidth;
     root.classList.add(cls);
-    setTimeout(() => root && root.classList.remove(cls), ms);
+    later(() => root && root.classList.remove(cls), ms);
   }
   let bubbleTimer = 0;
   function talk(text, ms = 2600) {
@@ -110,8 +134,8 @@ const Pet = (() => {
     root.classList.toggle('bubble-left', free ? r.right + 170 > innerWidth : posX > 40);
     root.classList.toggle('bubble-down', free && r.top < 70);
     bubble.hidden = false;
-    clearTimeout(bubbleTimer);
-    bubbleTimer = setTimeout(() => { if (bubble) bubble.hidden = true; }, ms);
+    cancel(bubbleTimer);
+    bubbleTimer = later(() => { if (bubble) bubble.hidden = true; }, ms);
   }
   // Говорит — открывает рот.
   function meow(text) {
@@ -123,16 +147,13 @@ const Pet = (() => {
   const inAir = () => !!(held || falling || hanging || leaping || gone);
   const sitting = () => !busy && !strolling && !inAir() && !watching && !napping;
   const canAct = () => root && !REDUCE.matches && !inAir() && !strolling;
-  let side = 0, grumpyUntil = 0, napping = false;
+  let grumpyUntil = 0, napping = false;
   const grumpy = () => performance.now() < grumpyUntil;
 
   const sleepSeq = () => {
-    const r = Math.random();
-    if (r < 0.05) { side = 1 - side; return ['sleep_3', side ? 'sleep_4' : 'sleep_1']; }
-    if (r < 0.08) return [['lieyawn_1', 900]];
-    if (night() && r < 0.12) return [['sleepback_1', 4000]];
-    if (side) return ['sleep_4', 'sleep_5'];
-    return r < 0.2 ? ['sleep_1', 'sleep_2', ['sleep_3', 500], 'sleep_1'] : r < 0.35 ? [['sleepb_4', 2600]] : ['sleep_1', 'sleep_2'];
+    // Breathing moves the same drawing. Cycling unrelated curled poses used to
+    // change the face, outline and apparent size with every breath.
+    return chance(.06) ? [['sleepb_1', 3200], ['lieyawn_1', 900], ['sleepb_1', 3200]] : [['sleepb_1', 7000]];
   };
   const runMs = () => Math.max(60, Math.min(160, parseFloat(getComputedStyle(root).getPropertyValue('--pet-step')) * 1000 / 3 || 140));
 
@@ -141,7 +162,7 @@ const Pet = (() => {
     halt();
     if (inAir()) return;
     if (REDUCE.matches) {
-      show({ off: 'sleep_1', wait: 'alert_1', run: 'run_2', err: 'scared_1', sad: 'sad_1' }[s] || 'idle_1');
+      show({ off: 'sleepb_1', wait: 'alert_1', run: 'run_5', err: 'scared_1', sad: 'sad_1' }[s] || 'sit_1');
       return;
     }
     if (from === 'off' && s !== 'off') {
@@ -156,6 +177,11 @@ const Pet = (() => {
   }
   function enterNow(s) {
     if (!root || s !== state || inAir()) return;
+    if (REDUCE.matches) {
+      stopAnim();
+      show({ off: 'sleepb_1', wait: 'alert_1', run: 'run_5', err: 'scared_1', sad: 'sad_1' }[s] || 'sit_1');
+      return;
+    }
     setFlip(false);
     root.classList.remove('nap');
     if (napping && (s === 'on' || s === 'sad')) {
@@ -169,7 +195,7 @@ const Pet = (() => {
       case 'run': runAbout(); break;
       case 'err': loop(() => chance(0.15) ? [['hiss_1', 300], ['hiss_2', 400]] : ['scared_1', 'scared_2'], 170); break;
       case 'sad': stopAnim(); show(chance(0.5) ? 'sad_1' : 'sadlie_1'); break;
-      default: stopAnim(); show(grumpy() ? 'angry_4' : 'idle_1');
+      default: stopAnim(); show(grumpy() ? 'angry_4' : 'sit_1');
     }
   }
   const back = () => enterNow(state);
@@ -178,7 +204,7 @@ const Pet = (() => {
   // иногда выскакивает из меню; время от времени останавливается перевести дух. Места нет — бежит на месте.
   let rested = false;
   function runAbout() {
-    if (REDUCE.matches) { loop(() => seq('run', 8), runMs); return; }
+    if (REDUCE.matches) { stopAnim(); show('run_5'); return; }
     if (!rested && chance(0.3)) {
       rested = true;
       play([['brake_1', 110], ['brake_2', 160], ['brake_3', 220], ...pick([
@@ -191,22 +217,22 @@ const Pet = (() => {
     rested = false;
     if (free ? chance(0.55) && roam(true) : chance(0.3) && explore(null, true)) return;
     if (stroll(null, { fast: true })) return;
-    play([...seq('run', 8), ...seq('run', 8)], runMs(), back);
+    play([...seq('run', 4, 5), ...seq('run', 4, 5)], runMs(), back);
   }
 
   // ---------- живой простой: позы, моргание, дела ----------
-  const IDLE = ['idle_1', 'idle_2', 'idle_3', 'idle_4', 'idle_5', 'idle_6', 'idle_7', 'idle_8', 'sit_1', 'sit_2', 'sit_3', 'sit_4', 'look_1', 'look_2'];
+  const IDLE = seq('sit', 4);
   let tickTimer = 0;
   function tick() {
-    clearTimeout(tickTimer);
-    tickTimer = setTimeout(() => {
+    cancel(tickTimer);
+    tickTimer = later(() => {
       if (!root) return;
       if (state === 'on' && sitting() && !REDUCE.matches && !grumpy()) {
         // Чаще моргает; позу меняет изредка и только на соседнюю (из сидячих), чтобы не прыгать между позами.
         const r = Math.random();
         if (r < 0.6) {
           const base = cur;
-          play([['blink_1', 50], ['blink_2', 70], ['blink_3', 110], ['blink_2', 70], ['blink_1', 50], [base, 10]], 0, () => { busy = false; show(base); });
+          play([['sit_2', 60], ['sit_3', 100], ['sit_4', 70], [base, 30]], 0, () => { busy = false; show(base); });
         } else if (r < 0.8) {
           const i = Math.max(0, IDLE.indexOf(cur));
           show(IDLE[(i + (chance(0.5) ? 1 : IDLE.length - 1)) % IDLE.length]);
@@ -288,8 +314,8 @@ const Pet = (() => {
   ];
   let idleTimer = 0, lastMeow = performance.now(), recent = [], lastMove = 0;
   function idleLoop() {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
+    cancel(idleTimer);
+    idleTimer = later(() => {
       if (!root) return;
       if (!REDUCE.matches && !busy && !strolling && !inAir() && !watching && !hovering) {
         const idleFor = performance.now() - lastInput;
@@ -537,7 +563,7 @@ const Pet = (() => {
       if (!t.e.isConnected || !t.e.getBoundingClientRect().width) { leaping = false; support = null; vx = vy = 0; fall(); return; }
       const k = Math.min(1, (now - t0) / dur);
       fx = x0 + (x - x0) * Math.min(1, k * 4); fy = y0 + (y1 - y0) * k;
-      show(frames[Math.floor(now / 160) % 4]);
+      show(frames[Math.floor((now - t0) / 160) % 4]);
       place();
       if (k < 1) { climbRaf = requestAnimationFrame(step); return; }
       leaping = false; support = t.e;
@@ -629,7 +655,7 @@ const Pet = (() => {
   let strolling = false, strollRaf = 0;
   let gagTimers = [];
   function stopStroll() {
-    cancelAnimationFrame(strollRaf); gagTimers.forEach(clearTimeout); gagTimers = [];
+    cancelAnimationFrame(strollRaf); gagTimers.forEach(cancel); gagTimers = [];
     if (strolling) busy = false;
     strolling = false;
   }
@@ -663,10 +689,10 @@ const Pet = (() => {
     const fast = opt.fast != null ? opt.fast : dist > 220 && chance(0.4);
     const trot = !fast && dist > 150 && chance(0.35);
     const diag = !fast && !trot && !done0 && chance(0.15);
-    const gait = fast ? pick([{ cycle: seq('gallop', 6), ms: 75, speed: 140 }, { cycle: seq('run', 8), ms: 70, speed: 135 }])
+    const gait = fast ? pick([{ cycle: seq('gallop', 6), ms: 75, speed: 140 }, { cycle: seq('run', 4, 5), ms: 90, speed: 135 }])
       : trot ? { cycle: seq('trot', 6), ms: 95, speed: 70 }
       : diag ? { cycle: seq(left ? 'diagl' : 'diagr', 4), ms: 190, speed: 30 }
-      : chance(0.7) ? { cycle: seq('stride', 8), ms: 115, speed: 34 } : { cycle: seq('walk', 6), ms: 150, speed: 32 };
+      : { cycle: seq('stride', 8), ms: 115, speed: 34 };
     const turn = flip !== left && !diag;
     strolling = true; busy = true;
     const begin = () => {
@@ -686,10 +712,11 @@ const Pet = (() => {
           gag = null;
           let t = 0;
           const g = gen;
-          for (const [n, ms] of pseq) { gagTimers.push(setTimeout(() => g === gen && strolling && show(n), t)); t += ms; }
+          for (const [n, ms] of pseq) { gagTimers.push(later(() => g === gen && strolling && show(n), t)); t += ms; }
           pausedUntil = now + t;
         } else if (now >= pausedUntil) {
-          show(accel ? seq('accel', 8)[Math.min(7, Math.floor((now - t00) / 45))] : gait.cycle[Math.floor(now / gait.ms) % gait.cycle.length]);
+          const elapsed = now - t00;
+          show(accel ? seq('accel', 8)[Math.min(7, Math.floor(elapsed / 45))] : gait.cycle[Math.floor(Math.max(0, elapsed - (fast ? 360 : 0)) / gait.ms) % gait.cycle.length]);
         }
         const done = dir > 0 ? x >= to : x <= to;
         if (done) x = to;
@@ -729,15 +756,15 @@ const Pet = (() => {
       if (i >= pre.length) { begin(); return; }
       const [f, ms] = pre[i++];
       if (typeof f === 'function') { f(); steps(); return; }
-      show(f); animTimer = setTimeout(steps, ms);
+      show(f); animTimer = later(steps, ms);
     };
     steps();
     return true;
   }
 
   // ---------- курсор ----------
-  let lastInput = performance.now(), watching = false, watchTimer = 0, lastPounce = 0, lastPaw = 0, ptr = null;
-  function stopWatching() { watching = false; clearTimeout(watchTimer); }
+  let lastInput = performance.now(), watching = false, watchTimer = 0, lastLook = 0, lastPounce = 0, lastPaw = 0, ptr = null;
+  function stopWatching() { watching = false; cancel(watchTimer); }
   let hovering = false, hoverTimer = 0, lastPetAt = 0;
   function wake() {
     if (!napping) return;
@@ -790,12 +817,13 @@ const Pet = (() => {
       }
     }
     // Курсор над головой — тянется лапой; иначе поворачивает голову и глаза.
+    const target = dy < -50 && Math.abs(dx) < 70 && dist < 200 ? (dist < 120 ? 'reach_2' : 'reach_1')
+      : dy < -120 && Math.abs(dx) < 120 ? 'lookup_3' : lookFrame(dx, dy, dist);
+    // A tiny pointer movement must not randomly switch the whole reaching pose.
+    if (!watching || (target !== cur && now - lastLook >= 100)) { show(target); lastLook = now; }
     watching = true;
-    if (dy < -50 && Math.abs(dx) < 70 && dist < 200) show(dist < 120 ? pick(['reach_2', 'reachb_3', 'reachb_4']) : pick(['reach_1', 'reachb_1', 'reachb_2']));
-    else if (dy < -120 && Math.abs(dx) < 120) show(pick(['lookup_3', 'lookup_4']));
-    else show(lookFrame(dx, dy, dist));
-    clearTimeout(watchTimer);
-    watchTimer = setTimeout(() => { watching = false; if (root && !busy && !strolling && !inAir()) back(); }, 1500);
+    cancel(watchTimer);
+    watchTimer = later(() => { watching = false; if (root && !busy && !strolling && !inAir()) back(); }, 1500);
   }
   // Прыжок за курсором по своей опоре.
   let pounceRaf = 0;
@@ -818,7 +846,7 @@ const Pet = (() => {
     setFlip(to < cur0);
     const bow = chance(0.35) ? [['playbow_1', 200], ['playbow_2', 200], ['playbow_3', 200]] : [];
     const pre = bow.length * 200 + 720;
-    setTimeout(() => g === gen && flash('pounce', 700), pre);
+    later(() => g === gen && flash('pounce', 700), pre);
     play([...bow, ['sneak_1', 180], ['sneak_2', 180], ['sneak_3', 180], ['sneak_4', 180], ['leap_2', 150], ['leap_3', 150], ['leap_5', 150], ['touch_3', 300]], 0, () => {
       setFlip(false);
       // Поймал — довольный.
@@ -843,7 +871,7 @@ const Pet = (() => {
     const s = e.target.closest && e.target.closest(SURFACES), now = performance.now();
     if (!s || s === support || now - lastFollow < 60e3 || !chance(0.25)) return;
     lastFollow = now;
-    setTimeout(() => {
+    later(() => {
       if (!root || !s.isConnected || held || inAir() || strolling || busy || trip) return;
       const t = targets().find(t => t.e === s);
       if (t) { if (free) travel(t); else explore(t); }
@@ -852,8 +880,8 @@ const Pet = (() => {
   // Курсор задержался на коте — ластится, а если давно не гладили — просит погладить.
   function hoverStart() {
     hovering = true;
-    clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(() => {
+    cancel(hoverTimer);
+    hoverTimer = later(() => {
       if (!root || !hovering || held || press || inAir() || state !== 'on' || napping) return;
       halt(); watching = false;
       const begging = performance.now() - lastPetAt > 600e3 && chance(0.5);
@@ -862,7 +890,7 @@ const Pet = (() => {
     }, 1200);
   }
   function hoverEnd() {
-    hovering = false; clearTimeout(hoverTimer);
+    hovering = false; cancel(hoverTimer);
     if (root && !inAir() && !strolling && /^(rub|bonk|beg)_/.test(cur)) back();
   }
 
@@ -958,7 +986,7 @@ const Pet = (() => {
     const frames = held.dizzy ? ['dizzy_1', 'dizzy_2', 'dizzy_3'] : HOLD[held.zone] || HOLD.head;
     // Держат долго — вырывается быстрее; за хвост — всё время извивается.
     const ms = held.zone === 'tail' || now - held.since > 2500 ? 140 : 380;
-    show(frames[Math.floor(now / ms) % frames.length]);
+    show(frames[Math.floor((now - held.since) / ms) % frames.length]);
     return true;
   }
   function up(e) {
@@ -985,7 +1013,7 @@ const Pet = (() => {
       if (byTail || (thrown && now - h.since > 300)) {
         grumpyUntil = performance.now() + 45000;
         play([['touch_1', 250], ['hiss_1', 350], ['hiss_2', 500], ...seq('angry', 4).map(n => [n, 600]), ['sulk_1', 2500]], 0, back);
-        setTimeout(() => talk(byTail ? 'Шшш! За хвост нельзя!' : 'Хмф!', 1800), 300);
+        later(() => talk(byTail ? 'Шшш! За хвост нельзя!' : 'Хмф!', 1800), 300);
         return;
       }
       if (thrown) { play([...(hard ? seq('tumble', 7) : seq('tumble', 3, 5)).map(n => [n, 150]), ...seq('getup', 4).map(n => [n, 170]), ['alert_1', 400]], 0, back); return; }
@@ -1120,7 +1148,7 @@ const Pet = (() => {
     if (!h.hi) return;
     const day = new Date().toDateString();
     try { if (localStorage.getItem('naivka-pet-hi') === day) return; localStorage.setItem('naivka-pet-hi', day); } catch (_) { return; }
-    setTimeout(() => { if (root) { joy(); talk(h.hi, 4200); } }, 3500);
+    later(() => { if (root) { joy(); talk(h.hi, 4200); } }, 3500);
   }
 
   // opts: say(state) — реплика по щелчку, onPurr — погладили, spot — сохранённое место ([доля x, доля y]
@@ -1154,7 +1182,7 @@ const Pet = (() => {
     root.addEventListener('pointercancel', up);
     root.addEventListener('pointerenter', hoverStart);
     root.addEventListener('pointerleave', hoverEnd);
-    show('idle_1');
+    show('sit_1');
     const sp = opts.spot;
     if (Array.isArray(sp) && sp.length === 2) {
       makeFree();
@@ -1168,35 +1196,50 @@ const Pet = (() => {
     addEventListener('pointermove', onPointer, { passive: true });
     addEventListener('keydown', onKey);
     addEventListener('click', onAppClick, true);
+    REDUCE.addEventListener('change', motionChanged);
     lastInput = performance.now(); napping = false;
     const hr = new Date().getHours();
-    if (!REDUCE.matches && hr >= 6 && hr < 11 && !sp) setTimeout(() => { if (root && !busy && !inAir()) play([['stretchb_1', 1000], ['stretchb_3', 500], ['yawnsit_2', 700]], 0, back); }, 1500);
+    if (!REDUCE.matches && hr >= 6 && hr < 11 && !sp) later(() => { if (root && !busy && !inAir()) play([['stretchb_1', 1000], ['stretchb_3', 500], ['yawnsit_2', 700]], 0, back); }, 1500);
     tick();
     idleLoop();
   }
 
   function unmount() {
     if (!root) return;
-    stopAnim(); halt(); stopFall(); clearTimeout(idleTimer); clearTimeout(tickTimer); clearInterval(gravTimer);
-    clearTimeout(watchTimer); clearTimeout(hoverTimer);
+    stopAnim(); halt(); stopFall(); cancel(idleTimer); cancel(tickTimer); clearInterval(gravTimer);
+    cancel(watchTimer); cancel(hoverTimer);
     removeEventListener('resize', gravity);
     removeEventListener('pointermove', onPointer);
     removeEventListener('keydown', onKey);
     removeEventListener('click', onAppClick, true);
+    REDUCE.removeEventListener('change', motionChanged);
     root.remove();
-    root = svg = bubble = body = sprite = clipRect = home = support = null;
+    timers.forEach(clearTimeout); timers.clear();
+    root = svg = bubble = body = sprite = clipRect = spriteFilter = home = support = null;
+    tone = []; cur = ''; box = { x: 0, y: 0, w: 0, h: 0 }; flip = false;
     state = prev = ''; free = false; held = press = null; exploreUntil = 0; napping = false;
     cancelAnimationFrame(outRaf); gone = false; bounds = null;
     hot = false; hotSince = 0;
+  }
+
+  function motionChanged() {
+    if (!root) return;
+    halt(); stopAnim();
+    if (REDUCE.matches && !held) {
+      stopFall();
+      // A cancelled flight must leave the kitten standing on something.
+      if (free && !supported()) { support = null; fy = innerHeight - root.offsetHeight + FOOT(); place(); }
+    }
+    if (!inAir()) back();
   }
 
   // Радость: прыжок и искры.
   let joyTimer = 0;
   function joy() {
     if (!root) return;
-    clearTimeout(joyTimer);
+    cancel(joyTimer);
     root.classList.add('joy');
-    joyTimer = setTimeout(() => root && root.classList.remove('joy'), 2400);
+    joyTimer = later(() => root && root.classList.remove('joy'), 2400);
     if (!REDUCE.matches && state !== 'off' && !inAir()) {
       halt();
       play([['happy_1', 400], ['highjump_1', 170], ['highjump_3', 170], ['highjump_4', 200], ['highjump_5', 170], ['touch_3', 200], ['happy_1', 700]], 0, back);
