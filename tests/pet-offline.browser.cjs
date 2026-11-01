@@ -29,7 +29,7 @@ const {chromium}=require('playwright');const root=path.resolve(__dirname,'../web
   await page.evaluate(()=>Pet.update('err',0));assert.equal(await page.locator('.pet-yarn').count(),0,'game overrides network failure');
   await page.evaluate(()=>{
     Pet.update('on',0,'ok');const p=document.querySelector('.pet'),r=p.getBoundingClientRect();
-    p.dispatchEvent(new PointerEvent('pointerdown',{button:0,pointerId:41,clientX:r.x+30,clientY:r.y+30}));
+    p.dispatchEvent(new PointerEvent('pointerdown',{button:0,isPrimary:true,pointerId:41,clientX:r.x+30,clientY:r.y+30}));
     p.dispatchEvent(new PointerEvent('pointermove',{pointerId:41,clientX:r.x+100,clientY:r.y+40}));
   });
   assert(await page.locator('.pet').evaluate(e=>e.classList.contains('held')));
@@ -43,7 +43,7 @@ const {chromium}=require('playwright');const root=path.resolve(__dirname,'../web
   assert(await page.evaluate(()=>Pet.game('yarn')),'Settings drawer incorrectly disables kitten');
   await page.keyboard.press('Escape');
   for(let i=0;i<3;i++){
-    await page.evaluate(()=>{const p=document.querySelector('.pet'),r=p.getBoundingClientRect();p.dispatchEvent(new PointerEvent('pointerdown',{button:0,pointerId:77,clientX:r.x+30,clientY:r.y+30}));p.dispatchEvent(new PointerEvent('pointermove',{pointerId:77,clientX:450,clientY:170}));p.dispatchEvent(new PointerEvent('pointerup',{pointerId:77,clientX:450,clientY:170}));document.querySelector('.drawer').replaceChildren();});
+    await page.evaluate(()=>{const p=document.querySelector('.pet'),r=p.getBoundingClientRect();p.dispatchEvent(new PointerEvent('pointerdown',{button:0,isPrimary:true,pointerId:77,clientX:r.x+30,clientY:r.y+30}));p.dispatchEvent(new PointerEvent('pointermove',{pointerId:77,clientX:450,clientY:170}));p.dispatchEvent(new PointerEvent('pointerup',{pointerId:77,clientX:450,clientY:170}));document.querySelector('.drawer').replaceChildren();});
     await page.clock.runFor(5000);
     assert.equal(await page.locator('.pet.held').count(),0,'kitten stuck after view replacement');
     const r=await page.locator('.pet').boundingBox();assert(r.x>=-1&&r.y<720&&r.x<1000,'kitten escaped viewport');

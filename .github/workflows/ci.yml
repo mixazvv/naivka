@@ -85,5 +85,7 @@ jobs:
         env:
           NODE_PATH: ${{ runner.temp }}/ui-tests/node_modules
         run: |
-          node tests/pet-offline.browser.cjs
-          node tests/layout-diagrams.browser.cjs
+          ui_exit_status=0
+          node tests/pet-offline.browser.cjs || ui_exit_status=1
+          node tests/layout-diagrams.browser.cjs || ui_exit_status=1
+          exit "$ui_exit_status"
