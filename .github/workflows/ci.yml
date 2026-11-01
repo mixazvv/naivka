@@ -50,3 +50,16 @@ jobs:
         run: |
           GOARCH=amd64 go build -modfile=go.legacy.mod -mod=mod -tags legacy -o "$RUNNER_TEMP/Naivka-win7-64.exe" .
           GOARCH=386 go build -modfile=go.legacy.mod -mod=mod -tags legacy -o "$RUNNER_TEMP/Naivka-win7-32.exe" .
+
+  windows-update:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - name: Lifecycle and update processes on Windows
+        run: go test -mod=vendor -count=1 -timeout=3m -run "^(TestUpdate|TestSupervisor|TestFinalUpdate|TestLifecycle|TestExeCandidates)" ./...

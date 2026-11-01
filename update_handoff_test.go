@@ -378,6 +378,7 @@ func TestSupervisorWaitsForParentPipe(t *testing.T) {
 				}
 				if proc, err := os.FindProcess(v.PID); err == nil {
 					proc.Kill()
+					_, _ = proc.Wait()
 					proc.Release()
 				}
 				if v.Resume {
