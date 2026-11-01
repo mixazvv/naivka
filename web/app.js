@@ -1553,6 +1553,7 @@ function siteGroups() {
   }
   return [...groups.values()];
 }
+function serverTagForDiagram(id){return 's-'+id;}
 function renderBranches(lanes) {
   const lb = $('#lanesBox');
   if (!lb) return {};
@@ -1584,6 +1585,8 @@ function renderBranches(lanes) {
     wilt: l.key === 'zapret' && AD && AD.zapret && AD.zapret.degraded }));
   return RouteDiagrams.update(lb, {
     phase: p, offline: !!(STATS && STATS.health === 'offline' && p === 'on'), lanes: sp, top,
+    servers:S.servers.map(sv=>({id:sv.id,name:sv.name||sv.host,active:serverTagForDiagram(sv.id)===(PX?.selected==='auto'?PX?.autoNow:PX?.selected)})),
+    onServer: id=>selectServer(id),
     endSub: ROUTING[S.routing],
     controlLabel: powerLabel(p),
     compSub: zapretOnly() ? 'Только zapret' : 'Компьютер',
@@ -1594,8 +1597,8 @@ function renderBranches(lanes) {
       if (item.kind !== 'process') { sitePick(item, el); return; }
       routePicker(el, { title: item.label, sub: 'Вся программа целиком', current: item.current, onPick: async k => {
         if (await setProcRoute(item.exe, k)) {
-          if (k !== 'auto') Branches.moveLeaf(item.key, k);
-          else Branches.clearLeaf(item.key);
+          if (k !== 'auto') diagramMoveLeaf(item.key, k);
+          else diagramClearLeaf(item.key);
         }
       } });
     },
@@ -1632,7 +1635,7 @@ function sitePick(item, el) {
   const label = branchLeaves[item.key] ? branchLeaves[item.key].label : item.label;
   routePicker(el, { title: label, sub: 'Этот сервис — все его адреса', current: item.current, onPick: async k => {
     if (k === 'auto') { await siteClear(item.key); return; }
-    if (k !== item.current && await branchDrop(item.key, k)) Branches.moveLeaf(item.key, k);
+    if (k !== item.current && await branchDrop(item.key, k)) diagramMoveLeaf(item.key, k);
   } });
 }
 async function siteClear(key) {
@@ -1647,7 +1650,7 @@ async function siteClear(key) {
   let saved;
   try { saved = await saveNow(); } finally { branchSaving = false; }
   if (!saved) { if (S.rules === changed) S.rules = before; return false; }
-  Branches.clearLeaf(key);
+  diagramClearLeaf(key);
   toast(before.length === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. ${ruleNote('')}`);
   return true;
 }
@@ -1716,12 +1719,17 @@ function procChip(x) {
 // Перетаскивание программы или сайта на ветку схемы: короткое нажатие — tap(), перетаскивание — призрак
 // под курсором и drop(ветка). Призрак убирается при любом исходе: отпустили, отменили, элемент
 // пересоздали или окно потеряло фокус — иначе он «зависал» над схемой, а ветки оставались дорожками.
+function alternateDiagram(){return (S.experience?.diagram||'branches')!=='branches'&&S.theme!=='blocks';}
+function diagramMoveLeaf(key,route){Branches.moveLeaf(key,route);RouteDiagrams.moveLeaf(key,route);}
+function diagramClearLeaf(key){Branches.clearLeaf(key);RouteDiagrams.clearLeaf(key);}
+function diagramHoverAt(x,y){return alternateDiagram()?RouteDiagrams.hoverAt(x,y):Branches.hoverAt(x,y);}
+function diagramEndHover(){const a=RouteDiagrams.endHover(),b=Branches.endHover();return alternateDiagram()?a:b;}
 let liveDrag = 0;
 // Страховка: отпустили мышь, а тащить уже нечего (строку убрали вместе с разделом) — убираем осиротевший призрак.
 addEventListener('pointerup', () => setTimeout(() => {
   if (!document.querySelector('.proc-ghost') || document.querySelector('.lifted')) return;
   document.querySelectorAll('.proc-ghost').forEach(g => g.remove());
-  liveDrag = 0; Branches.endHover();
+  liveDrag = 0; diagramEndHover();
 }), true);
 function ghostDrag(el, makeGhost, tap, drop) {
   let sx, sy, ghost = null, id = null;
@@ -1731,7 +1739,7 @@ function ghostDrag(el, makeGhost, tap, drop) {
     ghost.remove(); ghost = null; el.classList.remove('lifted');
     liveDrag = Math.max(0, liveDrag - 1);
     removeEventListener('blur', cancel);
-    return Branches.endHover();
+    return diagramEndHover();
   };
   const cancel = () => { if (id !== null || ghost) finish(); };
   el.addEventListener('pointerdown', e => { if (e.button !== 0) return; id = e.pointerId; el.setPointerCapture(id); sx = e.clientX; sy = e.clientY; });
@@ -1743,7 +1751,7 @@ function ghostDrag(el, makeGhost, tap, drop) {
       liveDrag++; addEventListener('blur', cancel);
     }
     ghost.style.left = (e.clientX - 20) + 'px'; ghost.style.top = (e.clientY - 14) + 'px';
-    Branches.hoverAt(e.clientX, e.clientY);
+    diagramHoverAt(e.clientX, e.clientY);
   });
   el.addEventListener('pointerup', e => {
     if (e.pointerId !== id) return;
@@ -1784,7 +1792,7 @@ function renderLive() {
         key: 'site:' + g.key, label: g.label, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'], route: groupRoute(g), rule: siteRule(g),
         sub: g.procs.slice(0, 2).join(', '),
         pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto' }, el),
-        drop: async k => { if (await branchDrop(g.key, k)) Branches.moveLeaf(g.key, k); },
+        drop: async k => { if (await branchDrop(g.key, k)) diagramMoveLeaf(g.key, k); },
       })),
       procs.length ? h('div', { class: 'live-sec' }, 'Программы целиком') : null,
       ...procs.map(x => {
@@ -2477,9 +2485,9 @@ function serverOrder() {
 }
 
 async function selectServer(id) {
-  S.selected = id;
-  renderServers();
-  try { await api('/api/select', { id }); PXAt = 0; updateStatus(); } catch (e) { toast(e.message, true); }
+  const previous=S.selected;S.selected=id;renderServers();
+  try {await api('/api/select',{id});PXAt=0;await refreshProxies();updateStatus();return true;}
+  catch(e){if(S.selected===id)S.selected=previous;renderServers();updateStatus();toast(e.message,true);return false;}
 }
 
 // moveServer ставит сервер from перед to или после него (в том порядке, который видно на экране).

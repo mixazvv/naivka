@@ -15,7 +15,9 @@ const Pet = (() => {
   const K = 64 / 120; // единиц SVG на пиксель атласа: сидящий кот ростом 113 px — около 60 единиц
   let root = null, svg = null, bubble = null, body = null, home = null, sprite = null, clipRect = null, spriteFilter = null, tone = [];
   let mind = null, modalObserver = null, memorySave=()=>{}, previousBlocked=false;
-  const uiBlocked = () => !!document.querySelector('dialog[open], .drawer.open');
+  // Navigation drawers are ordinary surfaces, not modal interruptions. Blocking
+  // every drawer froze the kitten in Settings and disabled its game buttons.
+  const uiBlocked = () => !!document.querySelector('dialog[open]');
   let state = '', prev = '', say = () => '', onPurr = null, onMove = null, exit = null;
 
   const el = (tag, attrs = {}, ...kids) => {
@@ -961,7 +963,7 @@ const Pet = (() => {
   const HOLD = { head: ['scruff_1', 'scruff_2', 'scruff_3'], tail: ['bytail_1', 'bytail_2', 'bytail_3'], paw: ['bypaw_1', 'bypaw_2'],
     leg: ['byleg_1', 'byleg_2'], body: ['bybody_1', 'bybody_2', 'bybody_3'], chin: ['scruff_1', 'scruff_2', 'scruff_3'] };
   function down(e) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || press || e.isPrimary === false || uiBlocked()) return;
     stopGame();
     dragged = false;
     press = { x: e.clientX, y: e.clientY, id: e.pointerId, zone: zoneAt(e.clientX, e.clientY) };
@@ -969,6 +971,7 @@ const Pet = (() => {
   }
   function moveHeld(e) {
     if (!press) return false;
+    if (e.pointerId !== press.id) return true;
     const now = performance.now();
     if (!held) {
       if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 6) return false;
@@ -1002,7 +1005,27 @@ const Pet = (() => {
     show(frames[Math.floor((now - held.since) / ms) % frames.length]);
     return true;
   }
+  // Cancellation is not a throw: pointer capture may be lost on blur, a modal,
+  // native window drag or an OS gesture without a corresponding pointerup.
+  function cancelDrag() {
+    if (!root || (!press && !held)) return;
+    const id = press?.id;
+    held = press = null; dragged = true;
+    root.classList.remove('held');root.style.setProperty('--pet-tilt','0deg');
+    try { if(id !== undefined && root.hasPointerCapture(id)) root.releasePointerCapture(id); } catch (_) {}
+    halt();stopAnim();stopFall();vx=vy=0;
+    if(free) {
+      fx=Math.max(0,Math.min(Math.max(0,innerWidth-root.offsetWidth),fx));
+      fy=Math.max(0,Math.min(Math.max(0,innerHeight-root.offsetHeight+FOOT()),fy));
+      if(!supported()) {support=null;fy=innerHeight-root.offsetHeight+FOOT();}
+      place();save();
+    }
+    back();
+  }
+  function loseFocus() {stopGame();cancelDrag();}
+  function gainFocus() {if(root&&!inAir()&&!uiBlocked())back();}
   function up(e) {
+    if (press && e.pointerId !== press.id) return;
     if (!held) { press = null; try { root.releasePointerCapture(e.pointerId); } catch (_) { /* не пойман */ } return; }
     const h = held, now = performance.now();
     held = null; press = null; dragged = true;
@@ -1235,10 +1258,10 @@ const Pet = (() => {
     memorySave=opts.onMemory || (()=>{});
     mind = window.PetMind?.create({memory:opts.memory,save:memorySave}) || null;
     mind?.pause(REDUCE.matches||uiBlocked());
-    say = opts.say || say;
-    onPurr = opts.onPurr || onPurr;
-    onMove = opts.onMove || onMove;
-    exit = opts.exit || exit;
+    say = opts.say || (()=>'');
+    onPurr = opts.onPurr || null;
+    onMove = opts.onMove || null;
+    exit = opts.exit || null;
     home = container;
     root = document.createElement('div');
     root.className = 'pet';
@@ -1259,7 +1282,8 @@ const Pet = (() => {
     root.addEventListener('pointerdown', down);
     root.addEventListener('pointermove', e => { if (!moveHeld(e)) pet(e); });
     root.addEventListener('pointerup', up);
-    root.addEventListener('pointercancel', up);
+    root.addEventListener('pointercancel', cancelDrag);
+    root.addEventListener('lostpointercapture', cancelDrag);
     root.addEventListener('pointerenter', hoverStart);
     root.addEventListener('pointerleave', hoverEnd);
     show('sit_1');
@@ -1269,13 +1293,16 @@ const Pet = (() => {
       fx = Math.max(0, Math.min(innerWidth - root.offsetWidth, sp[0] * innerWidth));
       fy = Math.max(0, Math.min(innerHeight - root.offsetHeight, sp[1] * innerHeight));
       place();
-      requestAnimationFrame(() => { if (root && !supported()) { const hit = landing(feet() - 4, feet() + 4); if (hit) support = hit.el; else fall(); } });
+      const owner=root;
+      requestAnimationFrame(() => { if (root===owner && !supported()) { const hit = landing(feet() - 4, feet() + 4); if (hit) support = hit.el; else fall(); } });
     }
     gravTimer = setInterval(gravity, 700);
     addEventListener('resize', gravity);
     addEventListener('pointermove', onPointer, { passive: true });
     addEventListener('keydown', onKey);
     addEventListener('focusin', onFocus);
+    addEventListener('blur', loseFocus);
+    addEventListener('focus', gainFocus);
     addEventListener('click', onAppClick, true);
     REDUCE.addEventListener('change', motionChanged);
     lastInput = performance.now(); napping = false;
@@ -1286,8 +1313,8 @@ const Pet = (() => {
       for(const r of records)for(const n of r.addedNodes||[])if(n.nodeType===1&&n.matches('dialog'))modalObserver.observe(n,{attributes:true,attributeFilter:['open']});
       const blocked=uiBlocked();if(blocked===previousBlocked)return;previousBlocked=blocked;
       mind?.pause(blocked||REDUCE.matches);
-      if(blocked){stopGame();halt();stopAnim();if(root&&!inAir())show(state==='off'?'sleepb_1':'sit_1');}
-      else if(root&&!inAir())back();
+      if(blocked){stopGame();cancelDrag();halt();stopAnim();stopFall();if(root)show(state==='off'?'sleepb_1':'sit_1');}
+      else if(root){gravity();if(!inAir())back();}
     });
     modalObserver.observe(document.body,{childList:true});
     document.querySelectorAll('dialog,.drawer').forEach(e=>modalObserver.observe(e,{attributes:true,attributeFilter:['open','class']}));
@@ -1304,6 +1331,8 @@ const Pet = (() => {
     removeEventListener('pointermove', onPointer);
     removeEventListener('keydown', onKey);
     removeEventListener('focusin', onFocus);
+    removeEventListener('blur', loseFocus);
+    removeEventListener('focus', gainFocus);
     removeEventListener('click', onAppClick, true);
     REDUCE.removeEventListener('change', motionChanged);
     root.remove();
@@ -1313,12 +1342,16 @@ const Pet = (() => {
     state = prev = ''; free = false; held = press = null; exploreUntil = 0; napping = false;
     cancelAnimationFrame(outRaf); gone = false; bounds = null;
     hot = false; hotSince = 0;
+    hovering = false; ptr = null; dragged = false; vx = vy = 0;
+    lastLook = lastPounce = lastPaw = lastPetAt = 0;
+    say = () => ''; onPurr = onMove = exit = null; memorySave=()=>{};
   }
 
   function motionChanged() {
     if (!root) return;
     mind?.pause(REDUCE.matches||uiBlocked());
     stopGame();
+    if(REDUCE.matches)cancelDrag();
     halt(); stopAnim();
     if (REDUCE.matches && !held) {
       stopFall();
