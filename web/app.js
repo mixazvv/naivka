@@ -643,7 +643,7 @@ function updateStatusNow() {
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
   // Котёнок переселён на панель задач (своё окно Windows) — в меню его нет.
-  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024, STATS && STATS.health); }
+  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { memory:S.petMemory, onMemory:value=>{S.petMemory=value;save();}, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024, STATS && STATS.health); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -872,6 +872,7 @@ function railWheel(e) {
 
 // Главный экран («сцена» с ветвями) всегда на месте; разделы открываются панелью справа поверх него.
 function goNow(v) {
+  Pet.stopGame();
   if (settingsDispose) settingsDispose();
   const was = view;
   view = v;
@@ -1065,9 +1066,9 @@ function viewOverview() {
         h('div', { class: 'home-state' }, h('span', { class: 'home-led', 'aria-hidden': 'true' }),
           h('div', { class: 'status-title', id: 'statusTitle', role: 'status' }, '…')),
         h('div', { class: 'sub', id: 'statusSub' })),
-      h('div', { class: 'home-server', id: 'homeServer' })),
+      h('div', { class: 'home-server', id: 'homeServer', 'data-pet-surface':'homeServer' })),
     h('div', { id: 'notices', class: 'stage-notices' }),
-    h('div', { class: 'lanes-stage', id: 'lanesCard' },
+    h('div', { class: 'lanes-stage', id: 'lanesCard', 'data-pet-surface':'lanesCard' },
       h('div', { class: 'lanes-box', id: 'lanesBox' }, h('div', { id: 'lanesSvg' }), powerButton('connectBtn')),
       h('div', { class: 'lanes-legend', id: 'lanesLegend' }),
       h('div', { class: 'proc-shelf', id: 'procShelf' })),
@@ -4003,6 +4004,20 @@ async function showSettingsConfig() {
   } catch (e) { toast(e.message, true); }
 }
 
+function petGamesSettings(){
+  const available=()=>S.mascot===true&&!(S.petTaskbar===true&&window.NAIVKA_HOST)&&!REDUCE.matches;
+  const launch=kind=>{
+    if(!available()){toast('Включите талисман в окне и разрешите эффекты.',true);return;}
+    go('overview');
+    setTimeout(()=>{if(view==='overview'&&available()&&!Pet.game(kind))toast('Котёнок сейчас занят. Попробуйте немного позже.');},350);
+  };
+  return h('div',null,h('div',{class:'row'},
+    h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('cursor')},'Догонялки'),
+    h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('yarn')},'Клубок'),
+    h('button',{class:'btn small',onclick:()=>{S.petMemory={};Pet.resetHabits();save();toast('Привычки сброшены');}},'Сбросить привычки')),
+    h('p',{class:'hint'},'Короткие игры: Esc или щелчок завершает игру. Котёнок запоминает любимые места, но не требует ухода.'));
+}
+
 function experienceSettings() {
   S.experience ||= { effects: 'balanced', sound: 'off', volume: 20, atmosphere: 'off' };
   const choose = (key, title, values) => h('label', { class: 'field' }, h('span', null, title),
@@ -4034,6 +4049,7 @@ function viewSettings() {
         h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'), accentPicker(),
         h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme))),
       page('Котёнок',
+        petGamesSettings(),
         check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить. По умолчанию выключен.', updateStatus),
         window.NAIVKA_HOST && h('label', { class: 'check' },
           h('input', { type: 'checkbox', checked: S.petHopOff !== true, onchange: e => { S.petHopOff = !e.target.checked; save(); } }),

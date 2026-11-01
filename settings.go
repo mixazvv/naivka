@@ -204,6 +204,7 @@ func (e *ExperienceSettings) normalize() {
 }
 
 type Settings struct {
+	PetMemory  PetMemory          `json:"petMemory"`
 	Layout     HomeLayout         `json:"layout"`
 	Experience ExperienceSettings `json:"experience"`
 	Servers    []Server           `json:"servers"`
@@ -481,6 +482,7 @@ func (s *Settings) fingerprint() string {
 	c.ExitWithWindow = false
 	c.Window = nil
 	c.Theme, c.Accent, c.Oled, c.TrayMini, c.NativeFrame, c.OwnServer, c.Lang, c.Nav = "", "", false, false, false, false, "", ""
+	c.PetMemory = PetMemory{}
 	c.Layout = HomeLayout{}
 	c.Experience = ExperienceSettings{}
 	c.Wall = WallSettings{}
@@ -508,6 +510,7 @@ func (s *Settings) fingerprint() string {
 
 func (s *Settings) normalize() {
 	d := DefaultSettings()
+	s.PetMemory.normalize()
 	s.Layout.normalize()
 	s.Experience.normalize()
 	s.Wall.normalize()

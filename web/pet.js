@@ -14,6 +14,8 @@ const Pet = (() => {
   const ATL = PET_ATLAS, FR = ATL.frames, IMG = 'cat-atlas.webp';
   const K = 64 / 120; // единиц SVG на пиксель атласа: сидящий кот ростом 113 px — около 60 единиц
   let root = null, svg = null, bubble = null, body = null, home = null, sprite = null, clipRect = null, spriteFilter = null, tone = [];
+  let mind = null, modalObserver = null, memorySave=()=>{}, previousBlocked=false;
+  const uiBlocked = () => !!document.querySelector('dialog[open], .drawer.open');
   let state = '', prev = '', say = () => '', onPurr = null, onMove = null, exit = null;
 
   const el = (tag, attrs = {}, ...kids) => {
@@ -146,7 +148,7 @@ const Pet = (() => {
   // ---------- состояния ----------
   const inAir = () => !!(held || falling || hanging || leaping || gone);
   const sitting = () => !busy && !strolling && !inAir() && !watching && !napping;
-  const canAct = () => root && !REDUCE.matches && !inAir() && !strolling;
+  const canAct = () => root && !uiBlocked() && !REDUCE.matches && !inAir() && !strolling;
   let grumpyUntil = 0, napping = false;
   const grumpy = () => performance.now() < grumpyUntil;
 
@@ -161,7 +163,7 @@ const Pet = (() => {
   function enter(s, from) {
     halt();
     if (inAir()) return;
-    if (REDUCE.matches) {
+    if (REDUCE.matches || uiBlocked()) {
       show({ off: 'sleepb_1', wait: 'alert_1', run: 'run_5', err: 'scared_1', sad: 'sad_1' }[s] || 'sit_1');
       return;
     }
@@ -177,7 +179,7 @@ const Pet = (() => {
   }
   function enterNow(s) {
     if (!root || s !== state || inAir()) return;
-    if (REDUCE.matches) {
+    if (REDUCE.matches || uiBlocked()) {
       stopAnim();
       show({ off: 'sleepb_1', wait: 'alert_1', run: 'run_5', err: 'scared_1', sad: 'sad_1' }[s] || 'sit_1');
       return;
@@ -198,13 +200,13 @@ const Pet = (() => {
       default: stopAnim(); show(grumpy() ? 'angry_4' : 'sit_1');
     }
   }
-  const back = () => enterNow(state);
+  const back = () => {if(game){busy=false;show('sit_1');return;}enterNow(state);};
 
   // Идёт трафик — носится по-настоящему: бегом по меню или по своей опоре, с опоры на опору по окну,
   // иногда выскакивает из меню; время от времени останавливается перевести дух. Места нет — бежит на месте.
   let rested = false;
   function runAbout() {
-    if (REDUCE.matches) { stopAnim(); show('run_5'); return; }
+    if (REDUCE.matches || uiBlocked()) { stopAnim(); show('run_5'); return; }
     if (!rested && chance(0.3)) {
       rested = true;
       play([['brake_1', 110], ['brake_2', 160], ['brake_3', 220], ...pick([
@@ -227,7 +229,7 @@ const Pet = (() => {
     cancel(tickTimer);
     tickTimer = later(() => {
       if (!root) return;
-      if (state === 'on' && sitting() && !REDUCE.matches && !grumpy()) {
+      if (!game && !uiBlocked() && state === 'on' && sitting() && !REDUCE.matches && !grumpy()) {
         // Чаще моргает; позу меняет изредка и только на соседнюю (из сидячих), чтобы не прыгать между позами.
         const r = Math.random();
         if (r < 0.6) {
@@ -237,7 +239,7 @@ const Pet = (() => {
           const i = Math.max(0, IDLE.indexOf(cur));
           show(IDLE[(i + (chance(0.5) ? 1 : IDLE.length - 1)) % IDLE.length]);
         }
-      } else if (state === 'sad' && sitting() && chance(0.3)) show(cur === 'sad_1' ? 'sadlie_1' : 'sad_1');
+      } else if (!REDUCE.matches && !uiBlocked() && state === 'sad' && sitting() && chance(0.3)) show(cur === 'sad_1' ? 'sadlie_1' : 'sad_1');
       tick();
     }, rnd(2500, 6000));
   }
@@ -317,29 +319,32 @@ const Pet = (() => {
     cancel(idleTimer);
     idleTimer = later(() => {
       if (!root) return;
-      if (!REDUCE.matches && !busy && !strolling && !inAir() && !watching && !hovering) {
+      if (!REDUCE.matches && !uiBlocked() && !game && !busy && !strolling && !inAir() && !watching && !hovering) {
         const idleFor = performance.now() - lastInput;
         if ((state === 'on' || state === 'sad') && !napping && idleFor > (night() ? 60e3 : 180e3)) {
-          napping = true;
+          napping = true;mind?.acted('rest');
           play([['loaf_1', 2500], ['loaf_2', 3000], ...seq('sleepb', 4).map(n => [n, 450])], 0, back);
         } else if (napping) {
           // спит дальше
         } else if (exploreUntil && performance.now() > exploreUntil && state !== 'run') {
           comeHome();
         } else if (state === 'on' && !grumpy()) {
-          if (performance.now() - lastMeow > 480e3 && chance(0.2) && bubble && bubble.hidden) {
+          const rare= mind?.nextEvent();
+          if(rare){rareEvent(rare);}
+          else if (performance.now() - lastMeow > 480e3 && chance(0.2) && bubble && bubble.hidden) {
             lastMeow = performance.now();
             meow(pick(['Мяу', 'Мрр?', 'Мяу!', say(state) || 'Мяу']));
           } else {
             // Не повторяет последние дела; после прогулки — сперва отдых: перемещения реже ещё 40 секунд.
             const now = performance.now(), tired = now - lastMove < 40e3;
             const ok = ACTIONS.filter(a => (!a[1] || a[1]()) && !recent.includes(a));
-            const wt = a => a[3] === 'move' && tired ? a[0] * 0.25 : a[0];
+            const wt = a => (a[3] === 'move' && tired ? a[0] * 0.25 : a[0]) * (mind?.weight(a[3] || 'rest') ?? 1);
             let r = ok.reduce((s, a) => s + wt(a), 0) * Math.random();
             for (const a of ok) {
               if ((r -= wt(a)) >= 0) continue;
               if (a !== ACTIONS[0]) recent = [a, ...recent].slice(0, 4); // «просто сидит» можно подряд
               if (a[3] === 'move') lastMove = now;
+              mind?.acted(a[3] || 'rest');
               a[2]();
               break;
             }
@@ -380,7 +385,7 @@ const Pet = (() => {
     posX = 0; root.style.setProperty('--pet-x', '0px');
     if (home) home.prepend(root);
     if (onMove && !quiet) onMove(null);
-    if (REDUCE.matches) { back(); return; }
+    if (REDUCE.matches || uiBlocked()) { back(); return; }
     if (quiet) {
       root.classList.add('arriving');
       play([['front_1', 200], ['front_2', 200], ['front_3', 200], ['front_4', 200], ['tosit_4', 160], ['tosit_5', 160]], 0, () => { root && root.classList.remove('arriving'); back(); });
@@ -402,13 +407,13 @@ const Pet = (() => {
     if (!c.length) return false;
     makeFree();
     exploreUntil = performance.now() + rnd(90e3, 240e3);
-    const to = pick(c);
+    const to = favoriteTarget(c);
     jumpOff(to.r.left + to.r.width / 2 > fx ? 1 : -1, () => travel(to, { fast }));
     return true;
   }
 
   // На что можно встать: карточки, плитки, кнопки, колонка «Сейчас» и т. п.
-  const SURFACES = '.card, .tile, .stage-ready, .live-col, .set-card, .pill, .feedback, .btn, .seg, .lanes-legend > *, .stage-controls label, .route-pop';
+  const SURFACES = '.card, .tile, .stage-ready, .live-col, .set-card, .pill, .feedback, .btn, .seg, .lanes-legend > *, .stage-controls label, .route-pop, [data-pet-surface]';
   // Только то, что видно сверху: опора под панелью или окном не считается.
   function surfaceAt(x, y) {
     const e = document.elementsFromPoint(x, y).find(n => !root.contains(n));
@@ -449,9 +454,10 @@ const Pet = (() => {
   }
   // Видимые опоры, на которые можно перепрыгнуть.
   function targets() {
+    if(uiBlocked())return [];
     const w = root.offsetWidth, h = root.offsetHeight;
     // Опора и то, что в неё вложено (кнопки в переключателе), — одно и то же место: туда не прыгает.
-    return [...document.querySelectorAll(SURFACES)].filter(e => e !== support && !root.contains(e) && !(support && (support.contains(e) || e.contains(support)))).map(e => ({ e, r: e.getBoundingClientRect() }))
+    return [...document.querySelectorAll(SURFACES)].filter(e => !e.closest('[inert],dialog,[data-pet-forbidden]') && e !== support && !root.contains(e) && !(support && (support.contains(e) || e.contains(support)))).map(e => ({ e, r: e.getBoundingClientRect() }))
       .filter(({ r }) => r.width >= 70 && r.top > h && r.top < innerHeight - 4 && r.left >= 0 && r.right <= innerWidth + 1)
       .filter(({ e, r }) => surfaceAt(Math.min(r.right - 4, Math.max(r.left + 4, (r.left + r.right) / 2)), r.top + 2) === e && w > 0);
   }
@@ -498,11 +504,12 @@ const Pet = (() => {
     fallRaf = requestAnimationFrame(step);
   }
   function land(speed) {
+    if(support)mind?.visit(support.dataset.petSurface || support.id);
     falling = false; leaping = false; vx = vy = 0;
     setFlip(false);
     flash('squash', 300);
     save();
-    if (REDUCE.matches) { back(); return; }
+    if (REDUCE.matches || uiBlocked()) { back(); return; }
     const then = afterLand; afterLand = null;
     if (then) { then(speed); return; }
     if (speed > 900) { flash('hop', 650); play([...seq('touch', 5).map(n => [n, 110]), ['alert_2', 400]], 0, back); }
@@ -646,7 +653,7 @@ const Pet = (() => {
     const f = feet(), cx = fx + root.offsetWidth / 2;
     const c = targets().filter(({ r }) => Math.hypot((r.left + r.right) / 2 - cx, r.top - f) > 300);
     if (!c.length) return false;
-    travel(pick(c), { fast });
+    travel(favoriteTarget(c), { fast });
     return true;
   }
 
@@ -774,7 +781,8 @@ const Pet = (() => {
     halt();
     play([['lieyawn_1', 700], ...seq('wakestretch', 4).map(n => [n, 450]), ['yawnsit_2', 600]], 260, back);
   }
-  function onKey() { lastInput = performance.now(); wake(); }
+  function onFocus(e){if(game&&e.target.matches?.('input,textarea,select,[contenteditable="true"]'))stopGame();}
+  function onKey(e) { if(game)stopGame(); lastInput = performance.now(); wake(); }
   // Куда смотреть: голова и глаза поворачиваются к курсору.
   function lookFrame(dx, dy, dist) {
     const ax = dx / dist, ay = dy / dist;
@@ -793,7 +801,8 @@ const Pet = (() => {
     if (napping) { wake(); return; }
     const prevPtr = ptr;
     ptr = { x: e.clientX, y: e.clientY, t: now };
-    if (!root || REDUCE.matches || held || press || inAir() || strolling || busy || hovering) return;
+    if(game){gamePointer(e);return;}
+    if (!root || REDUCE.matches || uiBlocked() || held || press || inAir() || strolling || busy || hovering) return;
     if (state !== 'on' && state !== 'sad') return;
     if (grumpy()) return; // обиделся — не смотрит
     const r = root.getBoundingClientRect();
@@ -866,7 +875,8 @@ const Pet = (() => {
   // Щёлкнули по карточке или кнопке — иногда бежит посмотреть, что там.
   let lastFollow = 0;
   function onAppClick(e) {
-    if (!root || REDUCE.matches || root.contains(e.target) || state !== 'on' || napping || grumpy()) return;
+    if(game){stopGame();return;}
+    if (!root || REDUCE.matches || uiBlocked() || root.contains(e.target) || state !== 'on' || napping || grumpy()) return;
     if (held || inAir() || strolling || busy || trip || hovering) return;
     const s = e.target.closest && e.target.closest(SURFACES), now = performance.now();
     if (!s || s === support || now - lastFollow < 60e3 || !chance(0.25)) return;
@@ -879,6 +889,7 @@ const Pet = (() => {
   }
   // Курсор задержался на коте — ластится, а если давно не гладили — просит погладить.
   function hoverStart() {
+    stopGame();
     hovering = true;
     cancel(hoverTimer);
     hoverTimer = later(() => {
@@ -904,6 +915,7 @@ const Pet = (() => {
       strokes++; strokeAt = now;
       if (strokes >= 6) {
         strokes = 0; lastPetAt = now;
+        mind?.stroked();
         if (onPurr) onPurr();
         if (state === 'off') { flash('purr', 2000); talk('Мррр…'); play(['sleep_3', 'sleep_1', 'sleep_3', 'sleep_1'], 400, back); lastX = e.clientX; return; }
         if (state === 'run' || state === 'err' || inAir()) { lastX = e.clientX; return; }
@@ -950,6 +962,7 @@ const Pet = (() => {
     leg: ['byleg_1', 'byleg_2'], body: ['bybody_1', 'bybody_2', 'bybody_3'], chin: ['scruff_1', 'scruff_2', 'scruff_3'] };
   function down(e) {
     if (e.button !== 0) return;
+    stopGame();
     dragged = false;
     press = { x: e.clientX, y: e.clientY, id: e.pointerId, zone: zoneAt(e.clientX, e.clientY) };
     try { root.setPointerCapture(e.pointerId); } catch (_) { /* старый WebView */ }
@@ -1104,6 +1117,7 @@ const Pet = (() => {
   // ---------- гравитация ----------
   let gravTimer = 0;
   function gravity() {
+    if(uiBlocked())return;
     if (!root || !free || inAir() || strolling) return;
     const w = root.offsetWidth, h = root.offsetHeight;
     if (fx > innerWidth - w || fy > innerHeight - h) {
@@ -1148,13 +1162,79 @@ const Pet = (() => {
     if (!h.hi) return;
     const day = new Date().toDateString();
     try { if (localStorage.getItem('naivka-pet-hi') === day) return; localStorage.setItem('naivka-pet-hi', day); } catch (_) { return; }
-    later(() => { if (root) { joy(); talk(h.hi, 4200); } }, 3500);
+    later(() => { if (root && !game && !uiBlocked()) { joy(); talk(h.hi, 4200); } }, 3500);
+  }
+
+  // ---------- привычки и редкие события ----------
+  function favoriteTarget(candidates){
+    if(!mind)return pick(candidates);
+    const weight=t=>mind.affinity(t.e?.dataset.petSurface||t.e?.id);
+    let r=candidates.reduce((s,t)=>s+weight(t),0)*Math.random();
+    return candidates.find(t=>(r-=weight(t))<0)||candidates[candidates.length-1];
+  }
+  function resetHabits(){
+    if(!root)return false;
+    mind=window.PetMind?.create({save:memorySave})||null;
+    mind?.pause(REDUCE.matches||uiBlocked());
+    mind?.flush(true);return !!mind;
+  }
+  function rareEvent(id){
+    if(!root||uiBlocked()||game||!canAct())return;
+    const lines={'night-star':'Кажется, там звезда…','stable-session':'Как спокойно. Связь держится!','toy':'Нашёл игрушку!','anniversary':'Мы уже давно вместе. Мррр!'};
+    talk(lines[id],3200);
+    window.NaivkaExperience?.emit('pet.rare',{kind:id});
+    play(id==='night-star'?[['lookup_2',900],['lookup_3',1200],['sit_1',400]]:id==='toy'?[...seq('tailplay',4),['happy_1',700]]:[['happy_1',1000],['stretchb_1',700],['sit_1',400]],id==='toy'?180:0,back);
+  }
+
+  // Explicit short games share the existing support/pounce controller. The toy
+  // never receives pointer events; inputs and application clicks keep working.
+  let game=null,gameTimer=0;
+  function stopGame(){
+    if(!game)return;
+    game.toy?.remove();game=null;cancel(gameTimer);gameTimer=0;
+    root?.classList.remove('pet-playing');mind?.acted('rest');
+    halt();stopAnim();
+    if(root&&!inAir()&&!uiBlocked())back();
+  }
+  function gamePointer(e){
+    if(!game)return;
+    if(e.target.closest?.('input,textarea,select,[contenteditable="true"]')){stopGame();return;}
+    game.x=e.clientX;game.y=e.clientY;
+  }
+  function gameStep(){
+    if(!game||!root||REDUCE.matches||uiBlocked()||held||press||inAir()||performance.now()>game.until){stopGame();return;}
+    const r=root.getBoundingClientRect();
+    if(game.kind==='yarn'){
+      game.x=Math.max(16,Math.min(innerWidth-16,r.left+r.width/2+Math.sin(performance.now()/1100)*85));
+      game.y=Math.min(innerHeight-12,r.bottom-10);
+      game.toy.style.left=game.x+'px';game.toy.style.top=game.y+'px';
+    }
+    if(!strolling&&!busy){
+      pounce(game.x);
+      mind?.acted('play');
+    }
+    gameTimer=later(gameStep,1100);
+  }
+  function startGame(kind){
+    if(!['cursor','yarn'].includes(kind)||!root||REDUCE.matches||uiBlocked()||inAir()||held||press||!['on','off','run'].includes(state))return false;
+    stopGame();halt();stopAnim();napping=false;
+    const r=root.getBoundingClientRect();
+    game={kind,x:r.left+r.width/2,y:r.bottom,until:performance.now()+20000,toy:null};
+    if(kind==='yarn'){
+      game.toy=document.createElement('span');game.toy.className='pet-yarn';game.toy.setAttribute('aria-hidden','true');document.body.append(game.toy);
+    }
+    root.classList.add('pet-playing');
+    talk(kind==='cursor'?'Подвигайте курсором рядом со мной. Esc — закончить.':'Поиграем с клубком! Esc — закончить.',3000);
+    gameStep();return true;
   }
 
   // opts: say(state) — реплика по щелчку, onPurr — погладили, spot — сохранённое место ([доля x, доля y]
   // или null — дома), onMove(spot) — кота перенесли.
   function mount(container, opts = {}) {
     if (root) return;
+    memorySave=opts.onMemory || (()=>{});
+    mind = window.PetMind?.create({memory:opts.memory,save:memorySave}) || null;
+    mind?.pause(REDUCE.matches||uiBlocked());
     say = opts.say || say;
     onPurr = opts.onPurr || onPurr;
     onMove = opts.onMove || onMove;
@@ -1195,22 +1275,35 @@ const Pet = (() => {
     addEventListener('resize', gravity);
     addEventListener('pointermove', onPointer, { passive: true });
     addEventListener('keydown', onKey);
+    addEventListener('focusin', onFocus);
     addEventListener('click', onAppClick, true);
     REDUCE.addEventListener('change', motionChanged);
     lastInput = performance.now(); napping = false;
     const hr = new Date().getHours();
-    if (!REDUCE.matches && hr >= 6 && hr < 11 && !sp) later(() => { if (root && !busy && !inAir()) play([['stretchb_1', 1000], ['stretchb_3', 500], ['yawnsit_2', 700]], 0, back); }, 1500);
+    if (!REDUCE.matches && hr >= 6 && hr < 11 && !sp) later(() => { if (root && !game && !uiBlocked() && !busy && !inAir()) play([['stretchb_1', 1000], ['stretchb_3', 500], ['yawnsit_2', 700]], 0, back); }, 1500);
+    previousBlocked=uiBlocked();
+    modalObserver=new MutationObserver(records=>{
+      for(const r of records)for(const n of r.addedNodes||[])if(n.nodeType===1&&n.matches('dialog'))modalObserver.observe(n,{attributes:true,attributeFilter:['open']});
+      const blocked=uiBlocked();if(blocked===previousBlocked)return;previousBlocked=blocked;
+      mind?.pause(blocked||REDUCE.matches);
+      if(blocked){stopGame();halt();stopAnim();if(root&&!inAir())show(state==='off'?'sleepb_1':'sit_1');}
+      else if(root&&!inAir())back();
+    });
+    modalObserver.observe(document.body,{childList:true});
+    document.querySelectorAll('dialog,.drawer').forEach(e=>modalObserver.observe(e,{attributes:true,attributeFilter:['open','class']}));
     tick();
     idleLoop();
   }
 
   function unmount() {
     if (!root) return;
+    stopGame(); modalObserver?.disconnect();modalObserver=null;mind?.flush(true);mind=null;
     stopAnim(); halt(); stopFall(); cancel(idleTimer); cancel(tickTimer); clearInterval(gravTimer);
     cancel(watchTimer); cancel(hoverTimer);
     removeEventListener('resize', gravity);
     removeEventListener('pointermove', onPointer);
     removeEventListener('keydown', onKey);
+    removeEventListener('focusin', onFocus);
     removeEventListener('click', onAppClick, true);
     REDUCE.removeEventListener('change', motionChanged);
     root.remove();
@@ -1224,6 +1317,8 @@ const Pet = (() => {
 
   function motionChanged() {
     if (!root) return;
+    mind?.pause(REDUCE.matches||uiBlocked());
+    stopGame();
     halt(); stopAnim();
     if (REDUCE.matches && !held) {
       stopFall();
@@ -1236,7 +1331,7 @@ const Pet = (() => {
   // Радость: прыжок и искры.
   let joyTimer = 0;
   function joy() {
-    if (!root) return;
+    if (!root || game || uiBlocked()) return;
     cancel(joyTimer);
     root.classList.add('joy');
     joyTimer = later(() => root && root.classList.remove('joy'), 2400);
@@ -1247,6 +1342,7 @@ const Pet = (() => {
   }
   // Сообщение об ошибке: подпрыгивает от испуга.
   function startle() {
+    stopGame();
     if (!root || REDUCE.matches || inAir() || state === 'off' || state === 'run') return;
     if (napping) { wake(); return; }
     halt();
@@ -1254,6 +1350,7 @@ const Pet = (() => {
   }
   // Нажали «Подключить» — нажимает лапой вместе с вами.
   function pressBtn() {
+    stopGame();
     if (!root || REDUCE.matches || inAir() || state === 'off' || state === 'run') return;
     if (napping) { wake(); return; }
     halt();
@@ -1267,6 +1364,7 @@ const Pet = (() => {
     if (!root) return;
     const lost = phase === 'on' && net === 'offline';
     if (lost) phase = 'blocked';
+    mind?.observe(phase==='on'&&net!=='ok'?'unknown':phase);
     // «Носится» — с запасом в обе стороны: включается, когда трафик больше 180 КБ/с три секунды подряд,
     // выключается, когда меньше 90 КБ/с пять секунд подряд. Колебания у порога кота не дёргают.
     const now = performance.now();
@@ -1281,8 +1379,10 @@ const Pet = (() => {
     const kb = Math.max(0, bps) / 1024;
     root.style.setProperty('--pet-step', (0.7 - Math.min(0.48, Math.log10(1 + kb) * 0.13)).toFixed(2) + 's');
     if (s === state) return;
+    if(game&&['on','run'].includes(s)&&['on','run'].includes(state)){prev=state;state=s;root.dataset.mood=s;return;}
     const revived = (state === 'err' || state === 'wait' || state === 'sad') && (s === 'on' || s === 'run');
     if (s !== 'on' && s !== 'sad') napping = false;
+    stopGame();
     prev = state; state = s; root.dataset.mood = s;
     enter(s, prev);
     if (revived && prev !== 'wait') { joy(); talk('Ура, связь вернулась!'); }
@@ -1290,11 +1390,12 @@ const Pet = (() => {
   }
 
   return {
+    game: startGame, stopGame, habits:()=>mind?.state() || null, resetHabits:()=>resetHabits(),
     mount, unmount, update, talk, startle, press: pressBtn,
     home: () => { if (root && free && !gone) goHome(); },
     appear, recall, hide, leave: leaveUp,
     bounds: b => { bounds = b; },
     isGone: () => gone, isHeld: () => !!(held || press),
-    cheer: (t) => { flash('hop', 650); joy(); talk(t, 3600); },
+    cheer: (t) => { if(game||uiBlocked())return;flash('hop', 650); joy(); talk(t, 3600); },
   };
 })();
