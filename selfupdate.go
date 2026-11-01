@@ -12,7 +12,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -278,7 +277,10 @@ func writeExe(exe string, body []byte) error {
 	}
 	// Запущенный exe Windows не даёт перезаписать, но даёт переименовать.
 	old := exe + ".old"
-	os.Remove(old)
+	if fileExists(old) {
+		os.Remove(tmp)
+		return errors.New("сохранена прежняя версия — завершите предыдущее обновление перед повторной установкой")
+	}
 	if err := os.Rename(exe, old); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("нет доступа к папке программы (%v) — %w", err, errManualUpdate)
@@ -303,37 +305,61 @@ func (u *selfUpdater) run(a *App, tag string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeExe(exe, body); err != nil {
+	t, err := a.beginUpdateTransfer()
+	if err != nil {
 		return err
 	}
-	// Отладочная копия рядом (если есть) обновляется тоже: её никто не держит.
-	if dbg := filepath.Join(filepath.Dir(exe), "Naivka-debug.exe"); debug != nil && filepath.Base(exe) != "Naivka-debug.exe" && fileExists(dbg) {
-		_ = os.WriteFile(dbg, debug, 0o755)
+	a.life.mu.Lock()
+	a.life.intentMu.Lock()
+	closing := a.life.closing
+	a.life.intentMu.Unlock()
+	if closing {
+		a.life.mu.Unlock()
+		a.abortUpdateTransfer(t)
+		return errLifecycleCancelled
 	}
-
-	wasRunning := a.core.Running()
-	a.pause()
-	args := []string{"--replace"}
-	if wasRunning {
-		args = append(args, "--connect")
+	if err = writeExe(exe, body); err != nil {
+		a.life.mu.Unlock()
+		a.abortUpdateTransfer(t)
+		return err
 	}
-	cmd := exec.Command(exe, args...)
-	cmd.Dir = filepath.Dir(exe)
-	if err := cmd.Start(); err != nil {
-		os.Remove(exe)
-		os.Rename(exe+".old", exe)
-		if wasRunning {
-			go a.connect()
+	stageDebug := debug != nil && filepath.Base(exe) != "Naivka-debug.exe" && fileExists(filepath.Join(filepath.Dir(exe), "Naivka-debug.exe"))
+	if stageDebug {
+		stageDebug = os.WriteFile(exe+".debug.new", debug, 0o755) == nil
+	}
+	err = a.launchUpdateSupervisor(exe, tag, stageDebug, t)
+	if err != nil {
+		rollbackErr := rollbackUpdateExe(exe)
+		os.Remove(exe + ".debug.new")
+		a.life.mu.Unlock()
+		a.abortUpdateTransfer(t)
+		if rollbackErr != nil {
+			return fmt.Errorf("помощник обновления не запустился; не удалось восстановить EXE: %w", rollbackErr)
 		}
-		return fmt.Errorf("новая версия не запустилась (%v), оставлена прежняя", err)
+		return fmt.Errorf("помощник обновления не запустился (%v), оставлена прежняя версия", err)
 	}
-	log.Println("обновление Naivka до", tag, "— перезапуск")
-	go func() { time.Sleep(400 * time.Millisecond); a.Quit() }()
+	a.life.mu.Unlock()
+	log.Println("обновление Naivka до", tag, "— передача помощнику")
+	a.quit(true)
 	return nil
 }
 
 // cleanupUpdate убирает следы прошлого обновления: старый exe и скачанный архив.
+func cleanupCommittedUpdate(dir string) {
+	for i := 0; i < 20; i++ {
+		files, _ := filepath.Glob(filepath.Join(dir, "update-intent-*.json"))
+		if len(files) == 0 {
+			cleanupUpdate(dir)
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
 func cleanupUpdate(dir string) {
+	pending, _ := filepath.Glob(filepath.Join(dir, "update-intent-*.json"))
+	if len(pending) > 0 {
+		return
+	}
 	os.RemoveAll(filepath.Join(dir, "update"))
 	exe, err := os.Executable()
 	if err != nil {

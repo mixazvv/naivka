@@ -30,3 +30,5 @@ func (u *browserUI) Refresh()                      { on, tip := u.a.trayTip(); u
 func (u *browserUI) Close()                        { u.t.Remove() }
 func (u *browserUI) SetTheme(bool)                 {}
 func (u *browserUI) SetLogo(c logoColors)          { u.t.SetLogo(c) }
+
+func (u *browserUI) Ready() bool { return u.t != nil && u.t.hwnd != 0 }

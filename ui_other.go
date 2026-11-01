@@ -21,3 +21,5 @@ func (u *consoleUI) Refresh()            {}
 func (u *consoleUI) Close()              {}
 func (u *consoleUI) SetTheme(bool)       {}
 func (u *consoleUI) SetLogo(logoColors)  {}
+
+func (u *consoleUI) Ready() bool { return true }

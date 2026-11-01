@@ -63,8 +63,10 @@ type App struct {
 	ui      uiHost         // окно и значок в трее (зависит от платформы)
 	sleep   sleepState     // сон и пробуждение компьютера
 
-	repair   repairState
-	quitOnce sync.Once
+	candidate *updateHandshake
+	transfer  *updateTransfer // guarded by life.intentMu
+	repair    repairState
+	quitOnce  sync.Once
 }
 
 type instanceInfo struct {
@@ -74,12 +76,33 @@ type instanceInfo struct {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--update-supervisor" {
+		if runUpdateSupervisor(os.Stdin, os.Stdout) != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	args := map[string]bool{}
 	for _, a := range os.Args[1:] {
 		args[a] = true
 	}
 
+	var handshake updateHandshake
+	candidate := args["--update-candidate"]
+	if candidate {
+		var err error
+		handshake, err = readUpdateHandshake()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Не удалось подтвердить обновление")
+			os.Exit(1)
+		}
+	} else {
+		_ = os.Unsetenv(updateHandshakeEnv)
+	}
 	dir, err := appDataDir()
+	if candidate && filepath.Dir(handshake.Intent) != dir {
+		os.Exit(1)
+	}
 	if err != nil {
 		fatal("Не удалось открыть папку данных: " + err.Error())
 	}
@@ -105,7 +128,7 @@ func main() {
 	encryptSecrets = runtime.GOOS == "windows"
 	s, serr := LoadSettings(dir)
 	// Пароли, сохранённые прежними версиями открытым текстом, сразу шифруем.
-	if serr == nil && encryptSecrets {
+	if serr == nil && encryptSecrets && !candidate {
 		_ = SaveSettings(dir, s)
 	}
 
@@ -134,16 +157,22 @@ func main() {
 		log.Println(serr)
 	}
 
-	go cleanupUpdate(dir)
-	go fixUnsafeAutostart(s.clone())
-
 	// Если в прошлый раз программа упала с включённым системным прокси — вернём как было.
 	restoreSystemProxy(dir)
 
 	a := &App{dir: dir, settings: s, token: randHex(24)}
+	if candidate {
+		a.candidate = &handshake
+	}
+	a.life.updating = candidate
+	updateGeneration := a.life.gen.Load()
 	usePAC = func() bool { return a.settingsCopy().ProxyPAC }
 	a.core = NewCore(dir)
 	a.mon = newMonitor(a)
+	if code := takeUpdateResult(dir); code != "" && code != "UPDATED" {
+		a.core.logs.Add("[naivka] " + code)
+		a.mon.Event("warn", updateResultMessage(code), false)
+	}
 	a.core.OnCrash = a.onCrash
 	a.zapret = newZapret(a)
 	a.tgws = newTgWs(a)
@@ -156,14 +185,6 @@ func main() {
 	a.installer = &serverInstaller{}
 	a.core.OnStop = a.xray.Stop
 	a.core.ExtraEnv = a.fillEnv
-	go a.mon.run()
-	go a.zapret.healthLoop()
-	go a.zapret.failWatch()
-	go a.dnsWatch()
-	go a.youtubeDNSWatch()
-	go a.smart.run()
-	go a.updatesLoop()
-	go a.wl.loop()
 	if serr != nil {
 		a.core.logs.Add("[naivka] " + serr.Error())
 	}
@@ -190,10 +211,43 @@ func main() {
 
 	autostart := args["--autostart"]
 	a.ui = newUI(a)
+	if !candidate {
+		go func() {
+			if a.startupReady() {
+				cleanupUpdate(dir)
+			}
+		}()
+	}
+	updateResume := args["--connect"]
+	if candidate {
+		if !a.startupReady() {
+			os.Exit(1)
+		}
+		var err error
+		updateResume, err = reportUpdateReady(handshake)
+		if err != nil {
+			os.Exit(1)
+		}
+		go cleanupCommittedUpdate(dir)
+		if serr == nil && encryptSecrets {
+			_ = SaveSettings(dir, s)
+		}
+	}
+	go a.mon.run()
+	go a.zapret.healthLoop()
+	go a.zapret.failWatch()
+	go a.dnsWatch()
+	go a.youtubeDNSWatch()
+	go a.smart.run()
+	go a.updatesLoop()
+	go a.wl.loop()
+	go fixUnsafeAutostart(s.clone())
 	a.watchPower()
 	go a.startAddons()
 	// --connect: перезапуск с правами из подключённого состояния — подключаемся снова сами.
-	if (s.AutoConnect || args["--connect"]) && len(s.Servers) > 0 && a.core.Present() {
+	if candidate || args["--update-rollback"] {
+		a.resumeAfterUpdate(updateResume, updateGeneration)
+	} else if (s.AutoConnect || args["--connect"]) && len(s.Servers) > 0 && a.core.Present() {
 		go func() {
 			if err := a.connect(); err != nil {
 				a.core.logs.Add("[naivka] автоподключение: " + err.Error())
@@ -266,8 +320,11 @@ func (a *App) connectLocked(gen int64) error {
 	return nil
 }
 
-func (a *App) Quit() {
+func (a *App) Quit() { a.cancelUpdateExit(); a.quit(false) }
+
+func (a *App) quit(forUpdate bool) {
 	a.quitOnce.Do(func() {
+		a.prepareUpdateExit(forUpdate)
 		a.life.stopIntent(true)
 		_ = a.repair.stop("")
 		// Не чистим системное состояние параллельно с запуском. Отмена выше
@@ -286,6 +343,7 @@ func (a *App) Quit() {
 		a.core.Stop()
 		restoreSystemProxy(a.dir) // последним шагом: что бы ни успело случиться за время остановки
 		a.life.mu.Unlock()
+		a.flushUpdateIntent()
 		log.Println("exit")
 		os.Exit(0)
 	})

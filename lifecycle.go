@@ -21,6 +21,7 @@ type lifeState struct {
 	trying   atomic.Int32 // сколько сейчас идёт попыток восстановить соединение (для окна)
 	intentMu sync.Mutex   // намерение пользователя и отмена текущего запуска
 	closing  bool
+	updating bool
 	cancel   context.CancelFunc
 }
 
@@ -29,7 +30,7 @@ var errLifecycleCancelled = errors.New("Подключение отменено"
 func (l *lifeState) requestConnect() (int64, error) {
 	l.intentMu.Lock()
 	defer l.intentMu.Unlock()
-	if l.closing {
+	if l.closing || l.updating {
 		return 0, errLifecycleCancelled
 	}
 	l.want.Store(true)
@@ -52,7 +53,7 @@ func (l *lifeState) stopIntent(closing bool) {
 func (l *lifeState) operation(gen int64, requireWant bool) (context.Context, context.CancelFunc, error) {
 	l.intentMu.Lock()
 	defer l.intentMu.Unlock()
-	if l.closing || l.gen.Load() != gen || (requireWant && !l.want.Load()) {
+	if l.closing || l.updating || l.gen.Load() != gen || (requireWant && !l.want.Load()) {
 		return nil, nil, errLifecycleCancelled
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -100,6 +101,7 @@ func (a *App) reconnect() error {
 // disconnect — пользователь отключился: сторож и пробуждение больше не подключают.
 func (a *App) disconnect() {
 	a.life.stopIntent(false)
+	a.cancelUpdateResume()
 	_ = a.repair.stop("")
 	a.dnsg.fallback.Store(false)
 	a.life.mu.Lock()
