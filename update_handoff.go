@@ -288,6 +288,7 @@ func runUpdateSupervisor(input io.Reader, output io.Writer) error {
 	if !samePath(own, cfg.Exe+".old") || !filepath.IsAbs(cfg.Exe) || !filepath.IsAbs(cfg.Dir) || filepath.Dir(cfg.Intent) != cfg.Dir || !strings.HasPrefix(filepath.Base(cfg.Intent), "update-intent-") || len(cfg.Token) != 48 || parseVer(cfg.Version) == nil {
 		return errors.New("UPDATE_INVALID_HANDOFF")
 	}
+	defer os.Remove(cfg.Exe + ".debug.new")
 	if _, err = io.WriteString(output, "READY\n"); err != nil {
 		return err
 	}
@@ -348,6 +349,7 @@ func (r updateRunner) run(cfg updateSupervisorConfig, intent updateIntent) (resu
 		return r.rollback(cfg, intent, "UPDATE_LISTEN_FAILED")
 	}
 	var pid atomic.Int64
+	pidReady := make(chan struct{})
 	ready := make(chan struct{}, 1)
 	commit := make(chan struct{})
 	flushed := make(chan struct{}, 1)
@@ -359,6 +361,12 @@ func (r updateRunner) run(cfg updateSupervisorConfig, intent updateIntent) (resu
 		var v struct {
 			PID     int    `json:"pid"`
 			Version string `json:"version"`
+		}
+		select {
+		case <-pidReady:
+		case <-ctx.Done():
+			http.Error(w, "not ready", 409)
+			return
 		}
 		if json.NewDecoder(io.LimitReader(q.Body, 1024)).Decode(&v) != nil || int64(v.PID) != pid.Load() || v.PID <= 0 || v.Version != cfg.Version {
 			http.Error(w, "invalid readiness", 400)
@@ -401,6 +409,7 @@ func (r updateRunner) run(cfg updateSupervisorConfig, intent updateIntent) (resu
 		return r.rollback(cfg, intent, "UPDATE_START_FAILED")
 	}
 	pid.Store(int64(cmd.Process.Pid))
+	close(pidReady)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	failure := ""
@@ -452,7 +461,7 @@ func (r updateRunner) run(cfg updateSupervisorConfig, intent updateIntent) (resu
 	if cfg.Debug {
 		_ = os.Rename(cfg.Exe+".debug.new", filepath.Join(filepath.Dir(cfg.Exe), "Naivka-debug.exe"))
 	}
-	// No rollback after sending the commit response: the candidate may now own the
+	// No rollback after authorizing the commit response: the candidate may now own the
 	// system proxy. Backups are cleaned only by that committed copy.
 	return "UPDATED"
 }
