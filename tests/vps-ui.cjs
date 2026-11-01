@@ -48,5 +48,26 @@ function text(el) { return el instanceof Element ? el.children.flat(Infinity).ma
   vm.runInContext("for(let i=0;i<30;i++) for(let j=0;j<8;j++) vpsRemember(String(i),{metrics:{},checkedAt:j})",context);
   assert.equal(vm.runInContext('VPS_HISTORY.size',context),20);
   assert.equal(vm.runInContext("VPS_HISTORY.get('29').length",context),5);
-  console.log('VPS explicit requests, SSH auth, duplicate guard, closed dialogs, unknowns and history: OK');
+  const rich = {
+    checkedAt: 2000000, metrics: {},
+    updates: {provider:'apt_cached',count:0,oldestIndex:1000000,newestIndex:1900000},
+    checks: [{id:'os_updates',value:'none_in_cache',level:'info'},{id:'local_listeners',value:'truncated',level:'info'},{id:'external_ports',value:'unknown',level:'unknown'}],
+    listeners: [{protocol:'tcp',port:22,binding:'wildcard'},{protocol:'udp',port:53,binding:'loopback'},{protocol:'exec',port:80,binding:'wildcard'},{protocol:'tcp',port:0,binding:'specific'}]
+  };
+  context.fixture = rich;
+  const detail = vm.runInContext('vpsResults(fixture, [])',context);
+  const detailText = text(detail);
+  assert(detailText.includes('Пакетов с доступными обновлениями: 0'));
+  assert(detailText.includes('Часть индексов старше 7 дней'));
+  assert(detailText.includes('нулевой результат не означает'));
+  assert(detailText.includes('Все интерфейсы') && detailText.includes('Loopback'));
+  assert(detailText.includes('список неполный'));
+  assert(detailText.includes('Порты, доступные из интернета: Не определено'));
+  assert(!detailText.includes('EXEC'));
+  assert.equal(walk(detail).filter(e => e.tag==='td' && e.children[0]===22).length,1);
+  rich.checks = [{id:'local_listeners',value:'unknown',level:'unknown'}];
+  assert(!text(vm.runInContext('vpsResults(fixture, [])',context)).includes('Локальных слушающих TCP/UDP-сокетов в этом окружении не найдено.'));
+  rich.checks = [{id:'local_listeners',value:'observed',level:'info'}];rich.listeners=[];
+  assert(text(vm.runInContext('vpsResults(fixture, [])',context)).includes('Локальных слушающих TCP/UDP-сокетов в этом окружении не найдено.'));
+  console.log('VPS explicit requests, SSH auth, duplicate guard, closed dialogs, unknowns, history, cached updates and local ports: OK');
 })().catch(e => { console.error(e); process.exitCode = 1; });

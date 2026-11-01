@@ -6,11 +6,15 @@ const VPS_CHECKS = {
   firewall: ['UFW', 'Активность UFW не подтверждает достаточность правил. Другие firewall здесь не проверяются.'],
   config_mode: ['Права /etc/sing-box/config.json', 'Проверяются только Unix-биты доступа; ACL и владелец не проверены.'],
   certificate: ['Сертификат Hysteria2', 'Только /etc/sing-box/naivka-hy2.crt. Проверяется срок окончания, без проверки доверия и имени. Сертификаты панелей и Caddy не проверены.'],
-  os_updates: ['Обновления ОС', 'Проверка пакетных менеджеров пока не реализована.'],
+  os_updates: ['Обновления ОС по локальному кэшу', 'Debian/Ubuntu: только существующие индексы APT. Полнота источников и security-обновления отдельно не проверены. Скачивание и установка не выполняются.'],
+  local_listeners: ['Локальные TCP/UDP-порты', 'Привязки в сетевом окружении SSH. Firewall, NAT и другие сетевые пространства контейнеров могут менять доступность из интернета.'],
   external_ports: ['Порты, доступные из интернета', 'Внешнее сканирование не выполнялось. Наличие нестандартного порта само по себе не означает уязвимость.']
 };
 const VPS_VALUES = {
-  unknown: 'Не определено', no: 'Запрещён', yes: 'Разрешён',
+  unknown: 'Не определено', unsupported: 'Не поддерживается для этой ОС',
+  none_in_cache: 'В локальном кэше обновлений не найдено', available_in_cache: 'В локальном кэше есть обновления',
+  observed: 'Список получен', truncated: 'Частичный список (до 128 записей)',
+  no: 'Запрещён', yes: 'Разрешён',
   'prohibit-password': 'Разрешён по ключу', 'without-password': 'Разрешён по ключу',
   'forced-commands-only': 'Только заданные команды', active: 'Активна', inactive: 'Неактивна', failed: 'Ошибка',
   enabled: 'Включён', disabled: 'Отключён', static: 'Статическая служба', masked: 'Заблокирован',
@@ -51,9 +55,33 @@ function vpsResults(report, history) {
       if (!spec) return null;
       const value = VPS_VALUES[c.value] || 'Не определено';
       return h('div', { class: 'panel' }, h('div', { class: c.level === 'warning' ? 'err-text' : '' }, spec[0] + ': ' + value), h('p', { class: 'hint' }, spec[1]),
-        c.level === 'warning' ? h('p', { class: 'hint' }, 'Проверьте настройку вручную. Перед изменением SSH или firewall сохраните альтернативный доступ и план восстановления.') : null);
+        c.level === 'warning' ? h('p', { class: 'hint' }, c.id === 'os_updates' ? 'Проверьте доступные обновления в рамках обслуживания сервера.' : 'Проверьте настройку вручную. Перед изменением SSH или firewall сохраните альтернативный доступ и план восстановления.') : null);
     }),
+    vpsUpdatesDetails(report),
+    vpsListenersDetails(report),
     history.length > 1 ? h('p', { class: 'hint' }, 'Последние замеры в этом окне: ' + history.map(r => new Date(r.checkedAt * 1000).toLocaleTimeString('ru-RU') + ' · нагрузка ' + (r.metrics.load ?? '?')).join('; ')) : null);
+}
+function vpsUpdatesDetails(report) {
+  const u = report.updates;
+  if (!u || u.provider !== 'apt_cached') return null;
+  const date = t => new Date(t * 1000).toLocaleString('ru-RU');
+  const old = report.checkedAt - u.oldestIndex > 7 * 86400;
+  return h('div', { class: 'panel' }, h('h3', null, 'Кэш APT'),
+    h('p', null, 'Пакетов с доступными обновлениями: ' + u.count),
+    h('p', { class: 'hint' }, 'Изменение индексов: от ' + date(u.oldestIndex) + ' до ' + date(u.newestIndex) + ' (время сервера).'),
+    h('p', { class: 'hint' }, old ? 'Часть индексов старше 7 дней. Свежесть и полнота данных не подтверждены; нулевой результат не означает, что сервер полностью обновлён.' : 'Даты файлов не подтверждают успешное обновление всех источников. Нулевой результат не означает, что сервер полностью обновлён.'));
+}
+function vpsListenersDetails(report) {
+  const state = (report.checks || []).find(c => c.id === 'local_listeners');
+  if (!state || !['observed', 'truncated'].includes(state.value)) return null;
+  const bindings = { loopback: 'Loopback (на этом сервере)', wildcard: 'Все интерфейсы', specific: 'Отдельный адрес' };
+  const items = (report.listeners || []).filter(p => ['tcp', 'udp'].includes(p.protocol) && ['loopback', 'wildcard', 'specific'].includes(p.binding) && Number.isInteger(p.port) && p.port > 0 && p.port <= 65535).slice(0, 128);
+  return h('div', { class: 'panel' }, h('h3', null, 'Локальные привязки портов'),
+    items.length ? h('table', { class: 'table' },
+      h('thead', null, h('tr', null, h('th', null, 'Протокол'), h('th', null, 'Порт'), h('th', null, 'Привязка'))),
+      h('tbody', null, items.map(p => h('tr', null, h('td', null, p.protocol.toUpperCase()), h('td', null, p.port), h('td', null, bindings[p.binding]))))) : h('p', null, 'Локальных слушающих TCP/UDP-сокетов в этом окружении не найдено.'),
+    state.value === 'truncated' ? h('p', { class: 'hint' }, 'Показаны первые 128 различных привязок; список неполный.') : null,
+    h('p', { class: 'hint' }, 'Одинаковые записи объединены. Эти привязки не подтверждают доступность портов из интернета; нестандартный порт сам по себе не означает уязвимость.'));
 }
 function vpsDialog(host) {
   const result = h('div');

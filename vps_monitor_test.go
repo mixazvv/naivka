@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -160,8 +161,11 @@ func TestVPSProbeScriptFixtures(t *testing.T) {
 	write("bin/sshd", "#!/bin/sh\nprintf 'permitrootlogin yes\npasswordauthentication no\n'\n", 0700)
 	write("bin/ufw", "#!/bin/sh\nprintf 'Status: inactive\n'\n", 0700)
 	write("bin/systemctl", "#!/bin/sh\nexit 1\n", 0700)
+	write("bin/ss", "#!/bin/sh\nexit 1\n", 0700)
 	script := strings.ReplaceAll(vpsReportScript, "/proc/", filepath.ToSlash(dir)+"/proc/")
 	script = strings.ReplaceAll(script, "/etc/sing-box/", filepath.ToSlash(dir)+"/absent/")
+	script = strings.ReplaceAll(script, "/etc/os-release", filepath.ToSlash(dir)+"/etc/os-release")
+	script = strings.ReplaceAll(script, "/var/lib/apt/lists/", filepath.ToSlash(dir)+"/lists/")
 	script = strings.Replace(script, "export PATH=/usr/sbin:/usr/bin:/sbin:/bin", "export PATH="+shellQuote(filepath.Join(dir, "bin")+":/usr/bin:/bin"), 1)
 	cmd := exec.Command("sh", "-s")
 	cmd.Stdin = strings.NewReader(script)
@@ -182,5 +186,119 @@ func TestVPSProbeScriptFixtures(t *testing.T) {
 		if c.ID == "root_login" && c.Value != "yes" || c.ID == "firewall" && c.Value != "inactive" {
 			t.Error(c)
 		}
+	}
+	probe := func() vpsReport {
+		t.Helper()
+		cmd := exec.Command("sh", "-s")
+		cmd.Stdin = strings.NewReader(script)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		r, err := parseVPSReport(string(out))
+		if err != nil {
+			t.Fatal(err, string(out))
+		}
+		return r
+	}
+	write("etc/os-release", "ID=ubuntu\n", 0600)
+	write("lists/test_Packages.lz4", "fixture", 0600)
+	apt := func(output string, code int) {
+		write("bin/apt", "#!/bin/sh\n# Only this read-only command is allowed by the fixture.\n[ \"$*\" = "+shellQuote("-o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache= -o Debug::NoLocking=1 list --upgradable")+" ] || exit 99\nprintf '%s' "+shellQuote(output)+fmt.Sprintf("\nexit %d\n", code), 0700)
+	}
+	sockets := func(output string, code int) {
+		write("bin/ss", "#!/bin/sh\n[ \"$*\" = '-H -lntu' ] || exit 99\nprintf '%s' "+shellQuote(output)+fmt.Sprintf("\nexit %d\n", code), 0700)
+	}
+	apt("Listing...\nopenssl/noble-security 1.2 amd64 [upgradable from: 1.1]\ncurl/noble-updates 2.0 amd64 [upgradable from: 1.0]\n", 0)
+	sockets("tcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:*\nudp UNCONN 0 0 127.0.0.53%lo:53 0.0.0.0:*\ntcp LISTEN 0 128 [::]:443 [::]:*\ntcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:*\n", 0)
+	r = probe()
+	if r.Updates == nil || r.Updates.Count != 2 || len(r.Listeners) != 3 || r.Listeners[1].Binding != "loopback" {
+		t.Fatal(r)
+	}
+	apt("Listing...\n", 0)
+	sockets("", 0)
+	r = probe()
+	if r.Updates == nil || r.Updates.Count != 0 || checkVPS(t, r, "os_updates").Level != "info" || checkVPS(t, r, "local_listeners").Value != "observed" || r.Listeners == nil || len(r.Listeners) != 0 {
+		t.Fatal(r)
+	}
+	for _, code := range []int{0, 100} {
+		apt("unrecognized APT output\n", code)
+		sockets("tcp LISTEN 0 1 0.0.0.0:22 *:*\n", 1)
+		r = probe()
+		if r.Updates != nil || checkVPS(t, r, "os_updates").Level != "unknown" || checkVPS(t, r, "local_listeners").Level != "unknown" || len(r.Listeners) != 0 {
+			t.Fatal(r)
+		}
+	}
+	apt("Listing...\n", 0)
+	var many strings.Builder
+	for i := 1; i <= 150; i++ {
+		fmt.Fprintf(&many, "tcp LISTEN 0 128 0.0.0.0:%d *:*\n", i)
+	}
+	sockets(many.String(), 0)
+	r = probe()
+	if len(r.Listeners) != 128 || checkVPS(t, r, "local_listeners").Value != "truncated" {
+		t.Fatal(r)
+	}
+	sockets("unrecognized socket output\n", 0)
+	r = probe()
+	if checkVPS(t, r, "local_listeners").Level != "unknown" {
+		t.Fatal(r)
+	}
+	write("etc/os-release", "ID=fedora\n", 0600)
+	r = probe()
+	if r.Updates != nil || checkVPS(t, r, "os_updates").Value != "unsupported" {
+		t.Fatal(r)
+	}
+	write("etc/os-release", "ID=debian\n", 0600)
+	if err := os.Remove(filepath.Join(dir, "lists/test_Packages.lz4")); err != nil {
+		t.Fatal(err)
+	}
+	r = probe()
+	if r.Updates != nil || checkVPS(t, r, "os_updates").Level != "unknown" {
+		t.Fatal(r)
+	}
+
+}
+
+func checkVPS(t *testing.T, r vpsReport, id string) vpsCheck {
+	t.Helper()
+	for _, c := range r.Checks {
+		if c.ID == id {
+			return c
+		}
+	}
+	t.Fatalf("missing check %s", id)
+	return vpsCheck{}
+}
+func TestVPSPackagesAndListenersFiltering(t *testing.T) {
+	now := time.Now().Unix()
+	base := fmt.Sprintf("protocol=1\nos_updates=apt_cached\napt_updates=2\napt_index_oldest=%d\napt_index_newest=%d\nlocal_listeners=observed\n", now-86400, now)
+	r, err := parseVPSReport(base + "listener=tcp|443|wildcard\nlistener=udp|53|loopback\nlistener=tcp|443|wildcard\n")
+	if err != nil || r.Updates == nil || r.Updates.Count != 2 || len(r.Listeners) != 2 || r.Listeners[0].Port != 53 {
+		t.Fatal(r, err)
+	}
+	if checkVPS(t, r, "os_updates").Level != "warning" {
+		t.Fatal(r)
+	}
+	for _, bad := range []string{"listener=tcp|0|wildcard\n", "listener=tcp|65536|loopback\n", "listener=tcp|22|<script>\n", "listener=exec|22|specific\n", "listener=tcp|+22|loopback\n", "listener=" + strings.Repeat("x", 100) + "\n"} {
+		r, err := parseVPSReport(base + bad)
+		if err != nil || len(r.Listeners) != 0 || checkVPS(t, r, "local_listeners").Level != "unknown" {
+			t.Fatal(bad, r, err)
+		}
+	}
+	for _, bad := range []string{strings.Replace(base, "apt_updates=2", "apt_updates=-1", 1), strings.Replace(base, "apt_updates=2", "apt_updates=1000001", 1), strings.Replace(base, fmt.Sprint(now), fmt.Sprint(now+600), 1), strings.Replace(base, fmt.Sprint(now-86400), fmt.Sprint(now+1), 1)} {
+		r, _ := parseVPSReport(bad)
+		if r.Updates != nil || checkVPS(t, r, "os_updates").Level != "unknown" {
+			t.Fatal("bad metadata accepted", r)
+		}
+	}
+	var many strings.Builder
+	many.WriteString(base)
+	for i := 1; i <= 150; i++ {
+		fmt.Fprintf(&many, "listener=tcp|%d|wildcard\n", i)
+	}
+	r, err = parseVPSReport(many.String())
+	if err != nil || len(r.Listeners) != 128 || checkVPS(t, r, "local_listeners").Value != "truncated" {
+		t.Fatal(r, err)
 	}
 }
