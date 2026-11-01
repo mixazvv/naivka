@@ -238,7 +238,27 @@ func sshDial(host string, port int, user, password, key, passphrase, fingerprint
 		HostKeyAlgorithms: hostKeyAlgos,
 		Timeout:           20 * time.Second,
 	}
-	cl, err := ssh.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)), cfg)
+	// Bound both TCP connection and SSH handshake (ClientConfig.Timeout alone only
+	// bounds TCP). Clear the deadline once the authenticated client is established.
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), cfg.Timeout)
+	var cl *ssh.Client
+	if err == nil {
+		if err = conn.SetDeadline(time.Now().Add(cfg.Timeout)); err == nil {
+			var cc ssh.Conn
+			var chans <-chan ssh.NewChannel
+			var reqs <-chan *ssh.Request
+			cc, chans, reqs, err = ssh.NewClientConn(conn, net.JoinHostPort(host, strconv.Itoa(port)), cfg)
+			if err == nil {
+				err = conn.SetDeadline(time.Time{})
+				if err == nil {
+					cl = ssh.NewClient(cc, chans, reqs)
+				}
+			}
+		}
+		if err != nil {
+			conn.Close()
+		}
+	}
 	if err != nil {
 		if keyErr != nil {
 			return nil, keyErr

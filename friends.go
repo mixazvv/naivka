@@ -187,17 +187,8 @@ func friendsPath() string {
 	return "/usr/local/sbin/naivka-friends"
 }
 
-func (a *App) runFriends(req friendsReq) ([]Friend, error) {
-	if err := req.check(); err != nil {
-		return nil, err
-	}
-	host, ok := a.ownHost(req.Host)
-	if !ok {
-		return nil, errors.New("Сервер не найден")
-	}
-	a.friends.ops.Lock()
-	defer a.friends.ops.Unlock()
-
+// friendsClient requires friends.ops to be held until release; it never stores credentials.
+func (a *App) friendsClient(host OwnHost, req friendsReq) (*ssh.Client, error) {
 	cl := a.friends.get(host.ID)
 	if cl == nil {
 		if req.Password == "" && strings.TrimSpace(req.Key) == "" {
@@ -212,6 +203,24 @@ func (a *App) runFriends(req friendsReq) ([]Friend, error) {
 		if cl == nil {
 			return nil, errors.New("соединение с сервером закрылось")
 		}
+	}
+	return cl, nil
+}
+
+func (a *App) runFriends(req friendsReq) ([]Friend, error) {
+	if err := req.check(); err != nil {
+		return nil, err
+	}
+	host, ok := a.ownHost(req.Host)
+	if !ok {
+		return nil, errors.New("Сервер не найден")
+	}
+	a.friends.ops.Lock()
+	defer a.friends.ops.Unlock()
+
+	cl, err := a.friendsClient(host, req)
+	if err != nil {
+		return nil, err
 	}
 	defer a.friends.release(host.ID, cl)
 	env := map[string]string{"ACTION": req.Action, "SERVER_ADDR": host.Host}
@@ -280,6 +289,7 @@ func parseFriendsLine(b64 string) ([]Friend, error) {
 }
 
 func (a *App) friendsRoutes(api func(method, path string, f apiFunc)) {
+	a.vpsRoutes(api)
 	api("POST", "/api/friends", func(r *http.Request) (any, error) {
 		var req friendsReq
 		if err := decode(r, &req); err != nil {
