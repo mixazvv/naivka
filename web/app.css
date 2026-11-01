@@ -1542,3 +1542,5 @@ body[data-state="err"] .home-led, body[data-state="blocked"] .home-led { backgro
   .home-calm .stage-status { flex-basis: 100%; }
   .home-calm .home-server { flex: 1; border-left: 0; border-top: 1px solid var(--line); padding: 12px 0 0; }
 }
+
+.pet-yarn { position:fixed;width:18px;height:18px;transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:80;background:repeating-linear-gradient(35deg,#b6e35a 0 2px,#718b35 2px 4px);box-shadow:0 2px 5px #0004; }

@@ -3,7 +3,7 @@
 // В теме «Пиксели» (или по галочке) фон рисуется крупными клетками с урезанной палитрой.
 const Wall = (() => {
   'use strict';
-  const REDUCE = matchMedia('(prefers-reduced-motion: reduce)');
+  const REDUCE = window.NaivkaExperience?.motion || matchMedia('(prefers-reduced-motion: reduce)');
   const PX = 6;           // размер «пикселя» на экране, CSS px
   const LEVELS = 6;       // уровней на канал при урезании палитры
   const VIDEO_FPS = 12;   // пиксельное видео: кадров в секунду
@@ -120,7 +120,7 @@ const Wall = (() => {
       const ms = (r.image.duration || 100000) / 1000;
       r.image.close();
       gifFrame = (gifFrame + 1) % Math.max(1, count);
-      if (count > 1 && !document.hidden) timer = setTimeout(gifLoop, Math.max(20, ms));
+      if (count > 1 && !REDUCE.matches) timer = setTimeout(gifLoop, Math.max(20, ms));
     } catch (_) { drawPixel(); }
   }
 
@@ -207,6 +207,11 @@ const Wall = (() => {
     else if (pixel && !animated) drawPixel();
   }
 
+  REDUCE.addEventListener('change', () => {
+    if (REDUCE.matches) { stopVideoLoop(); src?.pause?.(); back?.querySelector('video')?.pause(); }
+    else { playVideo(); if (src && animated) videoLoop(); }
+    holder?.classList.toggle('drift', !REDUCE.matches && kind === 'image' && !pixel && fit === 'cover');
+  });
   document.addEventListener('visibilitychange', () => {
     if (!src || !animated) return;
     if (src.tagName !== 'VIDEO') { if (!document.hidden) videoLoop(); else stopVideoLoop(); return; }

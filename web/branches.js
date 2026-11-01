@@ -18,6 +18,10 @@ const Branches = (() => {
   const MAX_LEAVES = 12;
   let untracked = {};
   const reduce = () => typeof REDUCE !== 'undefined' && REDUCE.matches;
+  window.NaivkaExperience?.motion.addEventListener('change', () => {
+    cancelAnimationFrame(raf); raf = 0;
+    if (box && !document.hidden) raf = requestAnimationFrame(frame);
+  });
 
   // ---------- геометрия ----------
   const narrow = () => W < 620;
@@ -431,7 +435,7 @@ const Branches = (() => {
     const list = parts[k] || (parts[k] = []), p = geom(k);
     for (const direction of [-1, 1]) {
       const speed = direction < 0 ? b.down : b.up;
-      const want = speed < 50 ? 0 : Math.min(16, Math.ceil(Math.log2(speed / 1024 + 1) * 1.7));
+      const want = speed < 50 ? 0 : Math.ceil(Math.min(16, Math.ceil(Math.log2(speed / 1024 + 1) * 1.7)) * (window.NaivkaExperience?.scale ?? 1));
       let stream = list.filter(q => q.direction === direction);
       while (stream.length < want) { const q = { t: Math.random(), direction }; list.push(q); stream.push(q); }
       for (const q of stream.slice(want)) list.splice(list.indexOf(q), 1);
@@ -488,7 +492,7 @@ const Branches = (() => {
   const GROW_DELAY = { proxy: 250, tg: 450, zapret: 650, direct: 0 };
   let onAt = 0, lastPhase = '', lastFrame = 0, frameDt = 1 / 60;
   function frame(time) {
-    raf = requestAnimationFrame(frame);
+    raf = !document.hidden && !reduce() ? requestAnimationFrame(frame) : 0;
     if (!box || !box.isConnected || document.hidden || box.closest('[inert]') || !data) { lastFrame = 0; return; }
     frameDt = lastFrame ? Math.min(.05, (time - lastFrame) / 1000) : 1 / 60; lastFrame = time;
     frameRect = box.getBoundingClientRect();
@@ -536,6 +540,7 @@ const Branches = (() => {
     placeNodes();
     syncLeaves();
     layout();
+    if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
     return overflow;
   }
 

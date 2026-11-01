@@ -1,0 +1,13 @@
+.routes-alt { position:relative; min-height:260px; isolation:isolate; }
+.route-scene,.route-lines { position:absolute; inset:0; width:100%; height:100%; }
+.routes-alt > .power { position:absolute; left:var(--pcx); top:var(--pcy); transform:translate(-50%,-50%); z-index:2; }
+.route-group { position:absolute; transform:translateX(-50%); width:30%; max-width:180px; z-index:1; }
+.route-title,.route-service,.route-more { display:block; width:100%; border:1px solid var(--route-color); border-radius:10px; padding:5px 8px; color:var(--text); background:var(--card,#151a20); font:inherit; font-size:11px; line-height:1.3; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.route-title { font-weight:600; }
+.route-service { margin-top:4px; border-color:var(--line,#38404a); }
+.route-title:focus-visible,.route-service:focus-visible,.route-more:focus-visible { outline:2px solid var(--route-color);outline-offset:2px; }
+.route-group.inactive { opacity:.6; }
+.route-group.drop-target { outline:2px dashed var(--route-color);outline-offset:4px;border-radius:10px; }
+.route-more { margin-top:4px; }
+[data-diagram="tree"] .route-group { width:22%; }
+@media(max-width:620px){.route-title,.route-service,.route-more { font-size:10px;padding:4px; }.route-group {width:34%;}}

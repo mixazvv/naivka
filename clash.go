@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,12 +33,16 @@ func NewClash(port int, secret string) *Clash {
 }
 
 func (c *Clash) do(method, path string, body, out any) error {
+	return c.doContext(context.Background(), method, path, body, out)
+}
+
+func (c *Clash) doContext(ctx context.Context, method, path string, body, out any) error {
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, c.base+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, rd)
 	if err != nil {
 		return err
 	}
@@ -68,10 +73,14 @@ func (c *Clash) do(method, path string, body, out any) error {
 }
 
 func (c *Clash) Ping() error {
+	return c.pingContext(context.Background())
+}
+
+func (c *Clash) pingContext(ctx context.Context) error {
 	var v struct {
 		Version string `json:"version"`
 	}
-	return c.do("GET", "/version", nil, &v)
+	return c.doContext(ctx, "GET", "/version", nil, &v)
 }
 
 type ProxyView struct {

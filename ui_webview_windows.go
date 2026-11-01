@@ -799,3 +799,5 @@ func (u *nativeUI) miniProc(hwnd, msg, wp, lp uintptr) uintptr {
 // osPtr превращает указатель, который Windows передала в оконную процедуру, в unsafe.Pointer.
 // Память принадлежит системе, а не сборщику мусора Go, поэтому так можно.
 func osPtr(p uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&p)) }
+
+func (u *nativeUI) Ready() bool { return u.t != nil && u.t.hwnd != 0 }

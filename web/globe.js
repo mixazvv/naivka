@@ -4,7 +4,7 @@
 // Точка страны — кнопка: по ней app.js показывает сайты этой страны и меню выбора пути.
 const Globe = (() => {
   'use strict';
-  const REDUCE = matchMedia('(prefers-reduced-motion: reduce)');
+  const REDUCE = window.NaivkaExperience?.motion || matchMedia('(prefers-reduced-motion: reduce)');
   const RAD = Math.PI / 180;
   let box = null, cv = null, ctx = null, tip = null, ro = null, raf = 0;
   let W = 0, H = 0, R = 0, dpr = 1;
@@ -109,6 +109,7 @@ const Globe = (() => {
     cv.addEventListener('wheel', wheel, { passive: false });
     cv.addEventListener('dblclick', () => { focusMe(); });
     document.addEventListener('visibilitychange', kick);
+    REDUCE.addEventListener('change', kick);
     resize();
   }
 
@@ -117,6 +118,7 @@ const Globe = (() => {
     if (ro) ro.disconnect();
     ro = null; box = null; cv = null; ctx = null; tip = null; parts.clear();
     document.removeEventListener('visibilitychange', kick);
+    REDUCE.removeEventListener('change', kick);
   }
 
   // ---------- управление ----------
@@ -215,7 +217,7 @@ const Globe = (() => {
 
   function frame(now) {
     raf = 0;
-    if (!box || !ctx || !W) return;
+    if (!box || !ctx || !W || document.hidden) return;
     const dt = Math.min(0.1, (now - (last || now)) / 1000);
     last = now;
     let busy = false;
@@ -328,7 +330,7 @@ const Globe = (() => {
       // Частицы: чем быстрее, тем их больше и тем быстрее бегут.
       let ps = parts.get(a.key);
       if (!ps) { ps = []; parts.set(a.key, ps); }
-      const want = a.speed > 0 && !REDUCE.matches ? Math.min(8, 1 + Math.round(Math.log10(1 + a.speed / 1024) * 2)) : 0;
+      const want = a.speed > 0 && !REDUCE.matches ? Math.ceil(Math.min(8, 1 + Math.round(Math.log10(1 + a.speed / 1024) * 2)) * (window.NaivkaExperience?.scale ?? 1)) : 0;
       while (ps.length < want) ps.push(Math.random());
       ps.length = want;
       const v = 0.18 + Math.min(0.5, Math.log10(1 + a.speed / 1024) * 0.12);

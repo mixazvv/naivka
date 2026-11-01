@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -61,7 +63,10 @@ type App struct {
 	ui      uiHost         // окно и значок в трее (зависит от платформы)
 	sleep   sleepState     // сон и пробуждение компьютера
 
-	quitOnce sync.Once
+	candidate *updateHandshake
+	transfer  *updateTransfer // guarded by life.intentMu
+	repair    repairState
+	quitOnce  sync.Once
 }
 
 type instanceInfo struct {
@@ -71,12 +76,33 @@ type instanceInfo struct {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--update-supervisor" {
+		if runUpdateSupervisor(os.Stdin, os.Stdout) != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	args := map[string]bool{}
 	for _, a := range os.Args[1:] {
 		args[a] = true
 	}
 
+	var handshake updateHandshake
+	candidate := args["--update-candidate"]
+	if candidate {
+		var err error
+		handshake, err = readUpdateHandshake()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Не удалось подтвердить обновление")
+			os.Exit(1)
+		}
+	} else {
+		_ = os.Unsetenv(updateHandshakeEnv)
+	}
 	dir, err := appDataDir()
+	if candidate && !sameUpdateFile(filepath.Dir(handshake.Intent), dir) {
+		os.Exit(1)
+	}
 	if err != nil {
 		fatal("Не удалось открыть папку данных: " + err.Error())
 	}
@@ -102,7 +128,7 @@ func main() {
 	encryptSecrets = runtime.GOOS == "windows"
 	s, serr := LoadSettings(dir)
 	// Пароли, сохранённые прежними версиями открытым текстом, сразу шифруем.
-	if serr == nil && encryptSecrets {
+	if serr == nil && encryptSecrets && !candidate {
 		_ = SaveSettings(dir, s)
 	}
 
@@ -131,16 +157,22 @@ func main() {
 		log.Println(serr)
 	}
 
-	go cleanupUpdate(dir)
-	go fixUnsafeAutostart(s.clone())
-
 	// Если в прошлый раз программа упала с включённым системным прокси — вернём как было.
 	restoreSystemProxy(dir)
 
 	a := &App{dir: dir, settings: s, token: randHex(24)}
+	if candidate {
+		a.candidate = &handshake
+	}
+	a.life.updating = candidate
+	updateGeneration := a.life.gen.Load()
 	usePAC = func() bool { return a.settingsCopy().ProxyPAC }
 	a.core = NewCore(dir)
 	a.mon = newMonitor(a)
+	if code := takeUpdateResult(dir); code != "" && code != "UPDATED" {
+		a.core.logs.Add("[naivka] " + code)
+		a.mon.Event("warn", updateResultMessage(code), false)
+	}
 	a.core.OnCrash = a.onCrash
 	a.zapret = newZapret(a)
 	a.tgws = newTgWs(a)
@@ -153,14 +185,6 @@ func main() {
 	a.installer = &serverInstaller{}
 	a.core.OnStop = a.xray.Stop
 	a.core.ExtraEnv = a.fillEnv
-	go a.mon.run()
-	go a.zapret.healthLoop()
-	go a.zapret.failWatch()
-	go a.dnsWatch()
-	go a.youtubeDNSWatch()
-	go a.smart.run()
-	go a.updatesLoop()
-	go a.wl.loop()
 	if serr != nil {
 		a.core.logs.Add("[naivka] " + serr.Error())
 	}
@@ -187,10 +211,43 @@ func main() {
 
 	autostart := args["--autostart"]
 	a.ui = newUI(a)
+	if !candidate {
+		go func() {
+			if a.startupReady() {
+				cleanupUpdate(dir)
+			}
+		}()
+	}
+	updateResume := args["--connect"]
+	if candidate {
+		if !a.startupReady() {
+			os.Exit(1)
+		}
+		var err error
+		updateResume, err = reportUpdateReady(handshake)
+		if err != nil {
+			os.Exit(1)
+		}
+		go cleanupCommittedUpdate(dir)
+		if serr == nil && encryptSecrets {
+			_ = SaveSettings(dir, s)
+		}
+	}
+	go a.mon.run()
+	go a.zapret.healthLoop()
+	go a.zapret.failWatch()
+	go a.dnsWatch()
+	go a.youtubeDNSWatch()
+	go a.smart.run()
+	go a.updatesLoop()
+	go a.wl.loop()
+	go fixUnsafeAutostart(s.clone())
 	a.watchPower()
 	go a.startAddons()
 	// --connect: перезапуск с правами из подключённого состояния — подключаемся снова сами.
-	if (s.AutoConnect || args["--connect"]) && len(s.Servers) > 0 && a.core.Present() {
+	if candidate || args["--update-rollback"] {
+		a.resumeAfterUpdate(updateResume, updateGeneration)
+	} else if (s.AutoConnect || args["--connect"]) && len(s.Servers) > 0 && a.core.Present() {
 		go func() {
 			if err := a.connect(); err != nil {
 				a.core.logs.Add("[naivka] автоподключение: " + err.Error())
@@ -218,7 +275,12 @@ func (a *App) url() string {
 }
 
 // connectLocked — подключение; вызывать только под a.life.mu (см. lifecycle.go).
-func (a *App) connectLocked() error {
+func (a *App) connectLocked(gen int64) error {
+	ctx, cancel, err := a.life.operation(gen, true)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	a.mu.Lock()
 	s := a.settings.clone()
 	a.mu.Unlock()
@@ -229,8 +291,17 @@ func (a *App) connectLocked() error {
 			a.mon.Event("warn", "zapret не запустился: "+firstLine(err.Error())+" — его сайты пойдут через сервер", false)
 		}
 	}
-	if err := a.core.Start(s); err != nil {
-		a.mon.Event("error", "Не удалось подключиться: "+firstLine(err.Error()), false)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := a.core.StartContext(ctx, s); err != nil {
+		if !errors.Is(err, context.Canceled) {
+			a.mon.Event("error", "Не удалось подключиться: "+firstLine(err.Error()), false)
+		}
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		a.core.Stop()
 		return err
 	}
 	mode := "системный прокси"
@@ -249,18 +320,16 @@ func (a *App) connectLocked() error {
 	return nil
 }
 
-func (a *App) Quit() {
+func (a *App) Quit() { a.cancelUpdateExit(); a.quit(false) }
+
+func (a *App) quit(forUpdate bool) {
 	a.quitOnce.Do(func() {
-		a.life.want.Store(false)
-		a.life.gen.Add(1)
-		// Если сейчас идёт подключение, ждём его (недолго): иначе оно могло бы включить
-		// системный прокси уже после нашей остановки ядра — и интернет пропал бы до следующего запуска.
-		locked := false
-		for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
-			if locked = a.life.mu.TryLock(); locked {
-				break
-			}
-		}
+		a.prepareUpdateExit(forUpdate)
+		a.life.stopIntent(true)
+		_ = a.repair.stop("")
+		// Не чистим системное состояние параллельно с запуском. Отмена выше
+		// прерывает ожидание проверки конфига и готовности ядра.
+		a.life.mu.Lock()
 		a.core.Stop()
 		a.traffic.save(true)
 		restoreSystemProxy(a.dir)
@@ -273,9 +342,8 @@ func (a *App) Quit() {
 		removeInstance(a.dir, a.token)
 		a.core.Stop()
 		restoreSystemProxy(a.dir) // последним шагом: что бы ни успело случиться за время остановки
-		if locked {
-			a.life.mu.Unlock()
-		}
+		a.life.mu.Unlock()
+		a.flushUpdateIntent()
 		log.Println("exit")
 		os.Exit(0)
 	})

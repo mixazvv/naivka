@@ -294,6 +294,13 @@ func freePort() (int, error) {
 }
 
 func (c *Core) Start(s *Settings) (err error) {
+	return c.StartContext(context.Background(), s)
+}
+
+func (c *Core) StartContext(opCtx context.Context, s *Settings) (err error) {
+	if err := opCtx.Err(); err != nil {
+		return err
+	}
 	// До всего, что пишет в папку run (списки автоопределения, конфиг): права на папку и её файлы.
 	restrictDir(c.runDir())
 	c.mu.Lock()
@@ -309,6 +316,10 @@ func (c *Core) Start(s *Settings) (err error) {
 	c.lastErr = ""
 	c.mu.Unlock()
 	defer func() {
+		if opCtx.Err() != nil {
+			c.Stop()
+			err = opCtx.Err()
+		}
 		c.mu.Lock()
 		c.starting = false
 		c.portIssue = nil
@@ -353,6 +364,9 @@ func (c *Core) Start(s *Settings) (err error) {
 	if c.ExtraEnv != nil {
 		c.ExtraEnv(s, &env)
 	}
+	if err := opCtx.Err(); err != nil {
+		return err
+	}
 	cfg, err := BuildConfig(s, env)
 	if err != nil {
 		return err
@@ -375,12 +389,15 @@ func (c *Core) Start(s *Settings) (err error) {
 	defer os.Remove(cfgPath)
 
 	// Проверяем конфиг заранее — так ошибка будет понятной.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(opCtx, 30*time.Second)
 	check := exec.CommandContext(ctx, c.exePath(), "check", "-c", cfgPath)
 	check.Dir = c.coreDir()
 	hideWindow(check)
 	out, cerr := check.CombinedOutput()
 	cancel()
+	if err := opCtx.Err(); err != nil {
+		return err
+	}
 	if cerr != nil {
 		msg := strings.TrimSpace(ansiRe.ReplaceAllString(string(out), ""))
 		if msg == "" {
@@ -429,19 +446,28 @@ func (c *Core) Start(s *Settings) (err error) {
 	deadline := time.Now().Add(45 * time.Second)
 	for {
 		select {
+		case <-opCtx.Done():
+			return opCtx.Err()
 		case <-done:
 			tail := c.logs.Tail(12)
 			return fmt.Errorf("sing-box завершился при запуске:\n%s", tail)
 		default:
 		}
-		if cl.Ping() == nil {
+		if cl.pingContext(opCtx) == nil {
 			break
 		}
 		if time.Now().After(deadline) {
 			_ = cmd.Process.Kill()
 			return errors.New("sing-box не ответил за 45 секунд. Подробности — в журнале.")
 		}
-		time.Sleep(250 * time.Millisecond)
+		select {
+		case <-opCtx.Done():
+			return opCtx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	if err := opCtx.Err(); err != nil {
+		return err
 	}
 
 	c.mu.Lock()
@@ -504,6 +530,9 @@ func (c *Core) Stop() {
 	if cmd == nil {
 		c.mu.Unlock()
 		restoreSystemProxy(c.dir)
+		if c.OnStop != nil {
+			c.OnStop()
+		}
 		return
 	}
 	c.stopping = true

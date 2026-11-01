@@ -194,6 +194,7 @@ document.addEventListener('contextmenu', e => {
 // ---------- тема ----------
 let themeSent = '';
 function applyTheme() {
+  window.NaivkaExperience?.configure(S?.experience);
   // «Никогда не проси об этом» и «Пиксели» — стили поверх тёмной темы со своей палитрой.
   const gold = !!S && S.theme === 'gold';
   const blocks = !!S && S.theme === 'blocks';
@@ -465,13 +466,14 @@ async function saveNow() {
 
 // ---------- опрос ----------
 async function refreshState() {
-  try { ST = await api('/api/state'); } catch (_) { return; }
+  try { ST = await api('/api/state'); window.NaivkaExperience?.observe(ST, PX?.selected === "auto" ? PX?.autoNow : PX?.selected); } catch (_) { return; }
   updateStatus();
 }
 
 async function refreshProxies() {
   try { PX = await api('/api/proxies'); PXAt = Date.now(); } catch (_) { return; }
   if (PX && PX.running === false) PX = null;
+  window.NaivkaExperience?.observe(ST, PX?.selected === 'auto' ? PX?.autoNow : PX?.selected);
   updateStatus();
   if (view === 'servers') renderServers();
 }
@@ -626,7 +628,8 @@ window.naivkaPetBack = (x, y, vx, vy) => {
   else Pet.appear(x, y, vx, vy);
 };
 
-function updateStatus() { guard(updateStatusNow, 'updateStatus'); }
+function updateStatus() {
+  if (typeof HomeLayout !== 'undefined') HomeLayout.apply(); guard(updateStatusNow, 'updateStatus'); }
 function updateStatusNow() {
   if (!ST || !S) return;
   const p = phase();
@@ -640,7 +643,7 @@ function updateStatusNow() {
   const sp0 = lastSpeeds();
   const kb = (p === 'on' ? sp0.pd + sp0.pu : 0) / 1024;
   // Котёнок переселён на панель задач (своё окно Windows) — в меню его нет.
-  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024, STATS && STATS.health); }
+  if (S.mascot === true && !(S.petTaskbar === true && window.NAIVKA_HOST)) { Pet.mount(document.querySelector('.side-foot'), { memory:S.petMemory, onMemory:value=>{S.petMemory=value;save();}, say: petSay, onPurr: () => unlockAchv('pet'), spot: S.petSpot, onMove: spot => { S.petSpot = spot || null; save(); }, exit: window.NAIVKA_HOST ? PET_EXIT : null }); Pet.update(p, kb * 1024, STATS && STATS.health); }
   else Pet.unmount();
   checkAchv();
   document.body.style.setProperty('--energy', Math.min(1, Math.log10(kb + 1) / 3.5).toFixed(2));
@@ -869,6 +872,7 @@ function railWheel(e) {
 
 // Главный экран («сцена» с ветвями) всегда на месте; разделы открываются панелью справа поверх него.
 function goNow(v) {
+  Pet.stopGame();
   if (settingsDispose) settingsDispose();
   const was = view;
   view = v;
@@ -1062,9 +1066,9 @@ function viewOverview() {
         h('div', { class: 'home-state' }, h('span', { class: 'home-led', 'aria-hidden': 'true' }),
           h('div', { class: 'status-title', id: 'statusTitle', role: 'status' }, '…')),
         h('div', { class: 'sub', id: 'statusSub' })),
-      h('div', { class: 'home-server', id: 'homeServer' })),
+      h('div', { class: 'home-server', id: 'homeServer', 'data-pet-surface':'homeServer' })),
     h('div', { id: 'notices', class: 'stage-notices' }),
-    h('div', { class: 'lanes-stage', id: 'lanesCard' },
+    h('div', { class: 'lanes-stage', id: 'lanesCard', 'data-pet-surface':'lanesCard' },
       h('div', { class: 'lanes-box', id: 'lanesBox' }, h('div', { id: 'lanesSvg' }), powerButton('connectBtn')),
       h('div', { class: 'lanes-legend', id: 'lanesLegend' }),
       h('div', { class: 'proc-shelf', id: 'procShelf' })),
@@ -1289,6 +1293,7 @@ function renderLanes() {
     renderLaneLegend(lanes, total, renderBranches(lanes));
     return;
   }
+  RouteDiagrams.unmount();
   Branches.unmount();
   box.classList.remove('many-routes');
   renderProcShelf();
@@ -1577,7 +1582,7 @@ function renderBranches(lanes) {
     down: l.speed > 0 ? directions[l.key][0] : 0, up: l.speed > 0 ? directions[l.key][1] : 0,
     thin: l.key === 'direct' && p === 'on' && S.routing === 'global',
     wilt: l.key === 'zapret' && AD && AD.zapret && AD.zapret.degraded }));
-  return Branches.update(lb, {
+  return RouteDiagrams.update(lb, {
     phase: p, offline: !!(STATS && STATS.health === 'offline' && p === 'on'), lanes: sp, top,
     endSub: ROUTING[S.routing],
     controlLabel: powerLabel(p),
@@ -1595,7 +1600,7 @@ function renderBranches(lanes) {
       } });
     },
     onNode: k => go(k === 'proxy' ? 'servers' : k === 'direct' ? 'rules' : 'bypass'), toast,
-  }) || {};
+  }, S.experience?.diagram || 'branches') || {};
 }
 
 // ---------- выбор пути: меню по щелчку и программы целиком ----------
@@ -2248,7 +2253,7 @@ function viewDiag() {
       updateConnTable();
       if (ST && ST.running) refreshConns();
     } else if (diagTab === 'check') {
-      body.replaceChildren(viewCheck());
+      body.replaceChildren(viewRepair(), viewCheck());
     } else if (diagTab === 'speed') {
       body.replaceChildren(viewSpeed());
       refreshSpeed();
@@ -3999,6 +4004,34 @@ async function showSettingsConfig() {
   } catch (e) { toast(e.message, true); }
 }
 
+function petGamesSettings(){
+  const available=()=>S.mascot===true&&!(S.petTaskbar===true&&window.NAIVKA_HOST)&&!REDUCE.matches;
+  const launch=kind=>{
+    if(!available()){toast('Включите талисман в окне и разрешите эффекты.',true);return;}
+    go('overview');
+    setTimeout(()=>{if(view==='overview'&&available()&&!Pet.game(kind))toast('Котёнок сейчас занят. Попробуйте немного позже.');},350);
+  };
+  return h('div',null,h('div',{class:'row'},
+    h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('cursor')},'Догонялки'),
+    h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('yarn')},'Клубок'),
+    h('button',{class:'btn small',onclick:()=>{S.petMemory={};Pet.resetHabits();save();toast('Привычки сброшены');}},'Сбросить привычки')),
+    h('p',{class:'hint'},'Короткие игры: Esc или щелчок завершает игру. Котёнок запоминает любимые места, но не требует ухода.'));
+}
+
+function experienceSettings() {
+  S.experience ||= { effects: 'balanced', sound: 'off', volume: 20, atmosphere: 'off' };
+  const choose = (key, title, values) => h('label', { class: 'field' }, h('span', null, title),
+    h('select', { 'aria-label': title, onchange: e => { S.experience[key] = e.target.value; window.NaivkaExperience.configure(S.experience); save(); } },
+      values.map(([value, text]) => h('option', { value, selected: S.experience[key] === value }, text))));
+  return h('div', null,
+    choose('diagram', 'Схема маршрутов', [['branches','Ветви'],['orbit','Орбита'],['tree','Дерево']]),
+    choose('effects', 'Интенсивность эффектов', [['off','Выкл.'],['low','Минимум'],['balanced','Баланс'],['full','Полный']]),
+    choose('sound', 'Звуковая тема', [['off','Без звука'],['quiet','Тихий'],['digital','Цифровой'],['retro','Ретро']]),
+    h('label', { class: 'field' }, h('span', null, 'Громкость'), h('input', { type:'range', min:0, max:100, value:S.experience.volume, 'aria-label':'Громкость', oninput:e=>{ S.experience.volume=Number(e.target.value); window.NaivkaExperience.configure(S.experience); save(); } })),
+    choose('atmosphere', 'Атмосфера', [['off','Выключена'],['auto','По времени суток'],['morning','Утро'],['day','День'],['evening','Вечер'],['night','Ночь']]),
+    h('p', { class:'hint' }, 'Уменьшенное движение и скрытое окно останавливают декоративную анимацию. Атмосфера работает локально, без сервиса погоды.'));
+}
+
 function viewSettings() {
   const page = (title, ...items) => ({ title, items: items.filter(Boolean) });
   const section = (title, ...pages) => ({ title, pages: pages.filter(Boolean) });
@@ -4010,10 +4043,13 @@ function viewSettings() {
       page('Тема', themeTiles(),
         action('Своя тема', 'Собственные цвета, шрифт и готовые палитры.', editCustomTheme)),
       page('Фон', wallBox()),
+      page('Эффекты и звуки', experienceSettings()),
+      page('Главный экран', h('button', {class:'btn',onclick:()=>HomeLayout.edit()}, 'Настроить экран'), h('p',{class:'hint'},'Порядок, ширина и видимость карточек. Отдельные раскладки для широкого и узкого окна.')),
       page('Цвета', h('p', { class: 'hint gold-only' }, 'У этой темы свои цвета.'),
         h('p', { class: 'hint blocks-only' }, 'У этой темы свои цвета.'), accentPicker(),
         h('div', { class: 'oled-check' }, check('oled', 'Чистый чёрный (OLED)', '', applyTheme))),
       page('Котёнок',
+        petGamesSettings(),
         check('mascot', 'Талисман', 'Пиксельный серый котёнок внизу меню: спит, когда Naivka отключена, бегает вместе с трафиком, пугается сбоев. Его можно погладить. По умолчанию выключен.', updateStatus),
         window.NAIVKA_HOST && h('label', { class: 'check' },
           h('input', { type: 'checkbox', checked: S.petHopOff !== true, onchange: e => { S.petHopOff = !e.target.checked; save(); } }),
@@ -5300,6 +5336,50 @@ function wlNowLine() {
   } else out.append(parts[0]);
   if (WL && WL.active) out.append(' — включена вместо своих');
   return out;
+}
+
+
+
+// Read-only repair wizard. Polling stops as soon as its panel leaves the DOM.
+function viewRepair() {
+  const out = h('div', { role: 'status', 'aria-live': 'polite' });
+  let current = null, timer = 0;
+  const labels = { LOCAL_ADAPTER: 'Сетевой адаптер', DIRECT_INTERNET: 'Прямой интернет', DNS: 'DNS', CORE: 'Ядро', HTTPS_A: 'HTTPS: проверка 1', HTTPS_B: 'HTTPS: проверка 2' };
+  const diagnoses = { UNKNOWN: 'Причина пока не определена.', CORE_NOT_RUNNING: 'Ядро не запущено.', VPN_NOT_APPLICABLE: 'В режиме «Только zapret» диагностика VPN неприменима.', PATH_REACHABLE: 'Оба контрольных адреса доступны через локальный прокси.', PARTIAL_REACHABILITY: 'Доступен один контрольный адрес. Это не доказывает отказ сервера.', STALE_STATE: 'Состояние подключения изменилось. Запустите проверку заново.' };
+  const paint = v => {
+    current = v;
+    const active = v.operationId && !['PLAN_READY', 'CANCELLED'].includes(v.phase);
+    start.disabled = !!active; cancel.disabled = !active; copy.disabled = !v.operationId;
+    out.replaceChildren(...(v.checks || []).map(c => h('p', { class: 'hint' }, `${labels[c.name] || c.name}: ${c.status === 'OK' ? 'доступно' : c.status === 'DOWN' ? 'не запущено' : 'не определено'}`)),
+      h('p', null, v.phase === 'CANCELLED' ? 'Проверка отменена.' : diagnoses[v.diagnosis] || (active ? 'Проверяем…' : '')));
+  };
+  const poll = async () => {
+    if (!panel.isConnected) return;
+    try {
+      const v = await api('/api/repair/status');
+      if (!panel.isConnected) return;
+      paint(v);
+      if (v.operationId && !['PLAN_READY', 'CANCELLED'].includes(v.phase)) timer = setTimeout(poll, 500);
+    } catch (e) { out.textContent = e.message; start.disabled = false; }
+  };
+  const start = h('button', { class: 'btn', onclick: async () => {
+    clearTimeout(timer); start.disabled = true;
+    try { paint(await api('/api/repair/start', {})); poll(); }
+    catch (e) { out.textContent = e.message; start.disabled = false; }
+  } }, 'Проверить соединение');
+  const cancel = h('button', { class: 'btn', disabled: true, onclick: async () => {
+    try { await api('/api/repair/cancel', { operationId: current.operationId }); clearTimeout(timer); poll(); }
+    catch (e) { toast(e.message, true); }
+  } }, 'Отмена');
+  const copy = h('button', { class: 'btn', disabled: true, onclick: async () => {
+    try { await navigator.clipboard.writeText(JSON.stringify(current, null, 2)); toast('Отчёт скопирован'); }
+    catch (_) { toast('Не удалось скопировать', true); }
+  } }, 'Скопировать безопасный отчёт');
+  const panel = h('section', { class: 'card mt' }, h('h3', null, 'Восстановление соединения'),
+    h('p', { class: 'hint' }, 'Первая фаза: только диагностика. Настройки и сервер не меняются. DNS, резервы и отсутствие утечек пока не проверяются.'),
+    h('div', { class: 'row' }, start, cancel, copy), out);
+  setTimeout(poll, 0);
+  return panel;
 }
 
 boot();
