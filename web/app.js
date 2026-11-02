@@ -666,6 +666,7 @@ function updateStatusNow() {
     btn.disabled = p === 'wait';
     btn.setAttribute('aria-label', powerLabel(p));
     btn.title = powerLabel(p) + ' (Ctrl+Enter)';
+    WorkspaceUI.status(p);
     guard(renderTiles, 'renderTiles');
     guard(renderReady, 'renderReady');
     const n = [ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null), JSON.stringify(APPUP)].join('|');
@@ -1059,7 +1060,7 @@ async function setZapretOnly(v) {
 }
 
 function viewOverview() {
-  return h('div', { class: 'stage-inner home-calm' },
+  const root=h('div', { class: 'stage-inner home-calm' },
     h('div', { class: 'stage-head' },
       h('div', { class: 'stage-status' },
         h('span', { class: 'home-eyebrow' }, 'Подключение'),
@@ -1086,6 +1087,7 @@ function viewOverview() {
     h('div', { class: 'stage-ready', id: 'stageReady' }),
     // Широкое окно: справа живая колонка — что сейчас качается и каким путём (CSS прячет её в узком).
     h('aside', { class: 'live-col', id: 'liveCol', 'aria-label': 'Сейчас' }));
+  WorkspaceUI.home(root);return root;
 }
 
 // Быстрый выбор использует тот же API, что и раздел серверов. Не пересобираем select
@@ -1184,6 +1186,7 @@ function renderTiles() {
   t3.replaceChildren(h('span', { class: 'tile-k' }, 'Сеанс'),
     h('span', { class: 'tile-v' }, on ? fmtDur(Date.now() / 1000 - sessionStart()) : 'не подключено'),
     h('span', { class: 'tile-sub' }, on ? (zapretOnly() ? 'zapret, без сервера' : `через сервер ${fmtBytes(t[0] + t[1])}`) : 'щёлкните, чтобы открыть историю трафика'));
+  WorkspaceUI.pulse(on,sp,t);
   const ls = $('#liveSpeed');
   if (ls) ls.replaceChildren(
     h('span', { class: 'ls-n' }, h('span', { class: 'ls-arrow' }, '↓'), tnum('ls-down', on ? sp.pd + sp.dd + sp.zd + sp.td : 0, fmtSpeed)),
@@ -1633,7 +1636,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && routePop) 
 // Сайт (лист на схеме): меню вместо обязательного перетаскивания.
 function sitePick(item, el) {
   const label = branchLeaves[item.key] ? branchLeaves[item.key].label : item.label;
-  routePicker(el, { title: label, sub: 'Этот сервис — все его адреса', current: item.current, onPick: async k => {
+  routePicker(el, { title: label, sub: item.reason || 'Этот сервис — все его адреса', current: item.current, onPick: async k => {
     if (k === 'auto') { await siteClear(item.key); return; }
     if (k !== item.current && await branchDrop(item.key, k)) diagramMoveLeaf(item.key, k);
   } });
@@ -1711,7 +1714,7 @@ function procChip(x) {
     'aria-label': `${name}: ${rule ? ROUTE_SAY[rule.action] : 'как решит Naivka'}. Нажмите, чтобы выбрать путь` },
     h('span', { class: 'svc' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: ic }))), name);
   ghostDrag(el, () => { const g = el.cloneNode(true); g.classList.add('proc-ghost'); return g; },
-    () => routePicker(el, { title: name, sub: 'Вся программа целиком', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
+    () => routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
     k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); });
   return el;
 }
@@ -1732,6 +1735,7 @@ addEventListener('pointerup', () => setTimeout(() => {
   liveDrag = 0; diagramEndHover();
 }), true);
 function ghostDrag(el, makeGhost, tap, drop) {
+  el.addEventListener('click',e=>{if(e.detail===0)tap();});
   let sx, sy, ghost = null, id = null;
   const finish = () => {
     id = null;
@@ -1779,23 +1783,24 @@ function renderLive() {
   const sites = on ? siteGroups().sort((a, b) => b.speed - a.speed).slice(0, 12) : [];
   const procs = on && !zapretOnly() ? procList() : [];
   // Перерисовываем по смыслу, а скорость обновляем в уже стоящих строках — без мигания и сброса перетаскивания.
-  const sig = JSON.stringify([on, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action])]);
+  const grouping=WorkspaceUI.activity();
+  const shownSites=grouping==='services'?sites.slice(0,5):[];
+  const shownProcs=grouping==='programs'?procs.slice(0,5):[];
+  const sig = JSON.stringify([on, grouping, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action])]);
   if (box.dataset.sig !== sig && !liveDrag) { // тащат строку — пересоберём после того, как отпустят
     box.dataset.sig = sig;
     box.replaceChildren(
-      h('div', { class: 'live-head' }, h('b', null, 'Сейчас'), h('small', null, on ? 'что качается и каким путём' : 'появится после подключения')),
+      WorkspaceUI.activityHeader(),
       !on ? h('p', { class: 'live-empty' }, 'Подключитесь — здесь будут сайты и программы с трафиком. Любой можно нажать или перетащить на ветку схемы, чтобы он шёл другим путём.')
-        : !sites.length && !procs.length ? h('p', { class: 'live-empty' }, 'Пока тихо: ничего заметного не качается.')
+        : !shownSites.length && !shownProcs.length ? h('p', { class: 'live-empty' }, 'В этой группе пока нет заметного трафика.')
           : null,
-      sites.length ? h('div', { class: 'live-sec' }, 'Сайты') : null,
-      ...sites.map(g => liveRow({
+      ...shownSites.map(g => liveRow({
         key: 'site:' + g.key, label: g.label, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'], route: groupRoute(g), rule: siteRule(g),
         sub: g.procs.slice(0, 2).join(', '),
-        pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto' }, el),
+        pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto', reason: (siteRule(g)?'Совпало ваше правило: '+siteRule(g).value+'. ':'Маршрут выбран правилами Naivka. ')+g.procs.join(', ') }, el),
         drop: async k => { if (await branchDrop(g.key, k)) diagramMoveLeaf(g.key, k); },
       })),
-      procs.length ? h('div', { class: 'live-sec' }, 'Программы целиком') : null,
-      ...procs.map(x => {
+      ...shownProcs.map(x => {
         const name = procName(x.exe.toLowerCase()) || x.exe, rule = procRule(x.exe);
         return liveRow({
           key: 'proc:' + x.exe, label: name, icon: SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'], route: rule ? rule.action : '', rule,
@@ -1803,7 +1808,8 @@ function renderLive() {
           drop: k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); },
         });
       }),
-      on && (sites.length || procs.length) ? h('p', { class: 'live-hint' }, 'Нажмите или перетащите на ветку — пойдёт этим путём.') : null);
+      h('button',{class:'btn small',onclick:()=>openDiag('conns')},'Все соединения'),
+      h('p',{class:'live-hint'},'Сервисы и программы — разные группировки одного трафика. Нажмите строку для выбора пути; перетаскивание доступно на схему.'));
   }
   const speeds = new Map([...sites.map(g => ['site:' + g.key, g.speed]), ...procs.map(x => ['proc:' + x.exe, x.speed])]);
   for (const el of box.querySelectorAll('.live-row')) {
@@ -1994,9 +2000,10 @@ const groupRoute = g => Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][
 function liveRow({ key, label, icon, route, rule, sub, pick, drop }) {
   const say = rule ? ROUTE_SAY[rule.action] || 'блокируется' : route ? ROUTE_SAY[route] : 'как решит Naivka';
   const el = h('button', { class: 'live-row', type: 'button', 'data-key': key, style: `--c:${ROUTE_COLOR[rule ? rule.action : route] || 'var(--faint)'}`,
+    title:[say,rule?'задано правилом':'автоматический маршрут',sub].filter(Boolean).join(' · '),
     'aria-label': `${label}: ${say}. Нажмите, чтобы выбрать путь` },
     h('span', { class: 'svc' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: icon }))),
-    h('span', { class: 'live-name' }, h('b', null, label), h('small', null, h('i', { class: 'live-dot' }), say + (rule ? ' · правило' : '') + (sub ? ' · ' + sub : ''))),
+    h('span', { class: 'live-name' }, h('b', null, label), h('small', null, h('i', { class: 'live-dot' }), say)),
     h('span', { class: 'live-speed num' }));
   // Как у программ на полке: короткое нажатие — меню, перетаскивание — на ветку схемы.
   ghostDrag(el, () => h('div', { class: 'proc-chip proc-ghost' }, label), () => pick(el), drop);
@@ -2261,7 +2268,7 @@ function viewDiag() {
       updateConnTable();
       if (ST && ST.running) refreshConns();
     } else if (diagTab === 'check') {
-      body.replaceChildren(viewRepair(), viewCheck());
+      body.replaceChildren(viewRepair(), h('details',{class:'card mt'},h('summary',null,'Проверить отдельный сайт'),viewCheck()));
     } else if (diagTab === 'speed') {
       body.replaceChildren(viewSpeed());
       refreshSpeed();
@@ -2472,7 +2479,8 @@ function viewServers() {
         h('button', { class: 'btn', id: 'testAll', onclick: () => testServers(''), title: 'Проверить пинг всех серверов' }, 'Проверить все'),
         h('button', { class: 'btn', onclick: importLinksDialog }, 'Вставить ссылки'),
         h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
-    h('div', { class: 'scards', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
+    h('input',{type:'search',id:'serverSearch',placeholder:'Найти сервер по имени, адресу или протоколу','aria-label':'Поиск серверов',oninput:()=>renderServers(true)}),
+    h('div', { class: 'scards server-list', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
     h('p', { class: 'hint mt' }, 'Карточки можно перетаскивать, звёздочка поднимает сервер наверх.'),
     h('div', { id: 'wlBox' }));
 }
@@ -2544,11 +2552,12 @@ function renderServers(force) {
   const noNaive = ST && ST.core && ST.core.present && !ST.core.naive;
   const xr = xrayReady();
   // Перерисовываем, только если что-то видимое изменилось: иначе сбивались бы наведение и фокус.
-  const sig = JSON.stringify([S.servers, S.selected, S.wl.enabled, nowTag, delays, PX && PX.delays, PX && PX.wlNow, srvGeo,
+  const query=($('#serverSearch')?.value||'').trim().toLowerCase();
+  const sig = JSON.stringify([query,S.servers, S.selected, S.wl.enabled, nowTag, delays, PX && PX.delays, PX && PX.wlNow, srvGeo,
     STATS && STATS.delays, S.smartSelect, noNaive, xr, WL && [WL.used, WL.active]]);
   patch('srvList', sig, () => {
     const cards = [];
-    if (S.servers.length > 1 || S.selected === 'auto') {
+    if (!query&&(S.servers.length > 1 || S.selected === 'auto')) {
       const smartAuto = S.smartSelect && S.selected === 'auto' && PX && (PX.selected || '').startsWith('s-');
       const now = PX ? serverByTag(smartAuto ? PX.selected : PX.autoNow) : null;
       cards.push(srvCardBase('auto', 'wide', [
@@ -2560,6 +2569,7 @@ function renderServers(force) {
       { live: running && PX && (PX.selected === 'auto' || smartAuto) }));
     }
     for (const sv of serverOrder()) {
+      if(query&&![sv.name,sv.host,protoName(sv)].join(' ').toLowerCase().includes(query))continue;
       const geo = srvGeo[sv.id] && srvGeo[sv.id].info;
       const cc = (geo && geo.countryCode) || nameCountry(sv.name);
       const where = geo ? [geo.city || geo.country, geo.isp].filter(Boolean).join(', ') : '';
@@ -2581,9 +2591,7 @@ function renderServers(force) {
             h('small', { title: `${sv.host}:${sv.port}` }, h('span', { class: 'proto' }, protoName(sv)))),
           // Действия — значками, появляются при наведении: карточка компактнее, адрес — во всплывающей подсказке.
           h('div', { class: 'scard-tools' },
-            h('button', { class: 'tool', type: 'button', title: 'Проверить', 'aria-label': 'Проверить', onclick: () => testServers(sv.id) }, btnIcon('test')),
-            h('button', { class: 'tool', type: 'button', title: 'QR-код', 'aria-label': 'QR-код', onclick: () => qrDialog(sv) }, btnIcon('qr')),
-            h('button', { class: 'tool', type: 'button', title: 'Изменить', 'aria-label': 'Изменить', onclick: () => editServer(sv) }, btnIcon('edit'))),
+            h('button', { class: 'btn small', type:'button',onclick:()=>WorkspaceUI.server(sv) }, 'Подробнее')),
           star),
         h('div', { class: 'scard-mid' },
           h('div', { class: 'scard-delay' }, pingBars(d), delayEl(sv.id) || h('span', { class: 'delay cell-sub' }, 'не проверен')),
@@ -2600,7 +2608,7 @@ function renderServers(force) {
       { live: running && (PX && (PX.selected === 'wl' || (PX.selected || '').startsWith('w-'))) }));
     }
     if (!S.servers.length && !S.wl.enabled) cards.push(h('div', { class: 'empty wide' }, 'Серверов пока нет. Добавьте вручную или вставьте ссылки naive+https://… или vless://…'));
-    return cards;
+    return cards.length?cards:h('p',{class:'empty'},'Серверы не найдены');
   });
   patch('wlBox', JSON.stringify([WL, S.wl, S.selected, PX && PX.delays, PX && PX.wlNow, AD && AD.updates && AD.updates.xray]), wlCard);
 }
@@ -3362,32 +3370,25 @@ function viewRules() {
 
     h('section', { class: 'card rules-card' },
       h('h2', { class: 'flush' }, 'Режим'),
-      segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); $('#modeDesc').textContent = MODE_DESC[v]; renderSmart(); }, 'Режим'),
+      segmented(Object.entries(ROUTING), () => S.routing, v => { S.routing = v; save(); $('#modeDesc').textContent = MODE_DESC[v]; renderSmart(); WorkspaceUI.routing(true); }, 'Режим'),
       h('p', { class: 'hint mode-desc', id: 'modeDesc' }, MODE_DESC[S.routing]),
       h('div', { id: 'smartBox' })),
-
-    // Особые случаи — сразу на виду, а не в свёрнутом блоке.
-    h('section', { class: 'card rules-card' },
-      h('h2', { class: 'flush' }, 'Особые случаи'),
-      h('div', { class: 'toggle-grid' },
-        check('ruInsideDirect', 'Сайты, которые работают только из России, всегда напрямую', 'Госуслуги, банки и другие сервисы, которые не пускают иностранные IP.'),
-        check('blockQuic', 'Блокировать QUIC', 'Нужно для серверов Naive.'),
-        check('udpDirect', 'Остальной UDP напрямую', 'Игры и звонки — мимо сервера.'),
-        check('udpProxy', 'UDP через сервер — голос Discord, игры', 'Для серверов VLESS, Hysteria2, TUIC, Trojan и Shadowsocks. Работает в режиме TUN.'),
-        check('adBlock', 'Блокировать рекламу и трекеры', 'Баннеры, счётчики и рекламные сети. Рекламу в видео YouTube так не убрать.'))),
-
-    h('section', { class: 'card rules-card' },
-      h('h2', { class: 'flush' }, 'Куда идут соединения'),
-      h('div', { id: 'catBox' })),
 
     section('Свои правила', { id: 'ruleSummary' },
       h('button', { class: 'btn primary', onclick: () => addRulesDialog('') }, 'Добавить'),
       h('button', { class: 'btn', onclick: pickProcesses }, 'Выбрать программы'),
-      h('button', { class: 'btn', onclick: importRulesFile }, 'Импорт'),
-      h('button', { class: 'btn', onclick: exportRulesDialog }, 'Экспорт')),
+      h('details',{class:'secondary-actions'},h('summary',{class:'btn'},'Ещё'),h('div',{class:'row'},
+        h('button', { class: 'btn', onclick: importRulesFile }, 'Импорт'),
+        h('button', { class: 'btn', onclick: exportRulesDialog }, 'Экспорт')))),
     h('div', { id: 'ruleSearch' }),
     h('div', { class: 'panel' }, h('table', { class: 'table rules' }, h('tbody', { id: 'ruleBody' }))),
     h('div', { id: 'ruleFoot' }),
+
+    WorkspaceUI.ruleGroups(),
+
+    h('details', { class: 'card rules-card' },
+      h('summary', null, 'Куда идут соединения'),
+      h('div', { id: 'catBox' })),
 
     section('Списки по ссылке', { text: 'Готовые списки сайтов обновляются сами раз в сутки.' },
       h('button', { class: 'btn', onclick: addListDialog }, 'Добавить список'),
@@ -3581,7 +3582,7 @@ function renderRules() {
     ? `${count(S.rules.length, 'правило', 'правила', 'правил')}: ${parts.join(', ')}. Срабатывают раньше режима.`
     : 'Срабатывают раньше режима. Можно вставить сразу целый список доменов, IP-адресов и программ.';
 
-  patch('ruleSearch', String(S.rules.length > 8), () => S.rules.length > 8
+  patch('ruleSearch', 'search', () => true
     ? h('input', { type: 'text', class: 'grow-input search', placeholder: 'Найти правило', value: ruleFilter, oninput: e => { ruleFilter = e.target.value; renderRules(); } })
     : null);
 
@@ -4033,9 +4034,10 @@ function petGamesSettings(){
 function experienceSettings() {
   S.experience ||= { effects: 'balanced', sound: 'off', volume: 20, atmosphere: 'off' };
   const choose = (key, title, values) => h('label', { class: 'field' }, h('span', null, title),
-    h('select', { 'aria-label': title, onchange: e => { S.experience[key] = e.target.value; window.NaivkaExperience.configure(S.experience); save(); } },
+    h('select', { 'aria-label': title, onchange: e => { S.experience[key] = e.target.value; window.NaivkaExperience.configure(S.experience); if(typeof WorkspaceUI!=='undefined')WorkspaceUI.apply(); save(); } },
       values.map(([value, text]) => h('option', { value, selected: S.experience[key] === value }, text))));
   return h('div', null,
+    choose('home', 'Главная страница', [['compact','Компактная'],['full','Полная']]),
     choose('diagram', 'Схема маршрутов', [['branches','Ветви'],['orbit','Орбита'],['tree','Дерево']]),
     choose('effects', 'Интенсивность эффектов', [['off','Выкл.'],['low','Минимум'],['balanced','Баланс'],['full','Полный']]),
     choose('sound', 'Звуковая тема', [['off','Без звука'],['quiet','Тихий'],['digital','Цифровой'],['retro','Ретро']]),
@@ -4497,7 +4499,7 @@ async function act(path, okText) {
 function viewBypass() {
   return h('div', { class: 'view', style: 'max-width:960px' },
     h('h1', null, 'Обход без сервера'),
-    h('p', { class: 'sub' }, 'Обход блокировок без вашего сервера: не тратит его трафик.'),
+    h('p', { class: 'sub' }, 'Выберите сценарий: сайты и звонки через zapret или Telegram Desktop. Они включаются отдельно.'),
     h('div', { id: 'bypassBox' }, h('p', { class: 'hint' }, 'Загружаю…')));
 }
 
@@ -4543,8 +4545,8 @@ function zapretCard(z) {
   const results = !pick.active && !trial.active && pick.results && pick.results.length ? pickTable(pick, zs) : null;
   return h('section', { class: 'card addon' },
     h('div', { class: 'addon-head' },
-      h('div', null, h('h3', null, 'zapret', verLabel(z)),
-        h('p', null, 'Обход DPI для YouTube, Discord и сайтов из ваших правил «Через zapret». Эти сайты идут напрямую — быстрее и мимо сервера.')),
+      h('div', null, h('h3', null, 'Сайты и звонки', verLabel(z)),
+        h('p', null, 'zapret: обход DPI для YouTube, Discord и сайтов из ваших правил. Эти сайты идут напрямую.')),
       installed ? sw(zs.enabled, z.pick.active, v => { S.zapret.enabled = v; save(0); if (v && needElevation()) elevateFor('zapret'); }, zs.enabled ? 'Включён' : 'Выключен') : null),
     status,
     !installed ? h('div', { class: 'row mt' },
@@ -4558,8 +4560,9 @@ function zapretCard(z) {
       h('select', { disabled: pick.active, onchange: e => { S.zapret.strategy = e.target.value; save(0); } },
         z.strategies.map(n => h('option', { value: n, selected: n === zs.strategy }, n))),
       h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => pickStrategy(false), title: 'Останавливается на первой стратегии, которая открыла всё' }, 'Подобрать автоматически'),
+      h('details',{class:'secondary-actions'},h('summary',{class:'btn'},'Другие проверки'),h('div',{class:'row'},
       h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => pickStrategy(true), title: 'Проверяет все стратегии и выбирает самую быструю' }, 'Проверить все стратегии'),
-      h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => startTrial(z) }, 'Проверить вручную'),
+      h('button', { class: 'btn', disabled: pick.active || (ST && ST.os === 'windows' && !ST.admin), onclick: () => startTrial(z) }, 'Проверить вручную'))),
       z.latest && z.installed !== z.latest ? h('button', { class: 'btn', disabled: !!z.busy, onclick: () => act('/api/zapret/install') }, `Обновить до ${z.latest}`) : null) : null,
     pickBox,
     installed && !pick.active && !trial.active ? sitesBox(z) : null,

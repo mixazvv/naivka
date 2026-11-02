@@ -1,0 +1,23 @@
+/* Compact default uses the same widgets and APIs as the full/custom layouts. */
+.home-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.home-actions .sysline{margin:0}.home-connect{min-width:135px}
+.home-parameters{min-width:0}.home-parameters>summary{cursor:pointer;font-weight:600;padding:8px 0}.home-parameters>.row{flex-wrap:wrap;padding:10px 0}
+.home-pulse{display:none}.home-compact-choice{margin-left:auto}.home-compact .home-compact-choice{display:none}
+.stage-inner.home-compact{display:grid!important;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto auto auto auto auto;gap:12px 18px;height:auto;min-height:0;align-content:start;overflow:visible;padding-bottom:20px}
+.home-compact>.stage-head{grid-row:1;grid-column:1/-1;padding:14px 18px;gap:18px;flex-wrap:wrap}
+:root:not([data-skin]) .home-compact .status-title{font-size:26px}.home-compact .stage-status .sub{margin:4px 0 0;font-size:12px}
+.home-compact>.stage-notices{grid-row:2;grid-column:1/-1}.home-compact>.stage-controls{grid-row:3;grid-column:1/-1;padding:0;border:0;margin:0;justify-content:space-between}
+.home-compact>.home-pulse{grid-row:4;grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;min-width:0}.home-pulse>.btn{font-size:12px;white-space:normal;text-align:left}
+.home-compact>.lanes-stage{grid-row:5;grid-column:1;margin:0;min-width:0;min-height:0;height:auto}
+.home-compact .lanes-box{height:270px!important;min-height:0!important;max-height:none!important}.home-compact.diagram-expanded .lanes-box{height:clamp(360px,45vh,520px)!important}
+.home-compact .lanes-box .power{pointer-events:none}.home-compact .br-node.comp .br-txt{display:none}
+.home-compact:not(.diagram-expanded) .br-leaves,.home-compact:not(.diagram-expanded) .route-services,.home-compact:not(.diagram-expanded) #procShelf{display:none}
+.home-compact>.stage-tiles{display:none}.home-compact>.stage-ready{grid-row:6;grid-column:1/-1}.home-compact>.live-col{display:flex;grid-row:5;grid-column:2;max-height:none;align-self:start;padding:14px}
+.home-compact .live-head .seg{margin-top:8px}.home-compact .live-hint{margin-top:6px}.home-compact .live-row{min-width:0}.home-compact .live-speed{display:block}.home-compact .live-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-custom .home-pulse,.stage-inner:not(.home-compact) .home-pulse{display:none}.stage-inner:not(.home-compact) .home-parameters>summary{display:none}
+.full-address{display:block;overflow-wrap:anywhere;user-select:all}.rule-groups{display:grid;gap:12px;margin:16px 0}.rule-options>summary{cursor:pointer;font-weight:600}.rule-options summary small{color:var(--muted);font-weight:400}.routing-outcome{padding:14px}.routing-outcome p{margin:6px 0}
+.secondary-actions>summary{cursor:pointer;list-style:none}.secondary-actions>.row{padding:8px 0}
+.server-list{grid-template-columns:minmax(0,1fr)!important}.server-list .scard{grid-column:auto}.server-list .scard-tools{opacity:1;visibility:visible}.server-list .scard-spark{max-width:130px}#serverSearch{width:100%;margin-bottom:12px}.server-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px}.server-facts dd{margin:0;overflow-wrap:anywhere}
+.vps-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.vps-tabs [aria-pressed="true"]{border-color:var(--tunnel);background:var(--tunnel-soft)}.vps-extra>summary{cursor:pointer}.vps-audit .panel{padding:12px;margin-top:8px}
+@media(max-width:1000px){.stage-inner.home-compact{grid-template-columns:minmax(0,1fr)}.home-compact>.lanes-stage{grid-column:1}.home-compact>.live-col{grid-column:1;grid-row:6}.home-compact>.stage-ready{grid-row:7}.home-compact>.stage-head{gap:12px}.home-compact .home-server{padding-left:0;border-left:0;flex-basis:180px}.home-actions{width:100%}}
+@media(max-height:600px){.home-compact .lanes-box{height:240px!important}.home-compact>.stage-head{padding:10px 14px}.home-compact .stage-status .sub{max-width:none}}
+@media(max-width:540px){.home-compact>.stage-head{padding:12px}.home-compact .home-server{flex-basis:100%;border-top:0;padding:0}.home-compact .stage-status{flex-basis:100%}.home-pulse>.btn{flex:1 1 135px}.home-compact .lanes-box{height:260px!important}.home-compact>.stage-controls{align-items:start}.home-actions .sysline{flex:1}.server-facts{grid-template-columns:minmax(0,1fr)}}

@@ -40,7 +40,7 @@ function vpsRemember(id, report) {
   if (VPS_HISTORY.size > 20) VPS_HISTORY.delete(VPS_HISTORY.keys().next().value);
   return items;
 }
-function vpsResults(report, history) {
+function vpsResults(report, history, tab='all') {
   const m = report.metrics || {};
   const rate=vpsNetworkRate(report,history);
   const num = k => Number.isFinite(m[k]) ? m[k] : null;
@@ -60,13 +60,10 @@ function vpsResults(report, history) {
     ['Время работы ОС', num('uptime') === null ? 'Не определено' : (m.uptime / 3600).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' ч'],
     ['Счётчики сети: принято / отправлено', bytes('network_rx') + ' / ' + bytes('network_tx')]
   ];
-  return h('div', null,
-    h('p', { class: 'hint' }, 'SSH доступен · ' + new Date(report.checkedAt * 1000).toLocaleString('ru-RU')),
-    h('table', { class: 'table' }, h('tbody', null, rows.map(([label, value]) => h('tr', null, h('td', null, label), h('td', null, value))))),
-    h('p', { class: 'hint' }, 'Нагрузка CPU — очередь задач, не процент использования. Скорость — разница счётчиков интерфейсов кроме lo по времени сервера; туннели могут учитывать трафик повторно. После перезагрузки, смены интерфейсов, снижения суммарных счётчиков или перерыва больше 5 минут скорость не вычисляется.'),
+  const audit=h('div',{class:'vps-audit'},
     h('h3', null, 'Службы и аудит безопасности'),
     h('p', { class: 'hint' }, 'Это частичная проверка, а не заключение о безопасности. Неизвестный результат обычно означает отсутствие службы, утилиты или прав.'),
-    ...(report.checks || []).map(c => {
+    ...(report.checks || []).slice().sort((a,b)=>({warning:0,unknown:1,info:2,ok:3}[a.level]??1)-({warning:0,unknown:1,info:2,ok:3}[b.level]??1)).map(c => {
       let spec = VPS_CHECKS[c.id];
       if (!spec && /^(service|enabled)_(sing-box|xray|naivka-caddy|x-ui|marzban|nginx|caddy|fail2ban|ssh|sshd)$/.test(c.id)) {
         const i = c.id.indexOf('_'); spec = [(c.id.startsWith('service_') ? 'Состояние: ' : 'Автозапуск: ') + c.id.slice(i + 1), 'По данным systemd; другие панели и службы не проверены.'];
@@ -82,8 +79,17 @@ function vpsResults(report, history) {
         c.level === 'warning' ? h('p', { class: 'hint' }, c.id === 'os_updates' ? 'Проверьте доступные обновления в рамках обслуживания сервера.' : 'Проверьте настройку вручную. Перед изменением SSH или firewall сохраните альтернативный доступ и план восстановления.') : null);
     }),
     vpsUpdatesDetails(report),
-    vpsListenersDetails(report),
-    vpsHistoryChart(history));
+    vpsListenersDetails(report));
+  const primary=[rows[0],rows[2],rows[3],rows[9],rows[10]];
+  const extras=rows.filter(r=>!primary.includes(r));
+  const table=items=>h('table',{class:'table'},h('tbody',null,items.map(([label,value])=>h('tr',null,h('td',null,label),h('td',null,value)))));
+  return h('div',null,
+    h('p',{class:'hint'},'SSH доступен · '+new Date(report.checkedAt*1000).toLocaleString('ru-RU')),
+    tab!=='audit'?h('div',null,table(primary),
+      h('p',{class:'hint'},'Аудит: предупреждений '+(report.checks||[]).filter(c=>c.level==='warning').length+' · неизвестных проверок '+(report.checks||[]).filter(c=>c.level==='unknown').length),
+      vpsHistoryChart(history),h('details',{class:'vps-extra'},h('summary',null,'Дополнительные метрики'),table(extras)),
+      h('p',{class:'hint'},'Скорость — разница суммарных счётчиков интерфейсов кроме lo; туннели могут учитывать трафик повторно. После перезагрузки, смены интерфейсов, снижения суммарных счётчиков или перерыва больше 5 минут скорость не вычисляется. PSI — доля ожидания ресурсов; нагрузка CPU — очередь задач.')):null,
+    tab!=='monitor'?audit:null);
 }
 function vpsUpdatesDetails(report) {
   const u = report.updates;
@@ -130,7 +136,10 @@ function vpsDialog(host) {
   const result = h('div');
   const err = h('div', { class: 'err-text', role: 'status' });
   const go = h('button', { class: 'btn primary' }, 'Проверить сейчас');
-  let busy = false, timer=0, stopped=false;
+  let busy = false, timer=0, stopped=false, tab='monitor';
+  let latest=null;
+  const paint=()=>{if(latest)result.replaceChildren(vpsResults(latest,VPS_HISTORY.get(host.id)||[],tab));};
+  const tabs=h('div',{class:'vps-tabs',role:'group','aria-label':'Раздел отчёта VPS'},[['monitor','Мониторинг'],['audit','Аудит безопасности']].map(([key,title])=>h('button',{class:'btn small','aria-pressed':String(tab===key),onclick:()=>{tab=key;for(const b of tabs.children)b.setAttribute('aria-pressed',String(b.textContent===title));paint();}},title)));
   const auto=h('input',{type:'checkbox','aria-label':'Обновлять каждые 30 секунд'});
   const stop=()=>{clearTimeout(timer);timer=0;auto.checked=false;};
   const schedule=()=>{clearTimeout(timer);if(!stopped&&auto.checked&&d.isConnected&&!document.hidden)timer=setTimeout(()=>run(null,true),30000);};
@@ -138,9 +147,9 @@ function vpsDialog(host) {
   const visibility=()=>{if(document.hidden)stop();};
   const d = openDialog(h('h2', null, 'Состояние VPS: ' + (host.name || host.host)),
     h('p', { class: 'hint' }, 'Отчёт по SSH для своего Linux-сервера. Команды только читают состояние; ожидание отчёта — до 30 секунд после входа. Отчёт и история хранятся только в памяти окна.'),
-    h('label',{class:'field'},auto,'Обновлять каждые 30 секунд, пока окно открыто'),result, err, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Закрыть'), go));
+    h('label',{class:'field'},auto,'Обновлять каждые 30 секунд, пока окно открыто'),tabs,result, err, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Закрыть'), go));
   const old = VPS_HISTORY.get(host.id);
-  if (old && old.length) result.replaceChildren(vpsResults(old[old.length - 1], old));
+  if (old && old.length) {latest=old[old.length-1];paint();}
   async function run(creds, automatic=false) {
     if(automatic&&(!auto.checked||document.hidden)){stop();return;}
     if (busy || !d.isConnected) return;
@@ -155,7 +164,7 @@ function vpsDialog(host) {
         return sshAuthDialog(host, c => run(c));
       }
       const history = vpsRemember(host.id, r);
-      result.replaceChildren(vpsResults(r, history)); err.textContent = '';
+      latest=r;paint(); err.textContent = '';
     } catch (e) {
       stop();if (d.isConnected) err.textContent = e.message;
       if (creds) throw e;

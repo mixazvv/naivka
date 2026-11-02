@@ -297,13 +297,15 @@ func (a *App) routes() http.Handler {
 		after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 		return a.core.logs.After(after), nil
 	})
+	api("GET", "/api/routing/summary", func(*http.Request) (any, error) {
+		cfg, s, err := a.previewConfig()
+		if err != nil {
+			return nil, err
+		}
+		return routingSummary(cfg, s), nil
+	})
 	api("GET", "/api/config", func(*http.Request) (any, error) {
-		a.mu.Lock()
-		s := a.settings.clone()
-		a.mu.Unlock()
-		env := ConfigEnv{APIPort: 0, Secret: "••••", CachePath: "cache.db"}
-		a.fillEnv(s, &env)
-		cfg, err := BuildConfig(s, env)
+		cfg, _, err := a.previewConfig()
 		if err != nil {
 			return nil, err
 		}
