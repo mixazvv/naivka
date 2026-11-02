@@ -1788,8 +1788,10 @@ function renderLive() {
   const limit=innerHeight<=800?3:5;
   const shownSites=grouping==='services'?sites.slice(0,limit):[];
   const shownProcs=grouping==='programs'?procs.slice(0,limit):[];
-  const sig = JSON.stringify([on, grouping, limit, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action])]);
-  if (box.dataset.sig !== sig && !liveDrag) { // тащат строку — пересоберём после того, как отпустят
+  const sig = JSON.stringify([on, grouping, limit, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action,groupRoute(x)])]);
+  if (box.dataset.sig !== sig && !liveDrag && !(routePop&&box.contains(routeAnchor))) { // тащат строку — пересоберём после того, как отпустят
+    const focus=box.contains(document.activeElement)?document.activeElement:null;
+    const focusedKey=focus?.closest('.live-row')?.dataset.key,focusedGroup=focus?.dataset.activity;
     box.dataset.sig = sig;
     box.replaceChildren(
       WorkspaceUI.activityHeader(),
@@ -1804,7 +1806,7 @@ function renderLive() {
       })),
       ...shownProcs.map(x => {
         const name = procName(x.exe.toLowerCase()) || x.exe, rule = procRule(x.exe);
-        const actual=Object.entries(x.routes||{}).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
+        const actual=groupRoute(x);
         return liveRow({
           key: 'proc:' + x.exe, label: name, icon: SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'], route: rule ? rule.action : actual, rule,
           pick: el => routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
@@ -1813,6 +1815,8 @@ function renderLive() {
       }),
       h('button',{class:'btn small',onclick:()=>openDiag('conns')},'Все соединения'),
       h('p',{class:'live-hint'},'Группировки не суммируются. Нажмите строку для выбора пути.'));
+    if(focusedKey){const next=[...box.querySelectorAll('.live-row')].find(x=>x.dataset.key===focusedKey);(next||box.querySelector(`[data-activity="${grouping}"]`))?.focus({preventScroll:true});}
+    else if(focusedGroup)box.querySelector(`[data-activity="${focusedGroup}"]`)?.focus({preventScroll:true});
   }
   const speeds = new Map([...sites.map(g => ['site:' + g.key, g.speed]), ...procs.map(x => ['proc:' + x.exe, x.speed])]);
   for (const el of box.querySelectorAll('.live-row')) {
@@ -1999,7 +2003,7 @@ function globePick(flow, rect) {
 }
 
 // Каким путём группа идёт сейчас (по самому быстрому трафику).
-const groupRoute = g => Object.entries(g.routes).sort((a, b) => b[1] - a[1])[0][0];
+const groupRoute = g => Object.entries(g.routes||{}).sort((a, b) => b[1] - a[1])[0]?.[0]||'';
 function liveRow({ key, label, icon, route, rule, sub, pick, drop }) {
   const say = rule ? ROUTE_SAY[rule.action] || 'блокируется' : route ? ROUTE_SAY[route] : 'как решит Naivka';
   const el = h('button', { class: 'live-row', type: 'button', 'data-key': key, style: `--c:${ROUTE_COLOR[rule ? rule.action : route] || 'var(--faint)'}`,
