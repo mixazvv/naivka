@@ -24,7 +24,7 @@ const server=http.createServer(async(req,res)=>{
   await page.getByRole('button',{name:'Ещё версии',exact:true}).click();await page.getByRole('option',{name:'v2.8.0',exact:true}).waitFor({state:'attached'});await select.selectOption('v2.8.0');
   const install=page.getByRole('button',{name:'Установить выбранную версию',exact:true});await install.click();await page.getByText(/Скачиваю и проверяю подпись/).waitFor();assert.deepEqual(installed,[{tag:'v2.8.0'}]);assert.equal(await page.evaluate(()=>saved),1);assert.deepEqual(pages,['1','2']);
   await page.getByText('Архив не прошёл проверку подписи',{exact:true}).waitFor();assert(await install.isEnabled());assert(await select.isEnabled());
-  await page.getByRole('button',{name:'Закрыть',exact:true}).click();assert.equal(await page.locator('dialog').count(),0);assert.deepEqual(errors,[]);
+  await page.getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});assert.equal(await page.locator('dialog').count(),0);assert.deepEqual(errors,[]);
   console.log('Version chooser: stable signed platform options, pagination, explicit target, save-before-install, verification error and close: OK');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());
