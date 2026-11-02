@@ -1203,10 +1203,10 @@ const Pet = (() => {
   }
   function rareEvent(id){
     if(!root||uiBlocked()||game||!canAct())return;
-    const lines={'night-star':'Кажется, там звезда…','stable-session':'Как спокойно. Связь держится!','toy':'Нашёл игрушку!','anniversary':'Мы уже давно вместе. Мррр!'};
+    const lines={'night-star':'Кажется, там звезда…','stable-session':'Как спокойно. Связь держится!','toy':'Нашёл игрушку!','anniversary':'Мы уже давно вместе. Мррр!','particle':'Поймал искорку!','note':'Записка от кота: пора размять лапы и сделать перерыв.'};
     talk(lines[id],3200);
     window.NaivkaExperience?.emit('pet.rare',{kind:id});
-    play(id==='night-star'?[['lookup_2',900],['lookup_3',1200],['sit_1',400]]:id==='toy'?[...seq('tailplay',4),['happy_1',700]]:[['happy_1',1000],['stretchb_1',700],['sit_1',400]],id==='toy'?180:0,back);
+    play(id==='stable-session'?[['happy_1',300],['paw_1',220],['paw_2',220],['happy_1',300],['paw_3',220],['paw_4',220],['stretchb_1',500]]:id==='particle'?[...seq('hunt',6).map(f=>[f,180]),['happy_1',600]]:id==='note'?[...seq('inspect',4).map(f=>[f,250]),['sit_1',1000]]:id==='night-star'?[['lookup_2',900],['lookup_3',1200],['sit_1',400]]:id==='toy'?[...seq('tailplay',4),['happy_1',700]]:[['happy_1',1000],['stretchb_1',700],['sit_1',400]],id==='toy'?180:0,back);
   }
 
   // Explicit short games share the existing support/pounce controller. The toy
@@ -1230,7 +1230,7 @@ const Pet = (() => {
   }
   function gameStep(){
     if(!game||!root||REDUCE.matches||uiBlocked()||held||press||performance.now()>game.until){stopGame();return;}
-    if(inAir()){gameTimer=later(gameStep,250);return;}
+    if(inAir()){root.classList.remove('pet-peeking');game.peek=false;gameTimer=later(gameStep,250);return;}
     const r=root.getBoundingClientRect();
     if(['yarn','dot','hide'].includes(game.kind)){
       game.x=Math.max(16,Math.min(innerWidth-16,r.left+r.width/2+Math.sin(performance.now()/(game.kind==='dot'?450:1100))*(game.kind==='dot'?130:85)));
@@ -1239,7 +1239,11 @@ const Pet = (() => {
       if(game.kind==='hide'){game.peek=!game.peek;root.classList.toggle('pet-peeking',game.peek);}
     }
     if(!strolling&&!busy){
-      if(game.kind==='hide')play([['look_1',250],['look_2',250],['sit_1',250]],0,back);
+      if(game.kind==='hide'){
+        const places=targets().filter(t=>t.e.matches('.card,.tile,.set-card'));
+        if(!game.peek&&places.length&&!game.moved){game.moved=true;makeFree();travel(pick(places));}
+        else play([['peek_1',400],['peek_2',400],['sit_1',250]],0,back);
+      }
       else pounce(game.x);
       mind?.acted('play');
     }

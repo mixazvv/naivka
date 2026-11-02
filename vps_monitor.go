@@ -281,7 +281,9 @@ func (a *App) vpsRoutes(api func(method, path string, f apiFunc)) {
 			return nil, errors.New("Сервер не найден")
 		}
 		// Reuse the same serialized, fingerprint-verified, idle-expiring SSH access.
-		a.friends.ops.Lock()
+		if !a.friends.ops.TryLock() {
+			return nil, errors.New("SSH занят другой операцией. Повторите проверку позже")
+		}
 		defer a.friends.ops.Unlock()
 		if err := r.Context().Err(); err != nil {
 			return nil, err

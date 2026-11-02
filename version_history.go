@@ -71,13 +71,19 @@ func versionAvailable(r versionRelease) bool {
 	}
 	return true
 }
-func versionList(ctx context.Context, page int) ([]versionOption, error) {
+
+type versionPage struct {
+	Versions []versionOption `json:"versions"`
+	HasMore  bool            `json:"hasMore"`
+}
+
+func versionList(ctx context.Context, page int) (versionPage, error) {
 	if page < 1 || page > 10000 {
-		return nil, errors.New("Неверная страница")
+		return versionPage{}, errors.New("Неверная страница")
 	}
 	var all []versionRelease
 	if e := versionRequest(ctx, "/releases?per_page=50&page="+strconv.Itoa(page), &all); e != nil {
-		return nil, e
+		return versionPage{}, e
 	}
 	out := make([]versionOption, 0, len(all))
 	for _, r := range all {
@@ -86,7 +92,7 @@ func versionList(ctx context.Context, page int) ([]versionOption, error) {
 		}
 		out = append(out, versionOption{r.Tag, versionAvailable(r), !versionNewer(r.Tag, appVersion) && !versionNewer(appVersion, r.Tag)})
 	}
-	return out, nil
+	return versionPage{out, len(all) == 50}, nil
 }
 func (u *selfUpdater) installVersion(a *App, tag string) error {
 	if !releaseTagPattern.MatchString(tag) || parseVer(tag) == nil {
@@ -160,7 +166,7 @@ func prepareVersionSettings(cfg updateSupervisorConfig) error {
 		return e
 	}
 	// Take the final settings after the old process has exited.
-	if e = os.WriteFile(filepath.Join(cfg.Backup, "settings.json"), b, 0600); e != nil {
+	if e = writeVersionSettings(cfg.Backup, b); e != nil {
 		return e
 	}
 	if !cfg.Downgrade {
@@ -169,6 +175,9 @@ func prepareVersionSettings(cfg updateSupervisorConfig) error {
 	var raw map[string]json.RawMessage
 	if e = json.Unmarshal(b, &raw); e != nil {
 		return e
+	}
+	if raw == nil {
+		return errors.New("Некорректные настройки")
 	}
 	raw["autoConnect"] = json.RawMessage("false")
 	b, e = json.MarshalIndent(raw, "", "  ")

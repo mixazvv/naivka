@@ -3,7 +3,7 @@
 // controller retains ownership of movement, animation and action priorities.
 window.PetMind = (() => {
   const surfaces = new Set(['lanesCard','tileSpeed','tileIp','tileSession','stageReady','liveCol','homeServer','chartBox']);
-  const events = ['night-star','stable-session','toy','anniversary'];
+  const events = ['night-star','stable-session','toy','anniversary','particle','note'];
   function create({memory = {}, save = () => {}, clock = () => Date.now(), monotonic = () => performance.now(), random = Math.random} = {}) {
     memory=memory&&typeof memory==='object'?memory:{};
     const now = Math.floor(clock()/1000);
@@ -42,6 +42,8 @@ window.PetMind = (() => {
       if(hour>=22||hour<5)choices.push('night-star');
       if(stableSince!==null&&monotonic()-stableSince>=30*60000)choices.push('stable-session');
       if(playfulness>.4)choices.push('toy');
+      if(curiosity>.5)choices.push('particle');
+      if(comfort>.65)choices.push('note');
       const created=new Date(data.created*1000);
       if(seconds-data.created>300*86400&&date.getMonth()===created.getMonth()&&date.getDate()===created.getDate())choices.push('anniversary');
       const eligible=choices.filter(id=>seconds-(data.events[id]||0)>86400);

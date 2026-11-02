@@ -5091,11 +5091,12 @@ function selfBox() {
 
 async function versionDialog(){
   const list=h('select',{'aria-label':'Версия Naivka'}),status=h('p',{class:'hint',role:'status'});
-  let page=1,loading=false;
+  let page=1,loading=false,progressTimer=0;
+  const progress=async()=>{if(!d.isConnected)return;try{const u=await api('/api/app/update');if(!d.isConnected)return;if(!u.busy&&u.error){status.textContent=u.error;install.disabled=false;more.disabled=false;list.disabled=false;return;}}catch(_){}if(d.isConnected)progressTimer=setTimeout(progress,1500);};
   const more=h('button',{class:'btn',onclick:()=>load()},'Ещё версии');
   const install=h('button',{class:'btn primary',disabled:true,onclick:async()=>{
     if(!list.value)return;install.disabled=true;more.disabled=true;list.disabled=true;
-    try{await saveNow();await api('/api/app/versions/install',{tag:list.value});status.textContent='Скачиваю и проверяю подпись. Программа перезапустится; при ошибке исходная версия останется доступна.';}
+    try{await saveNow();await api('/api/app/versions/install',{tag:list.value});status.textContent='Скачиваю и проверяю подпись. Программа перезапустится; при ошибке исходная версия останется доступна.';progressTimer=setTimeout(progress,1500);}
     catch(e){status.textContent=e.message;install.disabled=false;more.disabled=false;list.disabled=false;}
   }},'Установить выбранную версию');
   const d=openDialog(h('h2',null,'Выбор версии Naivka'),
@@ -5103,12 +5104,13 @@ async function versionDialog(){
     h('p',{class:'hint'},'Перед заменой создаётся резервная копия EXE и зашифрованных настроек в папке данных, version-backups. При откате автоподключение отключается. Старые версии могут не поддерживать новые настройки и функции; резервные копии не удаляются автоматически.'),
     h('p',{class:'hint'},'Если старая версия изменит настройки, для полного возврата закройте Naivka и восстановите вместе Naivka.exe и settings.json из одной резервной копии под тем же пользователем Windows. Проверка запуска подтверждает ответ интерфейса, а подключение VPN нужно проверить отдельно.'),list,status,
     h('div',{class:'row end mt'},more,h('button',{class:'btn',onclick:()=>d.close()},'Закрыть'),install));
+  d.addEventListener('close',()=>clearTimeout(progressTimer));
   list.addEventListener('change',()=>{install.disabled=!list.value});
   async function load(){
     if(loading)return;loading=true;more.disabled=true;status.textContent='Загружаю список…';
     try{const rows=await api('/api/app/versions?page='+page);if(!d.isConnected)return;
-      for(const r of rows)list.append(h('option',{value:r.available&&!r.current?r.tag:'',disabled:!r.available||r.current},r.tag+(r.current?' · установлена':!r.available?' · нет подписанного архива платформы':'')));
-      page++;more.hidden=rows.length<50;install.disabled=!list.value;status.textContent='Выберите версию и нажмите «Установить». Изменения настроек появившихся позже функций старой версией не сохраняются.';
+      for(const r of rows.versions)list.append(h('option',{value:r.available&&!r.current?r.tag:'',disabled:!r.available||r.current},r.tag+(r.current?' · установлена':!r.available?' · нет подписанного архива платформы':'')));
+      page++;more.hidden=!rows.hasMore;install.disabled=!list.value;status.textContent='Выберите версию и нажмите «Установить». Изменения настроек появившихся позже функций старой версией не сохраняются.';
     }catch(e){if(d.isConnected)status.textContent=e.message;}finally{loading=false;more.disabled=false;}
   }
   await load();

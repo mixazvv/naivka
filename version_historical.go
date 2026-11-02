@@ -44,7 +44,7 @@ func (r updateRunner) runHistorical(cfg updateSupervisorConfig, intent updateInt
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
-	cmd := r.newCommand(cfg.Exe, []string{"--replace", "--no-elevate"}, withoutUpdateHandshake(os.Environ()))
+	cmd := r.newCommand(cfg.Exe, []string{"--replace", "--no-elevate", "--autostart"}, withoutUpdateHandshake(os.Environ()))
 	if e := cmd.Start(); e != nil {
 		return r.rollback(cfg, intent, "UPDATE_START_FAILED")
 	}
@@ -82,6 +82,9 @@ func (r updateRunner) runHistorical(cfg updateSupervisorConfig, intent updateInt
 			// was connected. The user starts the VPN explicitly in the selected version.
 			if cfg.Debug {
 				_ = os.Rename(cfg.Exe+".debug.new", filepath.Join(filepath.Dir(cfg.Exe), "Naivka-debug.exe"))
+			}
+			if inst, ok := readInstance(cfg.Dir); ok && inst.PID == cmd.Process.Pid {
+				_ = postInstance(inst, "/api/show")
 			}
 			return "UPDATED"
 		}

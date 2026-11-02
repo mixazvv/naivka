@@ -7,17 +7,17 @@ class Element {
   constructor(tag, attrs, children) { this.tag = tag; this.attrs = attrs || {}; this.children = children; this.events = {}; this.isConnected = true; this.textContent = ''; }
   addEventListener(name, fn) { this.events[name] = fn; }
   replaceChildren(...items) { this.children = items; }
-  close() { this.isConnected = false; }
+  close() { this.isConnected = false; this.events.close?.(); }
 }
-const dialogs = [], calls = [];
+const dialogs = [], calls = [], timers=new Map(),visibility=new Map();let timerID=0,authPrompts=0;
 const report = { checkedAt: 100, metrics: { load: 0, cpu_usage: 0 }, checks: [{id:'root_login',value:'<script>',level:'unknown'}] };
 let handler = async () => report;
 const context = vm.createContext({
-  console, Map, Date, Number, setTimeout,clearTimeout, document:{hidden:false,addEventListener(){},removeEventListener(){}},
+  console, Map, Date, Number, setTimeout:(fn)=>{timers.set(++timerID,fn);return timerID},clearTimeout:id=>timers.delete(id),document:{hidden:false,addEventListener:(n,f)=>visibility.set(f,n),removeEventListener:(n,f)=>visibility.delete(f)},
   h: (tag, attrs, ...children) => new Element(tag, attrs, children),
   openDialog: (...children) => { const d = new Element('dialog', {}, children); dialogs.push(d); return d; },
   api: async (url, body) => { calls.push({url,body}); return handler(body); },
-  sshAuthDialog: async (host, run) => run({password:'fixture-secret'})
+  sshAuthDialog: async (host, run) => {authPrompts++;return run({password:'fixture-secret'})}
 });
 vm.runInContext(fs.readFileSync(require.resolve('../web/vps.js'), 'utf8'), context);
 function walk(el) { return el instanceof Element ? [el, ...el.children.flat(Infinity).flatMap(walk)] : []; }
@@ -69,5 +69,19 @@ function text(el) { return el instanceof Element ? el.children.flat(Infinity).ma
   assert(!text(vm.runInContext('vpsResults(fixture, [])',context)).includes('Локальных слушающих TCP/UDP-сокетов в этом окружении не найдено.'));
   rich.checks = [{id:'local_listeners',value:'observed',level:'info'}];rich.listeners=[];
   assert(text(vm.runInContext('vpsResults(fixture, [])',context)).includes('Локальных слушающих TCP/UDP-сокетов в этом окружении не найдено.'));
+  context.r1={bootId:'same',metrics:{network_set:5,server_time:100,uptime:1000,network_rx:100,network_tx:300}};
+  context.r2={bootId:'same',metrics:{network_set:5,server_time:130,uptime:1030,network_rx:400,network_tx:900}};
+  assert.equal(JSON.stringify(vm.runInContext('vpsNetworkRate(r2,[r1,r2])',context)), '[10,20]');
+  context.r2.bootId='reboot';assert.equal(vm.runInContext('vpsNetworkRate(r2,[r1,r2])',context),null);
+  context.r2.bootId='same';context.r2.metrics.network_set=6;assert.equal(vm.runInContext('vpsNetworkRate(r2,[r1,r2])',context),null);
+  context.r2.metrics.network_set=5;context.r2.metrics.network_rx=0;assert.equal(vm.runInContext('vpsNetworkRate(r2,[r1,r2])',context),null);
+  handler=async()=>report;vm.runInContext("vpsDialog({id:'monitor',host:'example.test'})",context);
+  const monitoring=dialogs.at(-1), auto=walk(monitoring).find(e=>e.tag==='input');auto.checked=true;await auto.events.change();
+  assert.equal(timers.size,1,'monitor did not schedule after success');
+  handler=async()=>({needAuth:true});const count=authPrompts;let next=timers.values().next().value;timers.clear();await next();
+  assert.equal(authPrompts,count,'automatic refresh opened a password prompt');assert.equal(auto.checked,false);assert.equal(timers.size,0);
+  handler=async()=>report;auto.checked=true;await auto.events.change();assert.equal(timers.size,1);
+  context.document.hidden=true;for(const f of visibility.keys())f();assert.equal(timers.size,0);assert.equal(auto.checked,false);
+  context.document.hidden=false;auto.checked=true;await auto.events.change();monitoring.close();assert.equal(timers.size,0,'closed dialog kept polling');
   console.log('VPS explicit requests, SSH auth, duplicate guard, closed dialogs, unknowns, history, cached updates and local ports: OK');
 })().catch(e => { console.error(e); process.exitCode = 1; });

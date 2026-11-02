@@ -130,14 +130,14 @@ function vpsDialog(host) {
   const err = h('div', { class: 'err-text', role: 'status' });
   const go = h('button', { class: 'btn primary' }, 'Проверить сейчас');
   let busy = false, timer=0, stopped=false;
-  const auto=h('input',{type:'checkbox','aria-label':'Обновлять каждые 15 секунд'});
+  const auto=h('input',{type:'checkbox','aria-label':'Обновлять каждые 30 секунд'});
   const stop=()=>{clearTimeout(timer);timer=0;auto.checked=false;};
-  const schedule=()=>{clearTimeout(timer);if(!stopped&&auto.checked&&d.isConnected&&!document.hidden)timer=setTimeout(()=>run(null,true),15000);};
+  const schedule=()=>{clearTimeout(timer);if(!stopped&&auto.checked&&d.isConnected&&!document.hidden)timer=setTimeout(()=>run(null,true),30000);};
   const close=()=>{stopped=true;stop();document.removeEventListener('visibilitychange',visibility);};
   const visibility=()=>{if(document.hidden)stop();};
   const d = openDialog(h('h2', null, 'Состояние VPS: ' + (host.name || host.host)),
     h('p', { class: 'hint' }, 'Отчёт по SSH для своего Linux-сервера. Команды только читают состояние; ожидание отчёта — до 30 секунд после входа. Отчёт и история хранятся только в памяти окна.'),
-    h('label',{class:'field'},auto,'Обновлять каждые 15 секунд, пока окно открыто'),result, err, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Закрыть'), go));
+    h('label',{class:'field'},auto,'Обновлять каждые 30 секунд, пока окно открыто'),result, err, h('div', { class: 'row end mt' }, h('button', { class: 'btn', onclick: () => d.close() }, 'Закрыть'), go));
   const old = VPS_HISTORY.get(host.id);
   if (old && old.length) result.replaceChildren(vpsResults(old[old.length - 1], old));
   async function run(creds, automatic=false) {
@@ -161,7 +161,7 @@ function vpsDialog(host) {
     } finally { busy = false; go.disabled = false;schedule(); }
   }
   go.addEventListener('click', () => run());
-  auto.addEventListener('change',()=>{if(auto.checked)run();else stop();});
+  auto.addEventListener('change',()=>{if(auto.checked)return run();stop();});
   d.addEventListener('close',close);d.addEventListener('cancel',close);
   document.addEventListener('visibilitychange',visibility);
 }

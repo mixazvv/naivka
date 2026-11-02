@@ -37,7 +37,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Lifecycle and update processes on Windows
-        run: go test -mod=vendor -count=1 -timeout=3m -run "^(TestUpdate|TestSupervisor|TestFinalUpdate|TestLifecycle|TestExeCandidates|TestRepair|TestHomeLayout|TestUnknownHomeLayout|TestServerScores|TestServerChoice|TestServerScoreTick|TestServerFailback)" ./...
+        run: go test -mod=vendor -count=1 -timeout=3m -run "^(TestVersion|TestUpdate|TestSupervisor|TestFinalUpdate|TestLifecycle|TestExeCandidates|TestRepair|TestHomeLayout|TestUnknownHomeLayout|TestServerScores|TestServerChoice|TestServerScoreTick|TestServerFailback)" ./...
 
   build:
     needs: windows-update

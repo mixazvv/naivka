@@ -327,17 +327,20 @@ func runUpdateSupervisor(input io.Reader, output io.Writer) error {
 	runner := updateRunner{timeout: 60 * time.Second, stable: time.Second}
 	if cfg.Downgrade {
 		intent.Resume = false
-		_ = writeUpdateIntent(cfg.Intent, intent)
+		err = writeUpdateIntent(cfg.Intent, intent)
 	}
 	code := ""
-	if err = prepareVersionSettings(cfg); err != nil {
+	if err == nil {
+		err = prepareVersionSettings(cfg)
+	}
+	if err != nil {
 		code = runner.rollback(cfg, intent, "UPDATE_SETTINGS_FAILED")
 	} else if cfg.Historical {
 		code = runner.runHistorical(cfg, intent)
 	} else {
 		code = runner.run(cfg, intent)
 	}
-	if code == "UPDATE_COMMIT_UNKNOWN" || code == "UPDATE_CHILD_STOP_FAILED" || code == "UPDATE_ROLLBACK_FAILED" {
+	if code == "UPDATE_COMMIT_UNKNOWN" || code == "UPDATE_CHILD_STOP_FAILED" || code == "UPDATE_ROLLBACK_FAILED" || code == "UPDATE_SETTINGS_ROLLBACK_FAILED" {
 		removeIntent = false
 	}
 	return nil
