@@ -30,6 +30,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
    const overflow=await page.locator('#main').evaluate(e=>{const m=e.getBoundingClientRect();return {bad:e.scrollWidth>e.clientWidth+2,width:e.clientWidth,scroll:e.scrollWidth,nodes:[...e.querySelectorAll('*')].filter(x=>{const r=x.getBoundingClientRect();return r.width&&r.right>m.right+2}).slice(0,12).map(x=>({id:x.id,cls:String(x.className),width:x.getBoundingClientRect().width}))};});
    assert(!overflow.bad,`${theme}/${width}: horizontal overflow `+JSON.stringify(overflow));
    if(width<=1000){const g=await page.locator('#lanesCard').boundingBox(),a=await page.locator('#liveCol').boundingBox();assert(a.y>=g.y+g.height-2,'activity overlaps the diagram');}
+   assert((await page.locator('#lanesBox').boundingBox()).height>=240,'diagram collapsed to zero height');
    assert((await page.locator('#liveCol .live-row').count())<=5);assert(await page.locator('#liveCol').isVisible());
    if(process.env.CONTROL_SCREENSHOTS&&[1280,320].includes(width))await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,`home-${theme}-${width}.png`)});
   }
