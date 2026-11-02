@@ -302,3 +302,31 @@ func TestVPSPackagesAndListenersFiltering(t *testing.T) {
 		t.Fatal(r, err)
 	}
 }
+
+func TestVPSExtendedAuditAndIdentity(t *testing.T) {
+	raw := "protocol=1\nboot_id=12345678-1234-1234-1234-123456789abc\nserver_time=1800000000\nnetwork_set=42\nswap_total=100\nswap_used=20\npressure_io=3.1\nkeyboard_auth=yes\npam=yes\npublickey_auth=no\nempty_passwords=no\nauth_tries=9\nmatch_password=yes\nfirewalld=active\nnft_input=hook_observed\niptables_input=accept\nowner_panel=other\naccess_panel=shared_access\nacl_panel=extended\ncert_panel=expires_30d\nservice_marzban=active\n"
+	r, e := parseVPSReport(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if r.BootID == "" || r.Metrics["network_set"] != 42 || r.Metrics["swap_used"] != 20 {
+		t.Fatal(r)
+	}
+	checks := map[string]vpsCheck{}
+	for _, c := range r.Checks {
+		checks[c.ID] = c
+	}
+	for _, key := range []string{"keyboard_auth", "publickey_auth", "auth_tries", "match_password", "iptables_input", "owner_panel", "access_panel", "acl_panel", "cert_panel"} {
+		if checks[key].Level != "warning" {
+			t.Fatal(key, checks[key])
+		}
+	}
+	if checks["firewalld"].Level != "info" || checks["nft_input"].Level != "info" || checks["service_marzban"].Level != "ok" {
+		t.Fatal(checks)
+	}
+	r, _ = parseVPSReport("protocol=1\nboot_id=secret\nauth_tries=-1\nacl_panel=arbitrary-secret\npressure_io=NaN\n")
+	b, _ := json.Marshal(r)
+	if strings.Contains(string(b), "secret") || r.BootID != "" {
+		t.Fatal(string(b))
+	}
+}

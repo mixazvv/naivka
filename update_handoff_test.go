@@ -146,14 +146,23 @@ func TestUpdateRunnerProcesses(t *testing.T) {
 				if string(body) != "new" || !fileExists(exe+".old") {
 					t.Fatal("backup deleted before committed copy cleanup")
 				}
+				// Existence does not imply immediate readability on Windows (file
+				// sharing/AV can briefly deny a just-renamed IPC result). Wait for
+				// a readable, complete response; never retry a wrong Resume value.
 				deadline := time.Now().Add(time.Second)
-				for !fileExists(ack) && time.Now().Before(deadline) {
+				var b []byte
+				var v updateAck
+				var readErr, errorJSON error
+				for {
+					b, readErr = os.ReadFile(ack)
+					errorJSON = json.Unmarshal(b, &v)
+					if readErr == nil && errorJSON == nil || !time.Now().Before(deadline) {
+						break
+					}
 					time.Sleep(10 * time.Millisecond)
 				}
-				b, _ := os.ReadFile(ack)
-				var v updateAck
-				if json.Unmarshal(b, &v) != nil || v.Resume != (tc.resume && !strings.Contains(tc.mode, "disconnect")) {
-					t.Fatalf("wrong resume decision: %s", b)
+				if readErr != nil || errorJSON != nil || v.Resume != (tc.resume && !strings.Contains(tc.mode, "disconnect")) {
+					t.Fatalf("wrong resume decision: %s (read=%v JSON=%v)", b, readErr, errorJSON)
 				}
 			} else {
 				if string(body) != "old" {

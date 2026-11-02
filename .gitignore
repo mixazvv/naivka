@@ -11,3 +11,6 @@ settings.json*
 keys/
 *.key
 *.pem
+
+__pycache__/
+*.pyc

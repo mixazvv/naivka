@@ -183,6 +183,23 @@ func (a *App) routes() http.Handler {
 		return a.self.view(), nil
 	})
 	api("POST", "/api/app/update/install", func(*http.Request) (any, error) { return a.self.view(), a.self.install(a) })
+	api("GET", "/api/app/versions", func(r *http.Request) (any, error) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page == 0 {
+			page = 1
+		}
+		return versionList(r.Context(), page)
+	})
+	api("POST", "/api/app/versions/install", func(r *http.Request) (any, error) {
+		var v struct {
+			Tag string `json:"tag"`
+		}
+		if e := decode(r, &v); e != nil {
+			return nil, e
+		}
+		return a.self.view(), a.self.installVersion(a, v.Tag)
+	})
+
 	api("POST", "/api/wl/test", func(*http.Request) (any, error) {
 		cl := a.core.Clash()
 		if cl == nil {

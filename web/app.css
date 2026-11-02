@@ -1544,3 +1544,9 @@ body[data-state="err"] .home-led, body[data-state="blocked"] .home-led { backgro
 }
 
 .pet-yarn { position:fixed;width:18px;height:18px;transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:80;background:repeating-linear-gradient(35deg,#b6e35a 0 2px,#718b35 2px 4px);box-shadow:0 2px 5px #0004; }
+
+.pet-dot {position:fixed;width:9px;height:9px;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:80;background:#ff544f;box-shadow:0 0 9px 3px #ff544f88;}
+.pet-peeking {clip-path:inset(0 0 48% 0);opacity:.8;}
+@media(prefers-reduced-motion:reduce){.pet-dot,.pet-yarn{display:none}.pet-peeking{opacity:1;clip-path:none}}
+
+.vps-chart{height:90px;display:flex;gap:2px;align-items:flex-end;border-bottom:1px solid var(--line);overflow:hidden}.vps-bar{flex:1;min-width:2px;background:var(--accent,#89b746);border-radius:2px 2px 0 0}

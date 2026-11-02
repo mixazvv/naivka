@@ -100,7 +100,7 @@ func repairDNSReply(packet []byte) string {
 		}
 		if kind == 1 && class == 1 && size == 4 {
 			ip := net.IP(packet[pos : pos+4])
-			if ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsMulticast() {
+			if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
 				return "UNEXPECTED_ANSWER"
 			}
 			hasAnswer = true

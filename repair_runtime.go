@@ -42,6 +42,9 @@ func repairNetwork() uint64 {
 			entries = append(entries, it.Name+"|"+addr.String())
 		}
 	}
+	if raw, e := readRepairRoutes(); e == nil {
+		entries = append(entries, repairRouteSignature(raw)...)
+	}
 	sort.Strings(entries)
 	h := fnv.New64a()
 	for _, s := range entries {
@@ -346,6 +349,16 @@ func (a *App) diagnoseRepair(ctx context.Context, id string) {
 			diagnosis = "TUN_ROUTES_MISSING"
 			return
 		}
+		for _, it := range mustRepairInterfaces() {
+			if strings.EqualFold(it.Name, "Naivka") {
+				if raw, e := readRepairRoutes(); e == nil {
+					_, v6, bypass := repairRouteAudit(raw, uint32(it.Index))
+					a.repair.check(id, "TUN_IPV6_ROUTES", v6)
+					a.repair.check(id, "TUN_ROUTE_EXCLUSIONS", bypass)
+				}
+				break
+			}
+		}
 		a.repair.check(id, "TUN_LEAK_POLICY", "UNKNOWN")
 	}
 	a.repair.check(id, "KILL_SWITCH", "UNCHANGED")
@@ -365,6 +378,9 @@ func (a *App) diagnoseRepair(ctx context.Context, id string) {
 			dns = (&url.URL{Scheme: "https", Host: host, Path: path}).String()
 		}
 		direct = probeRepairPath(ctx, snap.directPort, dns)
+		if v, e := parseDirectDNS(snap.choice.settings.DNSDirect); e == nil && v.Kind != "https" {
+			direct.DNS = repairTransportDNS(ctx, snap.directPort, v)
+		}
 	}
 	directStatus := repairPathStatus(direct)
 	if direct.good() {
@@ -478,3 +494,5 @@ func (a *App) startVerifiedFailback(cl *Clash, from, to string, choice selection
 	a.repair.mu.Unlock()
 	go a.performRepair(ctx, id, &repairPlan{snap: snap, candidates: map[string]int{restore: snap.ports[from]}, restore: true}, restore, appRepairIO{a})
 }
+
+func mustRepairInterfaces() []net.Interface { v, _ := net.Interfaces(); return v }
