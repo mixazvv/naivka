@@ -1612,8 +1612,8 @@ function renderBranches(lanes) {
 // ---------- выбор пути: меню по щелчку и программы целиком ----------
 const ROUTE_OPTS = [['proxy', 'Через сервер', 'var(--tunnel)'], ['direct', 'Напрямую', 'var(--direct)'], ['zapret', 'Через zapret', 'var(--warn)'], ['auto', 'Как решит Naivka', 'var(--faint)']];
 const ROUTE_SAY = { proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' };
-let routePop = null;
-function closeRoutePop() { if (routePop) { routePop.remove(); routePop = null; } }
+let routePop = null,routeAnchor=null;
+function closeRoutePop() {if(routePop){routePop.remove();routePop=null;const anchor=routeAnchor;routeAnchor=null;if(anchor?.isConnected&&!anchor.closest('[inert]'))anchor.focus({preventScroll:true});}}
 // routePicker — небольшое меню у элемента: куда пускать сайт или программу. Тянуть не обязательно.
 function routePicker(anchor, { title, sub, current, onPick }) {
   closeRoutePop();
@@ -1627,7 +1627,7 @@ function routePicker(anchor, { title, sub, current, onPick }) {
   let x = Math.min(Math.max(8, r.left), innerWidth - pw - 8), y = r.bottom + 6;
   if (y + ph > innerHeight - 8) y = Math.max(8, r.top - ph - 6);
   pop.style.left = x + 'px'; pop.style.top = y + 'px';
-  routePop = pop;
+  routePop = pop;routeAnchor=anchor;
   pop.querySelector('button').focus();
 }
 document.addEventListener('pointerdown', e => { if (routePop && !routePop.contains(e.target)) closeRoutePop(); }, true);
@@ -1785,9 +1785,10 @@ function renderLive() {
   // Перерисовываем по смыслу, а скорость обновляем в уже стоящих строках — без мигания и сброса перетаскивания.
   box.classList.toggle('live-idle',!sites.length&&!procs.length);
   const grouping=WorkspaceUI.activity();
-  const shownSites=grouping==='services'?sites.slice(0,5):[];
-  const shownProcs=grouping==='programs'?procs.slice(0,5):[];
-  const sig = JSON.stringify([on, grouping, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action])]);
+  const limit=innerHeight<=800?3:5;
+  const shownSites=grouping==='services'?sites.slice(0,limit):[];
+  const shownProcs=grouping==='programs'?procs.slice(0,limit):[];
+  const sig = JSON.stringify([on, grouping, limit, sites.map(g => [g.key, groupRoute(g), (siteRule(g) || {}).action]), procs.map(x => [x.exe, (procRule(x.exe) || {}).action])]);
   if (box.dataset.sig !== sig && !liveDrag) { // тащат строку — пересоберём после того, как отпустят
     box.dataset.sig = sig;
     box.replaceChildren(
@@ -1805,12 +1806,12 @@ function renderLive() {
         const name = procName(x.exe.toLowerCase()) || x.exe, rule = procRule(x.exe);
         return liveRow({
           key: 'proc:' + x.exe, label: name, icon: SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'], route: rule ? rule.action : '', rule,
-          pick: el => routePicker(el, { title: name, sub: 'Вся программа целиком', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
+          pick: el => routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
           drop: k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); },
         });
       }),
       h('button',{class:'btn small',onclick:()=>openDiag('conns')},'Все соединения'),
-      h('p',{class:'live-hint'},'Сервисы и программы — разные группировки одного трафика. Нажмите строку для выбора пути; перетаскивание доступно на схему.'));
+      h('p',{class:'live-hint'},'Группировки не суммируются. Нажмите строку для выбора пути.'));
   }
   const speeds = new Map([...sites.map(g => ['site:' + g.key, g.speed]), ...procs.map(x => ['proc:' + x.exe, x.speed])]);
   for (const el of box.querySelectorAll('.live-row')) {
