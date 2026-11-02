@@ -339,10 +339,22 @@ textarea { width: 100%; font: 12.5px/1.5 var(--mono); resize: vertical; min-heig
 label.field { display: grid; gap: 4px; align-content: start; }
 label.field > span { font-size: 13px; color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
-.check { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
-.check input { margin: 2px 0 0; accent-color: var(--tunnel); width: 18px; height: 18px; flex: none; }
-.check b { font-weight: 600; display: block; }
-.check small { color: var(--muted); font-size: 13px; display: block; }
+/* Shared checkbox rows: theme spacing must never reset a card's side padding. */
+.check { --check-indicator-size: 20px; display: flex; min-width: 0; gap: 12px; align-items: flex-start; padding: var(--check-row-space, 8px) 0; cursor: pointer; }
+.check > span { min-width: 0; overflow-wrap: anywhere; }
+.check b { font-weight: 600; display: block; line-height: 1.45; }
+.check small { color: var(--muted); font-size: 13px; line-height: 1.55; display: block; margin-top: 3px; }
+.check > input[type="checkbox"] { appearance: none; display: grid; place-content: center; width: 20px; height: 20px; flex: 0 0 20px; margin: 1px 0 0; padding: 0; border: 1px solid var(--muted); border-radius: min(5px, var(--control-radius)); background: var(--surface); color: var(--on-accent); cursor: inherit; }
+.check > input[type="checkbox"]::before { content: ""; width: 6px; height: 10px; border: solid currentColor; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); visibility: hidden; }
+.check > input[type="checkbox"]:is(:checked, :indeterminate) { background: var(--tunnel); border-color: var(--tunnel); }
+.check > input[type="checkbox"]:is(:checked, :indeterminate)::before { visibility: visible; }
+.check > input[type="checkbox"]:indeterminate::before { width: 10px; height: 2px; border: 0; background: currentColor; transform: none; }
+.check:has(> input:disabled) { opacity: .6; cursor: not-allowed; }
+@media (forced-colors: active) {
+  .check > input[type="checkbox"] { appearance: auto; background: Canvas; border-color: ButtonText; accent-color: auto; }
+  .check > input[type="checkbox"]:is(:checked, :indeterminate) { background: Canvas; border-color: ButtonText; }
+  .check > input[type="checkbox"]::before { display: none; }
+}
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--surface); flex-wrap: wrap; }
 .seg button { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-small); border: 0; background: none; padding: 6px 12px; border-radius: 6px; line-height: var(--control-line); cursor: pointer; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--line); }
@@ -1128,9 +1140,12 @@ body:has(.route-pop) .br-leaf .why { display: none !important; }
 .sec-head { display: grid; gap: 6px; margin: 28px 0 12px; }
 .sec-head .sub { margin: 0; }
 .sec-tools { flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.toggle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 8px; }
-.toggle-grid .check { margin: 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--raised); border: 1px solid transparent; align-items: flex-start; }
-.toggle-grid .check:has(input:checked) { border-color: color-mix(in srgb, var(--tunnel) 45%, transparent); }
+.toggle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+.toggle-grid > .check { margin: 0; padding: 14px 16px; border-radius: var(--r-md); background: var(--raised); border: 1px solid var(--line); align-items: flex-start; }
+.toggle-grid > .check:hover:not(:has(input:disabled)) { border-color: var(--muted); }
+.toggle-grid > .check:has(input:checked) { border-color: var(--tunnel); border-color: color-mix(in srgb, var(--tunnel) 45%, var(--line)); background: var(--raised); background: color-mix(in srgb, var(--tunnel) 5%, var(--raised)); }
+.toggle-grid > .check:has(input:focus-visible) { outline: 2px solid var(--tunnel); outline-offset: 2px; }
+.toggle-grid > .check > input:focus-visible { outline: none; }
 .cat-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 4px 18px; margin-top: 6px; }
 .cat-row { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .cat-row i { width: 10px; height: 10px; border-radius: 3px; }
