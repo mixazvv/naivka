@@ -53,6 +53,7 @@ const WorkspaceUI=(()=>{
   let routingSeq=0;
   async function routing(flush=true){
     const el=document.querySelector('#routingOutcome');if(!el)return;const seq=++routingSeq;
+    if(zapretOnly()){el.textContent='В режиме «Только zapret» маршрут UDP определяет система. Настройки UDP ядра применяются в режиме с сервером; фильтр DPI zapret настраивается в «Обходе». Это не VPN и не шифрование трафика.';return;}
     el.textContent='Получаю итог UDP из конфигурации…';
     try{if(flush&&await saveNow()===false)throw new Error('Изменения не сохранены. Повторите сохранение перед просмотром итога.');const r=await api('/api/routing/summary');if(!el.isConnected||seq!==routingSeq)return;
       if(typeof r.quic!=='boolean'||typeof r.server!=='boolean'||typeof r.direct!=='boolean'||!['proxy','tun'].includes(r.mode)||!['direct','proxy','other'].includes(r.final))throw new Error('Неподдерживаемый формат отчёта');
