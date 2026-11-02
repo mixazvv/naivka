@@ -45,7 +45,8 @@ const server=http.createServer((req,res)=>{
   const ad=page.locator('#adBlock input');await page.locator('#adBlock b').click();assert(await ad.isChecked());assert.equal(await page.evaluate(()=>S.adBlock),true);
   await ad.focus();await page.keyboard.press('Space');assert.equal(await ad.isChecked(),false);assert.equal(await page.evaluate(()=>S.adBlock),false);assert.equal(await page.evaluate(()=>saves),2);
   assert(await ad.evaluate(e=>e.matches(':focus-visible')));assert.equal(await page.locator('#adBlock').evaluate(e=>getComputedStyle(e).outlineStyle),'solid');
-  await page.locator('#disabled b').click();assert.equal(await page.evaluate(()=>S.disabled),false);assert.equal(await page.evaluate(()=>saves),2);
+  await page.locator('#disabled b').click({force:true}); // Send a real pointer click without waiting for a disabled label to become enabled.
+  assert.equal(await page.evaluate(()=>S.disabled),false);assert.equal(await page.evaluate(()=>saves),2);
   assert(await page.locator('#partial input').evaluate(e=>e.indeterminate));assert.equal(await page.locator('#partial input').evaluate(e=>getComputedStyle(e,'::before').visibility),'visible');
   await page.setViewportSize({width:320,height:1050});await page.locator('#regular .more-link').waitFor();const before=await page.evaluate(()=>S.regular);await page.locator('#regular .more-link').click();assert.equal(await page.evaluate(()=>S.regular),before,'details button toggled the setting');
   await page.emulateMedia({forcedColors:'active'});assert.equal(await ad.evaluate(e=>getComputedStyle(e).appearance),'auto');assert.equal(await ad.evaluate(e=>getComputedStyle(e,'::before').display),'none');
