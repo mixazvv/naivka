@@ -19,9 +19,9 @@ const server=http.createServer(async(req,res)=>{
   const page=await browser.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.evaluate(()=>{SELF={version:'2.27.0'};APPUP={};window.saved=0;saveNow=async()=>{saved++};main.replaceChildren(selfBox());});
   await page.getByRole('button',{name:'Выбрать версию / откат',exact:true}).click();const select=page.getByLabel('Версия Naivka');await select.waitFor();
-  await page.getByRole('option',{name:'v2.26.0',exact:true}).waitFor();assert.equal(installed.length,0);
+  await page.getByRole('option',{name:'v2.26.0',exact:true}).waitFor({state:'attached'});assert.equal(installed.length,0);
   assert(await page.getByRole('option',{name:'v2.27.0 · установлена',exact:true}).isDisabled());assert(await page.getByRole('option',{name:/v2.0.0 · нет/}).isDisabled());
-  await page.getByRole('button',{name:'Ещё версии',exact:true}).click();await page.getByRole('option',{name:'v2.8.0',exact:true}).waitFor();await select.selectOption('v2.8.0');
+  await page.getByRole('button',{name:'Ещё версии',exact:true}).click();await page.getByRole('option',{name:'v2.8.0',exact:true}).waitFor({state:'attached'});await select.selectOption('v2.8.0');
   const install=page.getByRole('button',{name:'Установить выбранную версию',exact:true});await install.click();await page.getByText(/Скачиваю и проверяю подпись/).waitFor();assert.deepEqual(installed,[{tag:'v2.8.0'}]);assert.equal(await page.evaluate(()=>saved),1);assert.deepEqual(pages,['1','2']);
   await page.getByText('Архив не прошёл проверку подписи',{exact:true}).waitFor();assert(await install.isEnabled());assert(await select.isEnabled());
   await page.getByRole('button',{name:'Закрыть',exact:true}).click();assert.equal(await page.locator('dialog').count(),0);assert.deepEqual(errors,[]);
