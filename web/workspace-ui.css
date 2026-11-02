@@ -23,3 +23,7 @@
 @media(max-width:540px){.home-compact>.stage-head{padding:12px}.home-compact .home-server{flex-basis:100%;border-top:0;padding:0}.home-compact .stage-status{flex-basis:100%}.home-pulse>.btn{flex:1 1 135px}.home-compact .lanes-box{height:260px!important}.home-compact>.stage-controls{align-items:start}.home-actions .sysline{flex:1}.server-facts{grid-template-columns:minmax(0,1fr)}}
 
 .live-col.live-idle{gap:2px;padding:10px 12px}.live-idle .live-head{padding-bottom:0}.live-idle .live-head .seg,.live-idle .live-hint{display:none}.live-idle .live-empty{margin:2px 6px}
+
+.home-compact:not(.diagram-expanded) .br-txt small{display:none}.home-compact:not(.diagram-expanded) .br-txt b{display:block;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+
+.home-compact>*{min-width:0}.home-compact>.stage-head{position:sticky;top:0;z-index:8;background:var(--surface)}.home-compact>.lanes-stage{container-type:inline-size}.home-compact .lanes-box{overflow:clip}.home-actions{min-width:0;max-width:100%}.home-pulse>.btn{max-width:100%}

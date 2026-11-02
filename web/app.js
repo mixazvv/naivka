@@ -2482,7 +2482,7 @@ function viewServers() {
         h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
     h('input',{type:'search',id:'serverSearch',placeholder:'Найти сервер по имени, адресу или протоколу','aria-label':'Поиск серверов',oninput:()=>renderServers(true)}),
     h('div', { class: 'scards server-list', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
-    h('p', { class: 'hint mt' }, 'Карточки можно перетаскивать, звёздочка поднимает сервер наверх.'),
+    h('p', { class: 'hint mt' }, 'Строки можно перетаскивать вверх и вниз; звёздочка поднимает сервер в избранное.'),
     h('div', { id: 'wlBox' }));
 }
 
@@ -2529,7 +2529,7 @@ function srvCardBase(id, cls, kids, opts = {}) {
       if (!dragId || dragId === id) return;
       e.preventDefault();
       const r = card.getBoundingClientRect();
-      const after = e.clientX > r.left + r.width / 2;
+      const after = card.parentElement.classList.contains('server-list') ? e.clientY > r.top+r.height/2 : e.clientX > r.left + r.width / 2;
       card.classList.toggle('drop-after', after);
       card.classList.toggle('drop-before', !after);
     });
@@ -2558,7 +2558,7 @@ function renderServers(force) {
     STATS && STATS.delays, S.smartSelect, noNaive, xr, WL && [WL.used, WL.active]]);
   patch('srvList', sig, () => {
     const cards = [];
-    if (!query&&(S.servers.length > 1 || S.selected === 'auto')) {
+    if ((!query||'автовыбор automatic auto'.includes(query))&&(S.servers.length > 1 || S.selected === 'auto')) {
       const smartAuto = S.smartSelect && S.selected === 'auto' && PX && (PX.selected || '').startsWith('s-');
       const now = PX ? serverByTag(smartAuto ? PX.selected : PX.autoNow) : null;
       cards.push(srvCardBase('auto', 'wide', [
