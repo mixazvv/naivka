@@ -18,6 +18,7 @@ const {chromium}=require('playwright');const web=path.resolve(__dirname,'../web'
   await page.evaluate(()=>{S.layout={version:2,wide:HomeLayout.normalize([{id:'routes',span:2,row:2,col:2,height:520},{id:'speed',span:1,row:2,col:1,height:180}]),narrow:HomeLayout.normalize([],1)};HomeLayout.apply();});
   assert.equal(await page.locator('#lanesCard').evaluate(e=>e.style.gridColumn),'2 / span 2');
   assert.equal(await page.locator('#lanesCard').evaluate(e=>e.style.minHeight),'520px');
+  assert.equal(await page.evaluate(()=>{const observer=new MutationObserver(()=>{});observer.observe(document.querySelector('.stage-inner'),{subtree:true,attributes:true,attributeFilter:['style','data-layout-hidden']});for(let i=0;i<20;i++)HomeLayout.apply();const count=observer.takeRecords().length;observer.disconnect();return count;}),0,'unchanged status polls rewrite custom grid styles');
   await page.evaluate(()=>HomeLayout.edit());
   await page.getByLabel('Скорость: Мин. высота, px',{exact:true}).fill('260');await page.getByLabel('Скорость: Мин. высота, px',{exact:true}).dispatchEvent('change');
   assert.equal(await page.locator('#tileSpeed').evaluate(e=>e.style.minHeight),'260px','height edit was lost through normalization');

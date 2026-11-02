@@ -24,16 +24,23 @@ const HomeLayout = (() => {
     const root=document.querySelector('.stage-inner');if(!root||!S)return;
     const layout=S.layout;root.classList.toggle('home-custom',[1,2].includes(layout?.version));
     if(typeof WorkspaceUI!=='undefined')WorkspaceUI.apply(root);
-    for(const [, ,selector] of registry){const el=root.querySelector(selector);if(el){el.style.removeProperty('order');el.style.removeProperty('grid-column');el.style.removeProperty('grid-row');el.style.removeProperty('min-height');el.style.removeProperty('--home-widget-height');el.removeAttribute('data-layout-hidden');}}
-    if(![1,2].includes(layout?.version))return;
-    const list=normalize(layout[narrow.matches?'narrow':'wide'],narrow.matches?1:3);
-    list.forEach((w,i)=>{
-      const spec=registry.find(r=>r[0]===w.id);if(!spec)return;
-      const el=root.querySelector(spec[2]);if(!el)return;
-      el.style.order=String(i);el.style.gridColumn=w.col+' / span '+(narrow.matches?1:w.span);el.style.gridRow=String(w.row);
-      if(w.height){el.style.minHeight=w.height+'px';el.style.setProperty('--home-widget-height',w.height+'px');}
-      if(w.hidden&&!spec[4])el.dataset.layoutHidden='';
-    });
+    const custom=[1,2].includes(layout?.version);
+    const list=custom?normalize(layout[narrow.matches?'narrow':'wide'],narrow.matches?1:3):[];
+    const positions=new Map(list.map((w,i)=>[w.id,{...w,index:i}]));
+    // Do not remove/reapply identical styles on every status poll: doing so
+    // invalidates the entire custom grid while the user is interacting with it.
+    const style=(el,key,value)=>{if(el.style.getPropertyValue(key)!==value){if(value)el.style.setProperty(key,value);else el.style.removeProperty(key);}};
+    for(const [id,,selector,,required] of registry){
+      const el=root.querySelector(selector);if(!el)continue;
+      const w=positions.get(id);
+      style(el,'order',w?String(w.index):'');
+      style(el,'grid-column',w?w.col+' / span '+(narrow.matches?1:w.span):'');
+      style(el,'grid-row',w?String(w.row):'');
+      style(el,'min-height',w?.height?w.height+'px':'');
+      style(el,'--home-widget-height',w?.height?w.height+'px':'');
+      const hidden=!!(w?.hidden&&!required);
+      if(hidden!==el.hasAttribute('data-layout-hidden'))el.toggleAttribute('data-layout-hidden',hidden);
+    }
   }
   narrow.addEventListener('change',apply);
   function edit() {
