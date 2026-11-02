@@ -50,10 +50,11 @@ const WorkspaceUI=(()=>{
     return h('div',{class:'live-head'},h('b',null,'Сейчас'),h('div',{class:'seg',role:'group','aria-label':'Группировка активности'},[['services','Сервисы'],['programs','Программы']].map(([key,title])=>h('button',{'data-activity':key,'aria-pressed':String(activity()===key),onclick:()=>{prefs().activity=key;save();renderLive();document.querySelector(`[data-activity="${key}"]`)?.focus();}},title))));
   }
   let routingSeq=0;
-  async function routing(flush=false){
+  async function routing(flush=true){
     const el=document.querySelector('#routingOutcome');if(!el)return;const seq=++routingSeq;
     el.textContent='Получаю итог UDP из конфигурации…';
-    try{if(flush)await saveNow();const r=await api('/api/routing/summary');if(!el.isConnected||seq!==routingSeq)return;
+    try{if(flush&&await saveNow()===false)throw new Error('Изменения не сохранены. Повторите сохранение перед просмотром итога.');const r=await api('/api/routing/summary');if(!el.isConnected||seq!==routingSeq)return;
+      if(typeof r.quic!=='boolean'||typeof r.server!=='boolean'||typeof r.direct!=='boolean'||!['proxy','tun'].includes(r.mode)||!['direct','proxy','other'].includes(r.final))throw new Error('Неподдерживаемый формат отчёта');
       const route={direct:'напрямую',proxy:'по маршрутам через сервер',other:'по своему outbound'};
       el.replaceChildren(h('b',null,'UDP по конфигурации настроек'),
         h('p',null,r.quic?'UDP/443: есть правило отклонения QUIC.':'QUIC отдельно не отклоняется стандартным правилом.'),
