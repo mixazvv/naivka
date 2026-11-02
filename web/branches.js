@@ -421,7 +421,9 @@ const Branches = (() => {
       for (let i = 0; i < L.length; i++) { const x = (L[i][0] + R[i][0]) / 2, y = (L[i][1] + R[i][1]) / 2 - 1; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
       ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.1; ctx.stroke();
     }
-    if (b.grow > .6) for (const lf of leaves.values()) if (lf.b === k && lf.base && !lf.over && lf.pos && !lf.el.classList.contains('drag')) {
+    // Hidden labels have no screen position. Do not draw stems towards the
+    // zero rectangle returned by getBoundingClientRect() in compact mode.
+    if (b.grow > .6 && leavesEl.getClientRects().length) for (const lf of leaves.values()) if (lf.b === k && lf.base && !lf.over && lf.pos && !lf.el.classList.contains('drag') && lf.el.getClientRects().length) {
       // Короткая связь следует за меткой, включая CSS-переход при переносе.
       const rect = lf.el.getBoundingClientRect();
       const tip = [rect.left - frameRect.left + rect.width / 2, rect.top - frameRect.top + (lf.side > 0 ? 0 : rect.height)];

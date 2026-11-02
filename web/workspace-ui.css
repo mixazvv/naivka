@@ -2,7 +2,7 @@
 .home-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.home-actions .sysline{margin:0}.home-connect{min-width:135px}
 .home-parameters{min-width:0}.home-parameters>summary{cursor:pointer;font-weight:600;padding:8px 0}.home-parameters>.row{flex-wrap:wrap;padding:10px 0}
 .home-pulse{display:none}.home-compact-choice{margin-left:auto}.home-compact .home-compact-choice{display:none}
-.stage-inner.home-compact{display:grid!important;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto auto auto auto auto;gap:12px 18px;height:auto;min-height:0;align-content:start;overflow:visible;padding-bottom:20px}
+.stage-inner.home-compact{display:grid!important;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto auto auto minmax(min-content,1fr) auto;gap:12px 18px;height:100%;min-height:min-content;align-content:start;overflow:visible;padding-bottom:20px}
 .home-compact>.stage-head{grid-row:1;grid-column:1/-1;padding:14px 18px;gap:18px;flex-wrap:wrap}
 :root:not([data-skin]) .home-compact .status-title{font-size:26px}.home-compact .stage-status .sub{margin:4px 0 0;font-size:12px}
 .home-compact>.stage-notices{grid-row:2;grid-column:1/-1}.home-compact>.stage-controls{grid-row:3;grid-column:1/-1;padding:0;border:0;margin:0;justify-content:space-between}
@@ -10,7 +10,7 @@
 .home-compact>.lanes-stage{grid-row:5;grid-column:1;margin:0;min-width:0;min-height:0;height:auto}
 .home-compact .lanes-box{height:270px!important;min-height:0!important;max-height:none!important}.home-compact.diagram-expanded .lanes-box{height:clamp(360px,45vh,520px)!important}
 .home-compact .lanes-box .power{pointer-events:none}.home-compact .br-node.comp .br-txt{display:none}
-.home-compact:not(.diagram-expanded) .br-leaves,.home-compact:not(.diagram-expanded) .route-services,.home-compact:not(.diagram-expanded) #procShelf{display:none}
+.home-compact:not(.diagram-expanded) .br-leaves,.home-compact:not(.diagram-expanded) .br-more,.home-compact:not(.diagram-expanded) .route-services,.home-compact:not(.diagram-expanded) #procShelf{display:none}
 .home-compact>.stage-tiles{display:none}.home-compact>.stage-ready{grid-row:6;grid-column:1/-1}.home-compact>.live-col{display:flex;grid-row:5;grid-column:2;max-height:none;align-self:start;padding:14px}
 .home-compact .live-head .seg{margin-top:8px}.home-compact .live-hint{margin-top:6px}.home-compact .live-row{min-width:0}.home-compact .live-speed{display:block}.home-compact .live-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .home-custom .home-pulse,.stage-inner:not(.home-compact) .home-pulse{display:none}.stage-inner:not(.home-compact) .home-parameters>summary{display:none}
@@ -28,6 +28,9 @@
 
 .home-compact>*{min-width:0}.home-compact>.stage-head{position:sticky;top:0;z-index:8;background:var(--surface)}.home-compact>.lanes-stage{container-type:inline-size}.home-compact .lanes-box{overflow:clip}.home-actions{min-width:0;max-width:100%}.home-pulse>.btn{max-width:100%}
 
-.home-compact .lanes-box{flex:0 0 auto}
+/* The route row uses the remaining desktop height; the canvas follows its
+   actual box through ResizeObserver. Narrow windows keep a scrolling stack. */
+@media(min-width:1001px){.home-compact>.lanes-stage{align-self:stretch}.home-compact .lanes-box{flex:1 0 270px;height:auto!important;min-height:270px!important}.home-compact.diagram-expanded .lanes-box{flex-basis:360px;min-height:360px!important}}
+@media(max-width:1000px){.stage-inner.home-compact{height:auto;min-height:0;grid-template-rows:repeat(7,auto)}.home-compact .lanes-box{flex:0 0 auto}}
 
 .home-compact :is(button,input,summary){scroll-margin-block-start:150px}@media(max-width:540px){.home-compact :is(button,input,summary){scroll-margin-block-start:250px}}

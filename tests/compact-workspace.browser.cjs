@@ -32,9 +32,21 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
    if(width<=1000){const g=await page.locator('#lanesCard').boundingBox(),a=await page.locator('#liveCol').boundingBox();assert(a.y>=g.y+g.height-2,'activity overlaps the diagram');}
    assert((await page.locator('#lanesBox').boundingBox()).height>=240,'diagram collapsed to zero height');
    assert((await page.locator('#liveCol .live-row').count())<=5);assert(await page.locator('#liveCol').isVisible());
-   if(process.env.CONTROL_SCREENSHOTS&&[1280,320].includes(width))await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,`home-${theme}-${width}.png`)});
+   if(width>1000){const fill=await page.evaluate(()=>{const main=document.querySelector('#main').getBoundingClientRect(),card=document.querySelector('#lanesCard').getBoundingClientRect(),box=document.querySelector('#lanesBox').getBoundingClientRect();return {gap:main.bottom-card.bottom,inside:card.bottom-box.bottom};});assert(fill.gap<=65,`${theme}/${width}: unused height below diagram: ${fill.gap}`);assert(fill.inside<=85,`${theme}/${width}: unused height inside diagram card: ${fill.inside}`);}
+   if(process.env.CONTROL_SCREENSHOTS&&[1920,1280,320].includes(width))await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,`home-${theme}-${width}.png`)});
   }
-  await page.setViewportSize({width:1280,height:720});await page.evaluate(()=>{S.theme='dark';applyTheme();updateStatus();});
+  // Capture the actual canvas operation used by leaf stems. In collapsed
+  // mode labels have no DOM rectangle, so drawing towards them creates the
+  // spurious curves to the top-left corner reported in the screenshot.
+  await page.setViewportSize({width:1920,height:1080});await page.evaluate(()=>{
+   S.theme='dark';S.telegram.enabled=true;S.zapret.enabled=true;AD.telegram.running=true;AD.zapret.running=true;applyTheme();updateStatusNow();renderLanes();
+   window.stemCalls=0;const original=CanvasRenderingContext2D.prototype.quadraticCurveTo;
+   CanvasRenderingContext2D.prototype.quadraticCurveTo=function(...args){if(this.canvas.classList.contains('br-canvas'))stemCalls++;return original.apply(this,args);};
+  });
+  await page.waitForTimeout(1600);assert.equal(await page.evaluate(()=>stemCalls),0,'hidden labels must not leave canvas stems');assert.equal(await page.locator('.br-leaves').isVisible(),false);
+  await page.getByRole('button',{name:'Развернуть схему',exact:true}).click();await page.waitForFunction(()=>stemCalls>0);assert(await page.locator('.br-leaves').isVisible());
+  await page.getByRole('button',{name:'Свернуть схему',exact:true}).click();await page.evaluate(()=>{stemCalls=0;});await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>stemCalls),0,'collapsing must remove stems again');
+  await page.setViewportSize({width:1280,height:720});await page.evaluate(()=>{S.telegram.enabled=false;S.zapret.enabled=false;AD.telegram.running=false;AD.zapret.running=false;updateStatusNow();});
   await page.evaluate(()=>{S.zapretOnly=true;ST.zapretOn=true;ST.running=false;updateStatusNow();});assert((await page.locator('#sysLine').textContent()).includes('без VPN'));assert((await page.locator('#homeMetrics').textContent()).includes('zapret'));assert(!(await page.locator('#homeMetrics').textContent()).includes('через сервер'));await page.evaluate(()=>{S.zapretOnly=false;ST.zapretOn=false;ST.running=true;updateStatusNow();});
   await page.getByRole('button',{name:'Развернуть схему',exact:true}).click();assert(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('diagram-expanded')));await page.getByRole('button',{name:'Свернуть схему',exact:true}).click();
   await page.getByRole('button',{name:'Программы',exact:true}).click();assert.equal(await page.evaluate(()=>S.experience.activity),'programs');assert.equal(await page.locator('#liveCol .live-row').count(),3);assert((await page.locator('#liveCol .live-row small').first().textContent()).includes('через сервер'));
