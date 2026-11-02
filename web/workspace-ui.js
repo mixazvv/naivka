@@ -35,7 +35,7 @@ const WorkspaceUI=(()=>{
   }
   function pulse(on,sp,t){
     const metrics=document.querySelector('#homeMetrics'),a=document.querySelector('#homeAddress');
-    if(metrics)metrics.textContent=on?`↓ ${fmtSpeed(sp.pd+sp.dd+sp.zd+sp.td)} · ↑ ${fmtSpeed(sp.pu+sp.du+sp.zu+sp.tu)} · ${fmtDur(Date.now()/1000-sessionStart())} · через сервер ${fmtBytes((t[0]||0)+(t[1]||0))}`:'Скорость и сеанс · не подключено';
+    if(metrics)metrics.textContent=on?`↓ ${fmtSpeed(sp.pd+sp.dd+sp.zd+sp.td)} · ↑ ${fmtSpeed(sp.pu+sp.du+sp.zu+sp.tu)} · ${fmtDur(Date.now()/1000-sessionStart())} · ${zapretOnly()?'zapret '+fmtBytes((t[4]||0)+(t[5]||0)):'через сервер '+fmtBytes((t[0]||0)+(t[1]||0))}`:'Скорость и сеанс · не подключено';
     const data=ip.data,g=data?.running?data.proxy?.info:data?.direct?.info;
     if(a)a.textContent=!S.showIp?'Проверка IP выключена':g?'IP последней проверки: '+(g.country||g.countryCode||'адрес определён'):'Как меня видят сайты';
   }

@@ -1195,12 +1195,12 @@ function renderTiles() {
   const sl = $('#sysLine');
   if (sl) {
     // Защищён ли трафик: замок и слово; при наведении — что это значит.
-    const word = { on: 'Защищено', off: 'Без защиты', wait: 'Подключаюсь…', revive: 'Восстанавливаю…', err: 'Сбой', blocked: 'Заблокировано' }[p] || '';
-    const tip = { on: 'Трафик к заблокированным сайтам идёт через сервер в шифрованном канале', off: 'Naivka выключена: трафик идёт как обычно, без сервера' }[p] || '';
+    const word = { on: zapretOnly()?'Только zapret · без VPN':'Защищено', off: 'Без защиты', wait: 'Подключаюсь…', revive: 'Восстанавливаю…', err: 'Сбой', blocked: 'Заблокировано' }[p] || '';
+    const tip = { on: zapretOnly()?'zapret обходит DPI, но не шифрует трафик и не меняет ваш IP':'Трафик к заблокированным сайтам идёт через сервер в шифрованном канале', off: 'Naivka выключена: трафик идёт как обычно, без сервера' }[p] || '';
     sl.title = tip;
     const ms = on ? (d && d.ms ? `· ${cs.name} · ${d.ms} мс` : `· ${cs.name}`) : '';
     const nag = !!dnsNag();
-    patch('sysLine', [p, ms, nag].join('|'), () => [h('span', { class: 'sl-ico ' + p }, svgIcon(on ? 'lock' : 'unlock')), h('b', { class: 'sl-val ' + p }, word),
+    patch('sysLine', [p, ms, nag, zapretOnly()].join('|'), () => [h('span', { class: 'sl-ico ' + p }, svgIcon(on&&!zapretOnly() ? 'lock' : 'unlock')), h('b', { class: 'sl-val ' + p }, word),
       ms ? h('span', { class: 'sl-ms' }, ms) : null,
       nag ? h('button', { class: 'sl-warn', type: 'button', title: 'DNS для сайтов «напрямую» не зашифрован — подробнее', onclick: dnsDialog }, svgIcon('warn'), 'DNS') : null]);
   }
