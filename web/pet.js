@@ -1223,7 +1223,8 @@ const Pet = (() => {
     if(!game)return;
     if(e.target.closest?.('input,textarea,select,[contenteditable="true"]')){stopGame();return;}
     if(game.kind==='cursor'){game.x=e.clientX;game.y=e.clientY;}
-    if(game.kind==='hide'&&game.peek&&Math.abs(e.clientX-game.x)<70&&Math.abs(e.clientY-game.y)<90){
+    const r=game.kind==='hide'?root.getBoundingClientRect():null;
+    if(r&&game.peek&&Math.abs(e.clientX-(r.left+r.width/2))<70&&Math.abs(e.clientY-(r.top+r.height/2))<90){
       game.peek=false;root.classList.remove('pet-peeking');talk('Нашли! Мяу!',1500);
       if(!busy&&!strolling)play([['look_1',180],['sit_1',250],['look_2',180]],0,back);
     }
