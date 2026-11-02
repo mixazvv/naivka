@@ -167,6 +167,9 @@ type WindowGeom struct {
 }
 
 type ExperienceSettings struct {
+	Home       string `json:"home"`
+	Activity   string `json:"activity"`
+	Expanded   bool   `json:"expanded"`
 	Diagram    string `json:"diagram"`
 	Effects    string `json:"effects"`
 	Sound      string `json:"sound"`
@@ -175,6 +178,12 @@ type ExperienceSettings struct {
 }
 
 func (e *ExperienceSettings) normalize() {
+	if e.Home != "full" {
+		e.Home = "compact"
+	}
+	if e.Activity != "programs" {
+		e.Activity = "services"
+	}
 	switch e.Diagram {
 	case "branches", "orbit", "tree":
 	default:

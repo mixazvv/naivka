@@ -23,6 +23,7 @@ const HomeLayout = (() => {
   function apply() {
     const root=document.querySelector('.stage-inner');if(!root||!S)return;
     const layout=S.layout;root.classList.toggle('home-custom',[1,2].includes(layout?.version));
+    if(typeof WorkspaceUI!=='undefined')WorkspaceUI.apply(root);
     for(const [, ,selector] of registry){const el=root.querySelector(selector);if(el){el.style.removeProperty('order');el.style.removeProperty('grid-column');el.style.removeProperty('grid-row');el.style.removeProperty('min-height');el.style.removeProperty('--home-widget-height');el.removeAttribute('data-layout-hidden');}}
     if(![1,2].includes(layout?.version))return;
     const list=normalize(layout[narrow.matches?'narrow':'wide'],narrow.matches?1:3);

@@ -5,7 +5,7 @@ import "testing"
 func TestExperienceDoesNotRestartCore(t *testing.T) {
 	s := DefaultSettings()
 	original := s.fingerprint()
-	s.Experience = ExperienceSettings{Diagram: "tree", Effects: "off", Sound: "retro", Volume: 87, Atmosphere: "night"}
+	s.Experience = ExperienceSettings{Home: "compact", Activity: "services", Expanded: true, Diagram: "tree", Effects: "off", Sound: "retro", Volume: 87, Atmosphere: "night"}
 	if s.fingerprint() != original {
 		t.Fatal("presentation settings restart core")
 	}
