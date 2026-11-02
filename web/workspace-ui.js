@@ -37,11 +37,12 @@ const WorkspaceUI=(()=>{
     const metrics=document.querySelector('#homeMetrics'),a=document.querySelector('#homeAddress');
     if(metrics)metrics.textContent=on?`↓ ${fmtSpeed(sp.pd+sp.dd+sp.zd+sp.td)} · ↑ ${fmtSpeed(sp.pu+sp.du+sp.zu+sp.tu)} · ${fmtDur(Date.now()/1000-sessionStart())} · через сервер ${fmtBytes((t[0]||0)+(t[1]||0))}`:'Скорость и сеанс · не подключено';
     const data=ip.data,g=data?.running?data.proxy?.info:data?.direct?.info;
-    if(a)a.textContent=!S.showIp?'Проверка IP выключена':g?'Сайты видят: '+(g.country||g.countryCode||'адрес определён'):'Как меня видят сайты';
+    if(a)a.textContent=!S.showIp?'Проверка IP выключена':g?'IP последней проверки: '+(g.country||g.countryCode||'адрес определён'):'Как меня видят сайты';
   }
   function address(){
     const out=h('div');const d=openDialog(h('h2',null,'Как меня видят сайты'),out,h('div',{class:'row end'},h('button',{class:'btn',onclick:()=>d.close()},'Закрыть')));
     if(!S.showIp){out.append(h('p',null,'Проверка IP выключена в настройках.'));return;}
+    out.append(h('p',{class:'hint'},'Последний полученный результат. Обновить проверку и открыть карту можно в «Сводке».'));
     const data=ip.data,results=data?.running?[['Через сервер',data.proxy],['Напрямую',data.direct]]:[['Сейчас',data?.direct]];
     for(const [label,result]of results){const g=result?.info;out.append(h('section',{class:'panel'},h('h3',null,label),g?h('code',{class:'full-address'},g.ip):h('p',null,'Не определено'),g?h('p',null,[g.country,g.city,g.isp].filter(Boolean).join(' · ')):null,g?h('button',{class:'btn small',onclick:async()=>{try{await navigator.clipboard.writeText(g.ip);toast('IP скопирован');}catch(_){toast('Не удалось скопировать IP',true);}}},'Скопировать IP'):null));}
   }

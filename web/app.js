@@ -1175,7 +1175,7 @@ function renderTiles() {
     h('span', { class: 'tile-spark' }, speedSpark()));
   const t2 = $('#tileIp');
   const dd = ip.data;
-  const g = dd && ((dd.proxy && dd.proxy.info) || (dd.direct && dd.direct.info));
+  const g = S.showIp && dd && ((dd.proxy && dd.proxy.info) || (dd.direct && dd.direct.info));
   t2.replaceChildren(h('span', { class: 'tile-k' }, 'Сайты видят'),
     !S.showIp ? h('span', { class: 'tile-v muted' }, 'проверка IP выключена')
       : !g ? (ip.loading ? h('span', { class: 'skel', style: 'width:70%;height:18px' }) : h('span', { class: 'tile-v muted' }, 'не определено'))
@@ -1611,7 +1611,7 @@ function renderBranches(lanes) {
 
 // ---------- выбор пути: меню по щелчку и программы целиком ----------
 const ROUTE_OPTS = [['proxy', 'Через сервер', 'var(--tunnel)'], ['direct', 'Напрямую', 'var(--direct)'], ['zapret', 'Через zapret', 'var(--warn)'], ['auto', 'Как решит Naivka', 'var(--faint)']];
-const ROUTE_SAY = { proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' };
+const ROUTE_SAY = { proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret',telegram:'через Telegram-прокси' };
 let routePop = null,routeAnchor=null;
 function closeRoutePop() {if(routePop){routePop.remove();routePop=null;const anchor=routeAnchor;routeAnchor=null;if(anchor?.isConnected&&!anchor.closest('[inert]'))anchor.focus({preventScroll:true});}}
 // routePicker — небольшое меню у элемента: куда пускать сайт или программу. Тянуть не обязательно.
@@ -1768,7 +1768,7 @@ function ghostDrag(el, makeGhost, tap, drop) {
 }
 
 // ---------- колонка «Сейчас» (широкая главная) ----------
-const ROUTE_COLOR = { proxy: 'var(--tunnel)', direct: 'var(--direct)', zapret: 'var(--warn)', block: 'var(--danger)' };
+const ROUTE_COLOR = { proxy: 'var(--tunnel)', direct: 'var(--direct)', zapret: 'var(--warn)', block: 'var(--danger)', telegram:'var(--tg)' };
 function siteRule(g) {
   const sv = SERVICES.find(x => x.name === g.key);
   const doms = sv ? sv.domains : g.domains;
@@ -1799,13 +1799,14 @@ function renderLive() {
       ...shownSites.map(g => liveRow({
         key: 'site:' + g.key, label: g.label, icon: SVC_ICONS[SVC_ICON[g.key] || 'globe'], route: groupRoute(g), rule: siteRule(g),
         sub: g.procs.slice(0, 2).join(', '),
-        pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto', reason: (siteRule(g)?'Совпало ваше правило: '+siteRule(g).value+'. ':'Маршрут выбран правилами Naivka. ')+g.procs.join(', ') }, el),
+        pick: el => sitePick({ key: g.key, label: g.label, current: (siteRule(g) || {}).action || 'auto', reason: (siteRule(g)?'Правило в настройках: '+siteRule(g).value+'. ':'Маршрут выбран правилами Naivka. ')+g.procs.join(', ') }, el),
         drop: async k => { if (await branchDrop(g.key, k)) diagramMoveLeaf(g.key, k); },
       })),
       ...shownProcs.map(x => {
         const name = procName(x.exe.toLowerCase()) || x.exe, rule = procRule(x.exe);
+        const actual=Object.entries(x.routes||{}).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
         return liveRow({
-          key: 'proc:' + x.exe, label: name, icon: SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'], route: rule ? rule.action : '', rule,
+          key: 'proc:' + x.exe, label: name, icon: SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'], route: rule ? rule.action : actual, rule,
           pick: el => routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
           drop: k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); },
         });
