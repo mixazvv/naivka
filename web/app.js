@@ -1781,8 +1781,9 @@ function renderLive() {
   if (getComputedStyle(box).display === 'none') { box.dataset.sig = ''; return; } // узкое окно — колонки нет
   const on = phase() === 'on';
   const sites = on ? siteGroups().sort((a, b) => b.speed - a.speed).slice(0, 12) : [];
-  const procs = on && !zapretOnly() ? procList() : [];
+  const procs = on && !zapretOnly() ? procList().filter(x=>x.speed>0||x.total>0) : [];
   // Перерисовываем по смыслу, а скорость обновляем в уже стоящих строках — без мигания и сброса перетаскивания.
+  box.classList.toggle('live-idle',!sites.length&&!procs.length);
   const grouping=WorkspaceUI.activity();
   const shownSites=grouping==='services'?sites.slice(0,5):[];
   const shownProcs=grouping==='programs'?procs.slice(0,5):[];

@@ -1,0 +1,49 @@
+// Shipped UI with a local static server and an in-page API fixture. No VPN/SSH.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http');
+const {chromium}=require('playwright'),root=path.resolve(__dirname,'../web');
+const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://localhost'),file=path.resolve(root,'.'+(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(root+path.sep)||!fs.existsSync(file)){res.writeHead(404).end();return;}let content=fs.readFileSync(file);if(file.endsWith('/app.js'))content=content.toString().replace(/\nboot\(\);\s*$/,'\n');res.setHeader('Content-Type',({'.html':'text/html','.css':'text/css','.js':'text/javascript','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(content);});
+(async()=>{
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try{
+  const page=await browser.newPage({viewport:{width:1280,height:720}});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(`http://127.0.0.1:${server.address().port}`);
+  await page.evaluate(()=>{
+   S={theme:'dark',accent:'#B6E35A',lang:'ru',nav:'list',mode:'proxy',routing:'ru-direct',layout:{},experience:{home:'compact',activity:'services',diagram:'branches',effects:'balanced',sound:'off',atmosphere:'off'},servers:[{id:'a',name:'Нидерланды',type:'trojan',host:'nl.example.invalid',port:443,password:'do-not-display'},{id:'b',name:'Германия',type:'trojan',host:'de.example.invalid',port:443,password:'secret'}],selected:'a',rules:[],ruleLists:[],wl:{enabled:false},zapret:{enabled:false,fallback:true},telegram:{enabled:false},showIp:true,killSwitch:true,watchdog:true,smartDirect:false,achievements:false,mascot:false,mixedPort:2080,dnsRemote:'1.1.1.1',dnsDirect:'https://dns.example/dns-query',testUrl:'https://example.com',testInterval:'3m',extraRules:'',extraOutbounds:'',override:'',ownHosts:[{id:'host',host:'nl.example.invalid',name:'Мой VPS'}]};
+   ST={running:true,starting:false,mode:'proxy',os:'windows',admin:false,install:true,startedAt:Date.now()/1000-120,mixedPort:2080,core:{present:true,version:'1.13',naive:true,cronet:true},download:{},conflicts:[]};
+   PX={selected:'s-a',autoNow:'s-a',delays:{'s-a':30,'s-b':60}};AD={updates:{},zapret:{installed:false,running:false},telegram:{installed:false,running:false},xray:{}};SELF={version:'2.28.0'};APPUP=null;
+   STATS={health:'ok',totals:[10000000,2000000],samples:[{t:Date.now()/1000,pd:800000,pu:12000,dd:10000,du:1000}],top:Array.from({length:8},(_,i)=>({host:`site${i}.example.org`,proc:`program${i}.exe`,speed:100000-i*1000,total:5000000,route:'proxy'}))};
+   // Distinct domains are needed to exercise the five-row service limit.
+   STATS.top=STATS.top.map((t,i)=>({...t,host:`service${i}.test${i}.org`}));
+   ip.data={running:true,proxy:{info:{country:'Нидерланды',countryCode:'NL',ip:'2001:db8:1234:5678:90ab:cdef:1234:5678'}},direct:{info:{country:'Россия',countryCode:'RU',ip:'203.0.113.1'}}};
+   window.apiCalls=[];window.saves=0;save=()=>{saves++};saveNow=async()=>true;
+   api=async(url,body)=>{apiCalls.push({url,body});if(url==='/api/disconnect')ST.running=false;if(url==='/api/connect')ST.running=true;
+    if(url==='/api/state')return {...ST};if(url==='/api/proxies')return PX;if(url==='/api/addons')return AD;
+    if(url==='/api/routing/summary')return {quic:true,server:true,direct:false,final:'proxy',mode:S.mode,custom:false};
+    if(url==='/api/vps/report')return {checkedAt:1800000000,metrics:{cpu_usage:20,memory_used:20,memory_total:100,disk_used:50,disk_total:100},checks:[{id:'root_login',value:'no',level:'ok'},{id:'password_auth',value:'yes',level:'warning'},{id:'certificate',value:'unknown',level:'unknown'}]};return {};
+   };
+   view='overview';main.replaceChildren(viewOverview());applyTheme();applySections();updateStatusNow();renderLive();
+  });
+  for(const theme of ['dark','gold','blocks','custom'])for(const [width,height]of [[1280,720],[1920,1080],[600,900],[320,720]]){
+   await page.setViewportSize({width,height});await page.evaluate(theme=>{S.theme=theme;applyTheme();updateStatus();renderLive();document.querySelector('#main').scrollTop=0;},theme);await page.evaluate(()=>document.fonts.ready);
+   const geometry=await page.locator('#homeConnect').evaluate(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,width:r.width};});assert(geometry.top>=0&&geometry.bottom<=height&&geometry.width>=80,`${theme}/${width}: primary action outside viewport`);
+   assert(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('home-compact')));assert.equal(await page.locator('#tileIp').isVisible(),false);
+   assert(await page.locator('#main').evaluate(e=>e.scrollWidth<=e.clientWidth+2),`${theme}/${width}: horizontal overflow`);
+   assert((await page.locator('#liveCol .live-row').count())<=5);assert(await page.locator('#liveCol').isVisible());
+   if(process.env.CONTROL_SCREENSHOTS&&[1280,320].includes(width))await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,`home-${theme}-${width}.png`)});
+  }
+  await page.setViewportSize({width:1280,height:720});await page.evaluate(()=>{S.theme='dark';applyTheme();updateStatus();});
+  await page.getByRole('button',{name:'Развернуть схему',exact:true}).click();assert(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('diagram-expanded')));await page.getByRole('button',{name:'Свернуть схему',exact:true}).click();
+  await page.getByRole('button',{name:'Программы',exact:true}).click();assert.equal(await page.evaluate(()=>S.experience.activity),'programs');assert.equal(await page.locator('#liveCol .live-row').count(),5);
+  await page.locator('#liveCol .live-row').first().focus();await page.keyboard.press('Enter');await page.locator('.route-pop').waitFor();assert((await page.locator('.route-pop small').textContent()).includes('правила'));await page.keyboard.press('Escape');
+  await page.locator('#homeAddress').click();assert((await page.locator('dialog .full-address').first().textContent()).includes('2001:db8:'));await page.getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});
+  await page.getByRole('button',{name:'Полный вид',exact:true}).click();assert.equal(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('home-compact')),false);await page.getByRole('button',{name:'Компактный вид',exact:true}).click();
+  await page.evaluate(()=>{S.layout={version:2,wide:[{id:'routes',span:2,row:2,col:1,height:500}],narrow:[]};window.savedLayout=JSON.stringify(S.layout);HomeLayout.apply();});assert.equal(await page.evaluate(()=>JSON.stringify(S.layout)===savedLayout),true);assert(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('home-custom')));assert.equal(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('home-compact')),false);
+  await page.evaluate(()=>{S.layout={};HomeLayout.apply();});const before=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length);await page.locator('#homeConnect').click();await page.waitForFunction(()=>!busy);assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length),before+1);
+  await page.evaluate(()=>{view='servers';drawerBody.replaceChildren(viewServers());document.querySelector('#drawer').hidden=false;document.querySelector('#drawer').classList.add('open');main.setAttribute('inert','');renderServers();});
+  await page.getByLabel('Поиск серверов').fill('Германия');assert.equal(await page.locator('#srvList .scard').count(),1);await page.getByRole('button',{name:'Подробнее',exact:true}).click();assert.equal(await page.locator('dialog').getByText('secret',{exact:true}).count(),0);assert((await page.locator('dialog').textContent()).includes('de.example.invalid'));await page.getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});
+  await page.evaluate(()=>{view='rules';drawerBody.replaceChildren(viewRules());renderRules();});await page.getByText('UDP по конфигурации настроек',{exact:true}).waitFor();assert.equal(await page.locator('.rule-options[open]').count(),0);await page.locator('.rule-options summary').first().click();assert(await page.getByText('Блокировать QUIC',{exact:true}).isVisible());
+  await page.evaluate(()=>vpsDialog(S.ownHosts[0]));const reportCalls=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/vps/report').length);await page.getByRole('button',{name:'Проверить сейчас',exact:true}).click();await page.getByText('SSH доступен',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'Аудит безопасности',exact:true}).click();assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/vps/report').length),reportCalls+1);const checks=await page.locator('dialog .vps-audit .panel').allTextContents();assert(checks[0].includes('Парольный вход'));assert(checks[1].includes('Сертификат'));await page.getByRole('button',{name:'Мониторинг',exact:true}).click();assert.equal(await page.locator('.vps-audit').count(),0);
+  await page.getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});assert.deepEqual(errors,[]);
+  console.log('Compact/full/custom home, primary action, activity grouping/keyboard, IP disclosure, server search/details, generated UDP and VPS tabs: OK');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());

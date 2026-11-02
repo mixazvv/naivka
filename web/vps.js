@@ -139,7 +139,7 @@ function vpsDialog(host) {
   let busy = false, timer=0, stopped=false, tab='monitor';
   let latest=null;
   const paint=()=>{if(latest)result.replaceChildren(vpsResults(latest,VPS_HISTORY.get(host.id)||[],tab));};
-  const tabs=h('div',{class:'vps-tabs',role:'group','aria-label':'Раздел отчёта VPS'},[['monitor','Мониторинг'],['audit','Аудит безопасности']].map(([key,title])=>h('button',{class:'btn small','aria-pressed':String(tab===key),onclick:()=>{tab=key;for(const b of tabs.children)b.setAttribute('aria-pressed',String(b.textContent===title));paint();}},title)));
+  const tabs=h('div',{class:'vps-tabs',role:'group','aria-label':'Раздел отчёта VPS'},[['monitor','Мониторинг'],['audit','Аудит безопасности']].map(([key,title])=>h('button',{class:'btn small','data-vps-tab':key,'aria-pressed':String(tab===key),onclick:()=>{tab=key;for(const b of tabs.children)b.setAttribute('aria-pressed',String(b.dataset.vpsTab===key));paint();}},title)));
   const auto=h('input',{type:'checkbox','aria-label':'Обновлять каждые 30 секунд'});
   const stop=()=>{clearTimeout(timer);timer=0;auto.checked=false;};
   const schedule=()=>{clearTimeout(timer);if(!stopped&&auto.checked&&d.isConnected&&!document.hidden)timer=setTimeout(()=>run(null,true),30000);};
