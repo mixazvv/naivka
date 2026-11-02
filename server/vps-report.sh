@@ -3,26 +3,55 @@ export LC_ALL=C
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 [ "$(uname -s 2>/dev/null)" = Linux ] || exit 2
 printf 'protocol=1\n'
+date '+server_time=%s'
+# Identity prevents rates across reboots or changed interface sets.
+if [ -r /proc/sys/kernel/random/boot_id ]; then tr -d '\n' < /proc/sys/kernel/random/boot_id | sed 's/^/boot_id=/'; printf '\n'; fi
+awk -F: 'NR>2 {n=$1; gsub(/[ \t]/,"",n);if(n!="lo")print n}' /proc/net/dev 2>/dev/null | sort | cksum | awk '{print "network_set=" $1}'
 # One second of CPU deltas; guest counters are already included in user/nice.
 cpu_before=$(awk '/^cpu / {t=0; for(i=2;i<=9;i++) t+=$i; print t, $5+$6}' /proc/stat 2>/dev/null)
 sleep 1
 cpu_after=$(awk '/^cpu / {t=0; for(i=2;i<=9;i++) t+=$i; print t, $5+$6}' /proc/stat 2>/dev/null)
 printf '%s\n%s\n' "$cpu_before" "$cpu_after" | awk 'NR==1 && NF==2 {t=$1; idle=$2; ok=1} NR==2 && NF==2 && ok && $1>t {printf "cpu_usage=%.1f\n",100*(1-($2-idle)/($1-t))}'
 awk '{printf "uptime=%.0f\n", $1}' /proc/uptime 2>/dev/null
-awk '{print "load=" $1}' /proc/loadavg 2>/dev/null
+awk '{print "load=" $1; print "load5=" $2; print "load15=" $3; split($4,p,"/");print "processes=" p[2]}' /proc/loadavg 2>/dev/null
 awk '/^processor[[:space:]]*:/ {n++} END {if(n) print "cpus=" n}' /proc/cpuinfo 2>/dev/null
 awk '/^MemTotal:/ {t=$2} /^MemAvailable:/ {a=$2; found=1} END {if(t && found) {printf "memory_total=%.0f\nmemory_used=%.0f\n", t*1024, (t-a)*1024}}' /proc/meminfo 2>/dev/null
+awk '/^SwapTotal:/ {t=$2} /^SwapFree:/ {f=$2; ok=1} END {if(ok)printf "swap_total=%.0f\nswap_used=%.0f\n",t*1024,(t-f)*1024}' /proc/meminfo 2>/dev/null
+for resource in cpu memory io; do
+  awk -v k="pressure_$resource" '$1=="some" {for(i=2;i<=NF;i++)if($i~/^avg10=/){split($i,a,"=");print k "=" a[2]}}' "/proc/pressure/$resource" 2>/dev/null
+done
+df -Pi / 2>/dev/null | awk 'NR==2 {print "inodes_total=" $2;print "inodes_used=" $3}'
 df -Pk / 2>/dev/null | awk 'NR==2 {printf "disk_total=%.0f\ndisk_used=%.0f\n", $2*1024, $3*1024}'
 awk -F ':' 'NR>2 {name=$1; gsub(/[ \t]/,"",name); if(name=="lo") next; data=$2; sub(/^[ \t]+/,"",data); split(data,f,/[ \t]+/); rx+=f[1]; tx+=f[9]} END {if(NR>2) printf "network_rx=%.0f\nnetwork_tx=%.0f\n", rx,tx}' /proc/net/dev 2>/dev/null
 # Effective defaults/includes, but NOT connection-specific Match evaluation.
 sshd_bin=$(command -v sshd 2>/dev/null)
 if [ -n "$sshd_bin" ]; then
-  "$sshd_bin" -T 2>/dev/null | awk '$1=="permitrootlogin" {print "root_login=" $2} $1=="passwordauthentication" {print "password_auth=" $2}'
+  "$sshd_bin" -T 2>/dev/null | awk '$1=="permitrootlogin" {print "root_login=" $2} $1=="passwordauthentication" {print "password_auth=" $2} $1=="kbdinteractiveauthentication" {print "keyboard_auth=" $2} $1=="usepam" {print "pam=" $2} $1=="pubkeyauthentication" {print "publickey_auth=" $2} $1=="permitemptypasswords" {print "empty_passwords=" $2} $1=="maxauthtries" {print "auth_tries=" $2} $1=="x11forwarding" {print "x11_forwarding=" $2}'
 fi
 if command -v ufw >/dev/null 2>&1; then
   ufw status 2>/dev/null | awk '/^Status: active$/ {print "firewall=active"} /^Status: inactive$/ {print "firewall=inactive"}'
 fi
-for service in sing-box xray naivka-caddy x-ui; do
+# Evaluate Match for the current SSH connection where its trusted environment is available.
+case "$SSH_CONNECTION" in
+  *[!0-9a-fA-F:.\ ]*|'') ;;
+  *) set -- $SSH_CONNECTION
+     if [ "$#" = 4 ] && [ -n "$sshd_bin" ]; then
+       ssh_user=$(id -un 2>/dev/null)
+       case "$ssh_user" in *[!a-zA-Z0-9_.-]*|'') ;; *)
+         "$sshd_bin" -T -C "user=$ssh_user,addr=$1,laddr=$3,lport=$4" 2>/dev/null | awk '$1=="permitrootlogin" {print "match_root=" $2} $1=="passwordauthentication" {print "match_password=" $2} $1=="kbdinteractiveauthentication" {print "match_keyboard=" $2}'
+         ;; esac
+     fi;;
+esac
+if command -v firewall-cmd >/dev/null 2>&1; then
+  firewall-cmd --state 2>/dev/null | awk '$0=="running" {print "firewalld=active"} $0=="not running" {print "firewalld=inactive"}'
+fi
+if command -v nft >/dev/null 2>&1; then
+  { nft list ruleset 2>/dev/null; printf '__exit=%s\n' "$?"; } | awk '/^__exit=/ {status=substr($0,8);next} /hook input/ {hook=1} /policy drop|policy reject/ {drop=1} END {if(status=="0")print "nft_input=" (hook?(drop?"drop_observed":"hook_observed"):"no_hook")}'
+fi
+if command -v iptables >/dev/null 2>&1; then
+  iptables -S INPUT 2>/dev/null | awk '$1=="-P"&&$2=="INPUT" {if($3=="ACCEPT")print "iptables_input=accept";else if($3=="DROP")print "iptables_input=drop"}'
+fi
+for service in sing-box xray naivka-caddy x-ui marzban nginx caddy fail2ban ssh sshd;  do
   [ "$(systemctl show "$service" -p LoadState --value 2>/dev/null)" = loaded ] || continue
   state=$(systemctl is-active "$service" 2>/dev/null)
   case "$state" in active|inactive|failed) printf 'service_%s=%s\n' "$service" "$state";; esac
@@ -87,3 +116,23 @@ if command -v ss >/dev/null 2>&1; then
          print "local_listeners=" (truncated ? "truncated" : "observed")
          for(i=1;i<=n;i++) print "listener=" entries[i]}'
 fi
+
+# Fixed known secret/configuration paths only. ACL output stays on the server.
+for item in singbox:/etc/sing-box/config.json xray:/usr/local/etc/xray/config.json panel:/etc/x-ui/x-ui.db ssh:/etc/ssh/sshd_config; do
+  label=${item%%:*}; path=${item#*:}
+  [ -f "$path" ] || continue
+  stat -c '%a %u' "$path" 2>/dev/null | awk -v k="$label" 'NF==2 && $1~/^[0-7]+$/ && $2~/^[0-9]+$/ {print "owner_" k "=" ($2==0?"root":"other");n=length($1);g=substr($1,n-1,1);o=substr($1,n,1);print "access_" k "=" ((g+o)>0?"shared_access":"restricted")}'
+  if command -v getfacl >/dev/null 2>&1; then
+    { getfacl -cp -- "$path" 2>/dev/null; printf '__exit=%s\n' "$?"; } | awk -v k="$label" '/^__exit=/ {status=substr($0,8);next} /^(default:)?(user|group):[^:]+:/ {named=1} END {if(status=="0")print "acl_" k "=" (named?"extended":"basic")}'
+  fi
+done
+for item in caddy:/etc/caddy/cert.pem panel:/etc/x-ui/cert.pem; do
+  label=${item%%:*}; path=${item#*:}
+  [ -r "$path" ] || continue
+  openssl x509 -in "$path" -noout >/dev/null 2>&1 || continue
+  if openssl x509 -in "$path" -noout -checkend 2592000 >/dev/null 2>&1; then
+    printf 'cert_%s=valid_30d\n' "$label"
+  elif openssl x509 -in "$path" -noout -checkend 0 >/dev/null 2>&1; then
+    printf 'cert_%s=expires_30d\n' "$label"
+  else printf 'cert_%s=expired\n' "$label"; fi
+done

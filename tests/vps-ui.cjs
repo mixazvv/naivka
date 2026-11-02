@@ -13,7 +13,7 @@ const dialogs = [], calls = [];
 const report = { checkedAt: 100, metrics: { load: 0, cpu_usage: 0 }, checks: [{id:'root_login',value:'<script>',level:'unknown'}] };
 let handler = async () => report;
 const context = vm.createContext({
-  console, Map, Date, Number,
+  console, Map, Date, Number, setTimeout,clearTimeout, document:{hidden:false,addEventListener(){},removeEventListener(){}},
   h: (tag, attrs, ...children) => new Element(tag, attrs, children),
   openDialog: (...children) => { const d = new Element('dialog', {}, children); dialogs.push(d); return d; },
   api: async (url, body) => { calls.push({url,body}); return handler(body); },
@@ -47,7 +47,7 @@ function text(el) { return el instanceof Element ? el.children.flat(Infinity).ma
   assert.equal(vm.runInContext("VPS_HISTORY.get('one').length",context), 2, 'closed panel retained late result');
   vm.runInContext("for(let i=0;i<30;i++) for(let j=0;j<8;j++) vpsRemember(String(i),{metrics:{},checkedAt:j})",context);
   assert.equal(vm.runInContext('VPS_HISTORY.size',context),20);
-  assert.equal(vm.runInContext("VPS_HISTORY.get('29').length",context),5);
+  assert.equal(vm.runInContext("VPS_HISTORY.get('29').length",context),8);
   const rich = {
     checkedAt: 2000000, metrics: {},
     updates: {provider:'apt_cached',count:0,oldestIndex:1000000,newestIndex:1900000},

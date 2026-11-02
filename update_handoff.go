@@ -29,6 +29,7 @@ type updateIntent struct {
 // Owned by the original app, guarded by life.intentMu. The pipe remains open
 // until process exit; its EOF lets the supervisor distinguish exit from a hung API.
 type updateTransfer struct {
+	backup  string
 	path    string
 	gen     int64
 	resume  bool
@@ -37,12 +38,15 @@ type updateTransfer struct {
 	pipe    io.WriteCloser
 }
 type updateSupervisorConfig struct {
-	Exe     string `json:"exe"`
-	Dir     string `json:"dir"`
-	Intent  string `json:"intent"`
-	Version string `json:"version"`
-	Token   string `json:"token"`
-	Debug   bool   `json:"debug"`
+	Backup     string `json:"backup,omitempty"`
+	Downgrade  bool   `json:"downgrade,omitempty"`
+	Historical bool   `json:"historical,omitempty"`
+	Exe        string `json:"exe"`
+	Dir        string `json:"dir"`
+	Intent     string `json:"intent"`
+	Version    string `json:"version"`
+	Token      string `json:"token"`
+	Debug      bool   `json:"debug"`
 }
 type updateHandshake struct {
 	URL    string `json:"url"`
@@ -247,7 +251,7 @@ func (a *App) launchUpdateSupervisor(exe, tag string, debug bool, t *updateTrans
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	abort := func() { _ = cmd.Process.Kill(); <-done; input.Close() }
-	cfg := updateSupervisorConfig{Exe: exe, Dir: a.dir, Intent: t.path, Version: tag, Token: randHex(24), Debug: debug}
+	cfg := updateSupervisorConfig{Exe: exe, Dir: a.dir, Intent: t.path, Version: tag, Token: randHex(24), Debug: debug, Backup: t.backup, Downgrade: versionNewer(appVersion, tag), Historical: versionNewer("v2.25.0", tag)}
 	if err = json.NewEncoder(input).Encode(cfg); err != nil {
 		abort()
 		return err
@@ -294,6 +298,9 @@ func runUpdateSupervisor(input io.Reader, output io.Writer) error {
 	if !strings.HasPrefix(filepath.Base(cfg.Intent), "update-intent-") || len(cfg.Token) != 48 || parseVer(cfg.Version) == nil {
 		return errors.New("UPDATE_INVALID_HANDOFF")
 	}
+	if cfg.Backup != "" && (!filepath.IsAbs(cfg.Backup) || !sameUpdateFile(filepath.Dir(cfg.Backup), filepath.Join(cfg.Dir, "version-backups"))) {
+		return errors.New("UPDATE_INVALID_BACKUP")
+	}
 	defer os.Remove(cfg.Exe + ".debug.new")
 	if _, err = io.WriteString(output, "READY\n"); err != nil {
 		return err
@@ -318,7 +325,18 @@ func runUpdateSupervisor(input io.Reader, output io.Writer) error {
 		return rollbackUpdateExe(cfg.Exe)
 	}
 	runner := updateRunner{timeout: 60 * time.Second, stable: time.Second}
-	code := runner.run(cfg, intent)
+	if cfg.Downgrade {
+		intent.Resume = false
+		_ = writeUpdateIntent(cfg.Intent, intent)
+	}
+	code := ""
+	if err = prepareVersionSettings(cfg); err != nil {
+		code = runner.rollback(cfg, intent, "UPDATE_SETTINGS_FAILED")
+	} else if cfg.Historical {
+		code = runner.runHistorical(cfg, intent)
+	} else {
+		code = runner.run(cfg, intent)
+	}
 	if code == "UPDATE_COMMIT_UNKNOWN" || code == "UPDATE_CHILD_STOP_FAILED" || code == "UPDATE_ROLLBACK_FAILED" {
 		removeIntent = false
 	}
@@ -479,9 +497,17 @@ func (r updateRunner) rollback(cfg updateSupervisorConfig, intent updateIntent, 
 	}
 	intent = latest
 	_ = os.Remove(cfg.Exe + ".debug.new")
+	if cfg.Backup != "" && !fileExists(cfg.Exe+".old") {
+		if b, e := os.ReadFile(filepath.Join(cfg.Backup, "Naivka.exe")); e == nil {
+			_ = os.WriteFile(cfg.Exe+".old", b, 0755)
+		}
+	}
 	if err := rollbackUpdateExe(cfg.Exe); err != nil {
 		recordUpdateResult(cfg.Dir, "UPDATE_ROLLBACK_FAILED")
 		return "UPDATE_ROLLBACK_FAILED"
+	}
+	if err := restoreVersionSettings(cfg); err != nil {
+		return "UPDATE_SETTINGS_ROLLBACK_FAILED"
 	}
 	if !intent.Commit {
 		recordUpdateResult(cfg.Dir, "UPDATE_USER_EXIT_ROLLED_BACK")

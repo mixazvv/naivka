@@ -13,6 +13,13 @@ const {chromium}=require('playwright');const root=path.resolve(__dirname,'../web
   assert(await page.evaluate(()=>Pet.game('yarn')));assert.equal(await page.locator('.pet-yarn').count(),1);
   assert.equal(await page.locator('.pet-yarn').evaluate(e=>getComputedStyle(e).pointerEvents),'none');
   await page.keyboard.press('Escape');assert.equal(await page.locator('.pet-yarn').count(),0);
+  for(const kind of ['dot','hide']){
+    assert(await page.evaluate(k=>Pet.game(k),kind));
+    if(kind==='dot'){assert.equal(await page.locator('.pet-dot').count(),1);assert.equal(await page.locator('.pet-dot').evaluate(e=>getComputedStyle(e).pointerEvents),'none');}
+    else {assert.equal(await page.locator('.pet-peeking').count(),1);}
+    await page.clock.runFor(1400);assert.equal(await page.locator('.pet-playing').count(),1);
+    await page.keyboard.press('Escape');assert.equal(await page.locator('.pet-playing,.pet-peeking,.pet-dot').count(),0);
+  }
   assert(await page.evaluate(()=>Pet.game('cursor')));
   await page.locator('#typing').fill('формы работают');assert.equal(await page.locator('#typing').inputValue(),'формы работают');
   assert.equal(await page.locator('.pet-playing').count(),0);

@@ -41,6 +41,7 @@ type vpsListener struct {
 }
 
 type vpsReport struct {
+	BootID    string             `json:"bootId,omitempty"`
 	CheckedAt int64              `json:"checkedAt"`
 	Metrics   map[string]float64 `json:"metrics"`
 	Updates   *vpsUpdates        `json:"updates,omitempty"`
@@ -147,11 +148,22 @@ func parseVPSReport(raw string) (vpsReport, error) {
 	if values["protocol"] != "1" {
 		return r, errors.New("Отчёт не поддерживается: требуется Linux с /proc")
 	}
-	for _, k := range []string{"cpu_usage", "uptime", "load", "cpus", "memory_total", "memory_used", "disk_total", "disk_used", "network_rx", "network_tx"} {
+	for _, k := range []string{"cpu_usage", "uptime", "load", "cpus", "memory_total", "memory_used", "disk_total", "disk_used", "network_rx", "network_tx", "server_time", "network_set", "load5", "load15", "swap_total", "swap_used", "inodes_total", "inodes_used", "processes", "pressure_cpu", "pressure_memory", "pressure_io"} {
 		if v, err := strconv.ParseFloat(values[k], 64); err == nil && !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v <= 1e20 {
 			if k != "cpu_usage" || v <= 100 {
 				r.Metrics[k] = v
 			}
+		}
+	}
+	if id := values["boot_id"]; len(id) == 36 && strings.Count(id, "-") == 4 {
+		valid := true
+		for _, c := range id {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c == '-') {
+				valid = false
+			}
+		}
+		if valid {
+			r.BootID = id
 		}
 	}
 	// Unknown values never turn into a successful check; raw server text is not exposed.
@@ -166,8 +178,36 @@ func parseVPSReport(raw string) (vpsReport, error) {
 	}
 	add("root_login", map[string]string{"no": "ok", "yes": "warning", "prohibit-password": "warning", "without-password": "warning", "forced-commands-only": "warning"})
 	add("password_auth", map[string]string{"no": "ok", "yes": "warning"})
+	for _, key := range []string{"keyboard_auth", "empty_passwords", "x11_forwarding", "match_password", "match_keyboard"} {
+		add(key, map[string]string{"yes": "warning", "no": "ok"})
+	}
+	add("match_root", map[string]string{"no": "ok", "yes": "warning", "prohibit-password": "warning", "without-password": "warning", "forced-commands-only": "warning"})
+	add("pam", map[string]string{"yes": "info", "no": "info"})
+	add("publickey_auth", map[string]string{"yes": "ok", "no": "warning"})
+	if n, e := strconv.Atoi(values["auth_tries"]); e == nil && n >= 1 && n <= 100 {
+		level := "info"
+		v := "bounded"
+		if n > 6 {
+			level = "warning"
+			v = "high"
+		}
+		r.Checks = append(r.Checks, vpsCheck{"auth_tries", level, v})
+	} else {
+		add("auth_tries", nil)
+	}
+	add("firewalld", map[string]string{"active": "info", "inactive": "warning"})
+	add("nft_input", map[string]string{"drop_observed": "info", "hook_observed": "info", "no_hook": "warning"})
+	add("iptables_input", map[string]string{"accept": "warning", "drop": "info"})
+	for _, label := range []string{"singbox", "xray", "panel", "ssh"} {
+		add("owner_"+label, map[string]string{"root": "info", "other": "warning"})
+		add("access_"+label, map[string]string{"restricted": "info", "shared_access": "warning"})
+		add("acl_"+label, map[string]string{"basic": "info", "extended": "warning"})
+	}
+	for _, label := range []string{"caddy", "panel"} {
+		add("cert_"+label, map[string]string{"valid_30d": "info", "expires_30d": "warning", "expired": "warning"})
+	}
 	add("firewall", map[string]string{"active": "info", "inactive": "warning"})
-	for _, service := range []string{"sing-box", "xray", "naivka-caddy", "x-ui"} {
+	for _, service := range []string{"sing-box", "xray", "naivka-caddy", "x-ui", "marzban", "nginx", "caddy", "fail2ban", "ssh", "sshd"} {
 		add("service_"+service, map[string]string{"active": "ok", "inactive": "info", "failed": "warning"})
 		add("enabled_"+service, map[string]string{"enabled": "ok", "disabled": "info", "static": "info", "masked": "info"})
 	}

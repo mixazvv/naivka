@@ -4024,6 +4024,8 @@ function petGamesSettings(){
   return h('div',null,h('div',{class:'row'},
     h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('cursor')},'Догонялки'),
     h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('yarn')},'Клубок'),
+    h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('dot')},'Охота за огоньком'),
+    h('button',{class:'btn small',disabled:!available(),onclick:()=>launch('hide')},'Прятки'),
     h('button',{class:'btn small',onclick:()=>{S.petMemory={};Pet.resetHabits();save();toast('Привычки сброшены');}},'Сбросить привычки')),
     h('p',{class:'hint'},'Короткие игры: Esc или щелчок завершает игру. Котёнок запоминает любимые места, но не требует ухода.'));
 }
@@ -5083,7 +5085,33 @@ function selfBox() {
           catch (err) { toast(err.message, true); }
           finally { e.target.disabled = false; refreshAppUpdate(); }
         } }, 'Проверить обновления'),
+      h('button',{class:'btn',disabled:!!u?.busy,onclick:versionDialog},'Выбрать версию / откат'),
       h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')));
+}
+
+async function versionDialog(){
+  const list=h('select',{'aria-label':'Версия Naivka'}),status=h('p',{class:'hint',role:'status'});
+  let page=1,loading=false;
+  const more=h('button',{class:'btn',onclick:()=>load()},'Ещё версии');
+  const install=h('button',{class:'btn primary',disabled:true,onclick:async()=>{
+    if(!list.value)return;install.disabled=true;more.disabled=true;list.disabled=true;
+    try{await saveNow();await api('/api/app/versions/install',{tag:list.value});status.textContent='Скачиваю и проверяю подпись. Программа перезапустится; при ошибке исходная версия останется доступна.';}
+    catch(e){status.textContent=e.message;install.disabled=false;more.disabled=false;list.disabled=false;}
+  }},'Установить выбранную версию');
+  const d=openDialog(h('h2',null,'Выбор версии Naivka'),
+    h('p',{class:'hint'},'Доступны опубликованные стабильные версии с архивом для вашей платформы и файлами подписи. Подпись и SHA-256 проверяются перед заменой программы.'),
+    h('p',{class:'hint'},'Перед заменой создаётся резервная копия EXE и зашифрованных настроек в папке данных, version-backups. При откате автоподключение отключается. Старые версии могут не поддерживать новые настройки и функции; резервные копии не удаляются автоматически.'),
+    h('p',{class:'hint'},'Если старая версия изменит настройки, для полного возврата закройте Naivka и восстановите вместе Naivka.exe и settings.json из одной резервной копии под тем же пользователем Windows. Проверка запуска подтверждает ответ интерфейса, а подключение VPN нужно проверить отдельно.'),list,status,
+    h('div',{class:'row end mt'},more,h('button',{class:'btn',onclick:()=>d.close()},'Закрыть'),install));
+  list.addEventListener('change',()=>{install.disabled=!list.value});
+  async function load(){
+    if(loading)return;loading=true;more.disabled=true;status.textContent='Загружаю список…';
+    try{const rows=await api('/api/app/versions?page='+page);if(!d.isConnected)return;
+      for(const r of rows)list.append(h('option',{value:r.available&&!r.current?r.tag:'',disabled:!r.available||r.current},r.tag+(r.current?' · установлена':!r.available?' · нет подписанного архива платформы':'')));
+      page++;more.hidden=rows.length<50;install.disabled=!list.value;status.textContent='Выберите версию и нажмите «Установить». Изменения настроек появившихся позже функций старой версией не сохраняются.';
+    }catch(e){if(d.isConnected)status.textContent=e.message;}finally{loading=false;more.disabled=false;}
+  }
+  await load();
 }
 
 function appUpdateNotice() {
@@ -5357,8 +5385,8 @@ function viewRepair() {
   const out=h('div',{role:'status','aria-live':'polite'}),proposal=h('div');
   let current=null,timer=0;
   const terminal=new Set(['PLAN_READY','CANCELLED','COMMITTED','ROLLED_BACK','ROLLBACK_FAILED']);
-  const labels={LOCAL_ADAPTER:'Сетевой адаптер',DIRECT_INTERNET:'Прямой интернет (когда разрешён)',DNS_DIRECT:'DNS напрямую',DNS_PROXY:'Настроенный DNS через сервер',CORE:'Ядро',TUN_ADAPTER:'Адаптер TUN',TUN_IPV4_ROUTES:'Маршруты IPv4 через TUN',SYSTEM_PROXY:'Системный прокси',KILL_SWITCH:'Настройка защиты от утечек',TUN_LEAK_POLICY:'Аудит утечек вне прокси в TUN',PRIMARY_PATH:'Основной сервер',USER_PATH:'Обычный локальный прокси',HTTPS_A:'HTTPS: проверка 1',HTTPS_B:'HTTPS: проверка 2',TARGET_PATH:'Резерв: HTTPS и DNS',ROLLBACK_USER_PATH:'Контроль после отката',SWITCHING:'Переключение',VERIFYING:'Проверка после переключения',ROLLING_BACK:'Откат'};
-  const status={OK:'подтверждено',DOWN:'не запущено',PARTIAL:'частично доступно',UNKNOWN:'не определено',MISSING:'не найдены',UNCHANGED:'не изменена',CHANGED:'изменён другой программой',RUNNING:'выполняется',TIMEOUT:'тайм-аут',TRANSPORT_ERROR:'ошибка передачи',REDIRECT:'перенаправление, успех не подтверждён',UNEXPECTED_HTTP:'неожиданный ответ',NXDOMAIN:'имя не найдено (NXDOMAIN)',NO_ANSWER:'нет адреса в ответе',DNS_ERROR:'ошибка DNS',DNS_HTTP_ERROR:'ошибка DNS-сервиса',INVALID_RESPONSE:'некорректный ответ',UNEXPECTED_ANSWER:'неожиданный адрес в DNS'};
+  const labels={LOCAL_ADAPTER:'Сетевой адаптер',DIRECT_INTERNET:'Прямой интернет (когда разрешён)',DNS_DIRECT:'Настроенный прямой DNS (local — путь резолвера ОС)',DNS_PROXY:'Настроенный DNS через сервер',CORE:'Ядро',TUN_ADAPTER:'Адаптер TUN',TUN_IPV6_ROUTES:'Покрытие IPv6 через TUN',TUN_ROUTE_EXCLUSIONS:'Более специфичные публичные маршруты вне TUN',TUN_IPV4_ROUTES:'Маршруты IPv4 через TUN',SYSTEM_PROXY:'Системный прокси',KILL_SWITCH:'Настройка защиты от утечек',TUN_LEAK_POLICY:'Аудит утечек вне прокси в TUN',PRIMARY_PATH:'Основной сервер',USER_PATH:'Обычный локальный прокси',HTTPS_A:'HTTPS: проверка 1',HTTPS_B:'HTTPS: проверка 2',TARGET_PATH:'Резерв: HTTPS и DNS',ROLLBACK_USER_PATH:'Контроль после отката',SWITCHING:'Переключение',VERIFYING:'Проверка после переключения',ROLLING_BACK:'Откат'};
+  const status={REVIEW_EXCLUSIONS:'Есть исключения: могут быть адресом VPN-сервера или намеренными маршрутами; требуется проверка',NONE_OBSERVED:'Не обнаружены в таблице маршрутов; не доказательство отсутствия утечек',OK:'подтверждено',DOWN:'не запущено',PARTIAL:'частично доступно',UNKNOWN:'не определено',MISSING:'не найдены',UNCHANGED:'не изменена',CHANGED:'изменён другой программой',RUNNING:'выполняется',TIMEOUT:'тайм-аут',TRANSPORT_ERROR:'ошибка передачи',REDIRECT:'перенаправление, успех не подтверждён',UNEXPECTED_HTTP:'неожиданный ответ',NXDOMAIN:'имя не найдено (NXDOMAIN)',NO_ANSWER:'нет адреса в ответе',DNS_ERROR:'ошибка DNS',DNS_HTTP_ERROR:'ошибка DNS-сервиса',INVALID_RESPONSE:'некорректный ответ',UNEXPECTED_ANSWER:'неожиданный адрес в DNS'};
   const diagnoses={DIAGNOSTIC_TIMEOUT:'Истёк общий тайм-аут диагностики. Повторите проверку после стабилизации сети.',UNKNOWN:'Причина пока не определена.',TUN_ROUTES_MISSING:'В Windows не найдены маршруты IPv4 через TUN. Смена сервера не исправит эту проблему.',TUN_ADAPTER_UNAVAILABLE:'Адаптер Naivka в режиме TUN не найден или не активен. Смена сервера не предлагается.',CAPTIVE_PORTAL_POSSIBLE:'Прямая проверка перенаправлена. Возможно, сеть требует входа через браузер; смена сервера не предлагается.',CORE_NOT_RUNNING:'Ядро не запущено. Используйте обычную кнопку подключения.',CORE_API_UNAVAILABLE:'Ядро не отвечает на служебные запросы. Повторный перезапуск не запускается.',LOCAL_NETWORK_DOWN:'Не найден активный сетевой адаптер. Смена сервера не предлагается.',VPN_NOT_APPLICABLE:'В режиме «Только zapret» переключение VPN неприменимо.',UNSUPPORTED_CURRENT_ROUTE:'Текущий маршрут не относится к доступным своим серверам.',PROXY_CHANGED:'Системный прокси изменён другой программой. Мастер не перезаписывает чужие настройки.',DNS_FAILURE:'Контрольные HTTPS-запросы проходят, но настроенный DNS не дал корректного ответа. Смена сервера не предлагается.',PATH_REACHABLE:'Контрольные HTTPS-запросы и DNS проходят через основной сервер и обычный локальный прокси.',SITE_SPECIFIC_FAILURE:'Часть контрольных адресов доступна. Этого недостаточно для смены сервера.',LOCAL_PROXY_PATH_FAILURE:'Основной сервер доступен, но обычный локальный прокси не прошёл проверки. Смена сервера не предлагается.',PRIMARY_UNREACHABLE:'Основной путь не отвечает; найден проверенный резерв.',NO_VERIFIED_BACKUP:'Среди проверенных альтернатив нет подтверждённого резерва (за один запуск проверяются до трёх).',STALE_STATE:'Состояние подключения изменилось. Запустите проверку заново.',PRIMARY_RECOVERED:'Основной путь снова отвечает. Переключение отменено.',CANDIDATE_NO_LONGER_HEALTHY:'Резерв больше не проходит проверки. Запустите диагностику заново.',CONTROL_PATH_CONFIRMED:'Переключение выполнено: контрольные HTTPS-запросы и DNS проходят. Доступность остальных сайтов этим не подтверждается.',ORIGINAL_CONFIGURATION_PRESENT:'Исходный маршрут уже на месте. Доступность интернета не подтверждена.',ORIGINAL_CONFIGURATION_RESTORED:'Исходный маршрут восстановлен. Доступность интернета не подтверждена.',RESERVE_PATH_RESTORED:'Прежний резерв восстановлен и снова проходит контрольные проверки.',USER_OR_CORE_CHANGED:'Операция прервана после изменения выбора, сети или ядра. Новый выбор не перезаписывается.',ROLLBACK_FAILED:'Не удалось подтвердить откат. Проверьте выбранный сервер и состояние подключения; настройки защиты и DNS мастер не менял.',OWNERSHIP_UNVERIFIED:'Не удалось подтвердить владение маршрутом для отката. Неизвестный выбор не перезаписывается.',CANCELLED:'Операция отменена.'};
   const errorText=e=>({STALE_PLAN:'Предложение устарело. Повторите диагностику.',REPAIR_BUSY:'Другая операция восстановления ещё выполняется.',UNVERIFIED_CANDIDATE:'Этот резерв не подтверждён проверкой.'}[e.message]||e.message);
   const paint=v=>{

@@ -1215,39 +1215,46 @@ const Pet = (() => {
   function stopGame(){
     if(!game)return;
     game.toy?.remove();game=null;cancel(gameTimer);gameTimer=0;
-    root?.classList.remove('pet-playing');mind?.acted('rest');
+    root?.classList.remove('pet-playing','pet-peeking');mind?.acted('rest');
     halt();stopAnim();
     if(root&&!inAir()&&!uiBlocked())back();
   }
   function gamePointer(e){
     if(!game)return;
     if(e.target.closest?.('input,textarea,select,[contenteditable="true"]')){stopGame();return;}
-    game.x=e.clientX;game.y=e.clientY;
+    if(game.kind==='cursor'){game.x=e.clientX;game.y=e.clientY;}
+    if(game.kind==='hide'&&game.peek&&Math.abs(e.clientX-game.x)<70&&Math.abs(e.clientY-game.y)<90){
+      game.peek=false;root.classList.remove('pet-peeking');talk('Нашли! Мяу!',1500);
+      if(!busy&&!strolling)play([['look_1',180],['sit_1',250],['look_2',180]],0,back);
+    }
   }
   function gameStep(){
-    if(!game||!root||REDUCE.matches||uiBlocked()||held||press||inAir()||performance.now()>game.until){stopGame();return;}
+    if(!game||!root||REDUCE.matches||uiBlocked()||held||press||performance.now()>game.until){stopGame();return;}
+    if(inAir()){gameTimer=later(gameStep,250);return;}
     const r=root.getBoundingClientRect();
-    if(game.kind==='yarn'){
-      game.x=Math.max(16,Math.min(innerWidth-16,r.left+r.width/2+Math.sin(performance.now()/1100)*85));
+    if(['yarn','dot','hide'].includes(game.kind)){
+      game.x=Math.max(16,Math.min(innerWidth-16,r.left+r.width/2+Math.sin(performance.now()/(game.kind==='dot'?450:1100))*(game.kind==='dot'?130:85)));
       game.y=Math.min(innerHeight-12,r.bottom-10);
-      game.toy.style.left=game.x+'px';game.toy.style.top=game.y+'px';
+      if(game.toy){game.toy.style.left=game.x+'px';game.toy.style.top=game.y+'px';}
+      if(game.kind==='hide'){game.peek=!game.peek;root.classList.toggle('pet-peeking',game.peek);}
     }
     if(!strolling&&!busy){
-      pounce(game.x);
+      if(game.kind==='hide')play([['look_1',250],['look_2',250],['sit_1',250]],0,back);
+      else pounce(game.x);
       mind?.acted('play');
     }
     gameTimer=later(gameStep,1100);
   }
   function startGame(kind){
-    if(!['cursor','yarn'].includes(kind)||!root||REDUCE.matches||uiBlocked()||inAir()||held||press||!['on','off','run'].includes(state))return false;
+    if(!['cursor','yarn','dot','hide'].includes(kind)||!root||REDUCE.matches||uiBlocked()||inAir()||held||press||!['on','off','run'].includes(state))return false;
     stopGame();halt();stopAnim();napping=false;
     const r=root.getBoundingClientRect();
     game={kind,x:r.left+r.width/2,y:r.bottom,until:performance.now()+20000,toy:null};
-    if(kind==='yarn'){
-      game.toy=document.createElement('span');game.toy.className='pet-yarn';game.toy.setAttribute('aria-hidden','true');document.body.append(game.toy);
+    if(kind==='yarn'||kind==='dot'){
+      game.toy=document.createElement('span');game.toy.className=kind==='dot'?'pet-dot':'pet-yarn';game.toy.setAttribute('aria-hidden','true');document.body.append(game.toy);
     }
     root.classList.add('pet-playing');
-    talk(kind==='cursor'?'Подвигайте курсором рядом со мной. Esc — закончить.':'Поиграем с клубком! Esc — закончить.',3000);
+    talk(({cursor:'Подвигайте курсором рядом со мной.',yarn:'Поиграем с клубком!',dot:'Поймаю огонёк!',hide:'Найдите меня курсором, когда я притаюсь!'})[kind]+' Esc — закончить.',3000);
     gameStep();return true;
   }
 

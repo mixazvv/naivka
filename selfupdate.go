@@ -318,6 +318,13 @@ func (u *selfUpdater) run(a *App, tag string) error {
 		a.abortUpdateTransfer(t)
 		return errLifecycleCancelled
 	}
+	backup, backupErr := createVersionBackup(exe, a.dir, appVersion, tag)
+	if backupErr != nil {
+		a.life.mu.Unlock()
+		a.abortUpdateTransfer(t)
+		return fmt.Errorf("Не удалось сохранить резервную копию: %w", backupErr)
+	}
+	t.backup = backup
 	if err = writeExe(exe, body); err != nil {
 		a.life.mu.Unlock()
 		a.abortUpdateTransfer(t)
