@@ -1,0 +1,29 @@
+name: Sign historical releases
+on:
+  push:
+    branches: [main]
+    paths: [docs/historical-release-hashes.json, scripts/sign-historical-releases.py, .github/workflows/sign-historical-releases.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: historical-release-signatures
+  cancel-in-progress: false
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify pinned original assets and add signatures
+        env:
+          SIGN_KEY: ${{ secrets.NAIVKA_SIGN_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/sign-historical-releases.py --shard ${{ matrix.shard }} --shards 4

@@ -1,0 +1,856 @@
+{
+  "repository": "mixazvv/naivka",
+  "releases": [
+    {
+      "tag": "v2.8.1",
+      "assets": [
+        {
+          "name": "Naivka-v2.8.1-windows.zip",
+          "id": 666838926,
+          "size": 9109345,
+          "sha256": "03e2b1774a55d45b11581d50840e84dfca26eb05fc61b45d9b246076823cb229"
+        },
+        {
+          "name": "Naivka-v2.8.1-windows7.zip",
+          "id": 666838923,
+          "size": 7238043,
+          "sha256": "621b0834a4c54151a84078b25cadea9632e3e26ead1786bfb3a0777709823860"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 666838922,
+          "size": 185,
+          "sha256": "732c9526d759f7278526ce88bab78fcb88235cd3a8470ba213ada74db0370a7d"
+        }
+      ]
+    },
+    {
+      "tag": "v2.8.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.8.0-windows.zip",
+          "id": 666584452,
+          "size": 9147364,
+          "sha256": "bcc460c9d6e21476148d67aa7488f2e9e0b546c0773ad1c19c37a01f4efd2d5e"
+        },
+        {
+          "name": "Naivka-v2.8.0-windows7.zip",
+          "id": 666584450,
+          "size": 7282764,
+          "sha256": "33e3b0468777e7116f5098d970b31f8a1eb89dd02c8561adab86f3aa90b12544"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 666584449,
+          "size": 185,
+          "sha256": "072cae43d7938f4cc81d397bb0a6018102ec1247dbba9bcf53a52131e6261f6a"
+        }
+      ]
+    },
+    {
+      "tag": "v2.7.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.7.0-windows.zip",
+          "id": 666174924,
+          "size": 9063389,
+          "sha256": "dbac2bd4de80d6ebc1a3749c9b3a14e9a7a6b4c7ea06f59cd5efe5423e982a35"
+        },
+        {
+          "name": "Naivka-v2.7.0-windows7.zip",
+          "id": 666174923,
+          "size": 7196008,
+          "sha256": "b95d60dfda305b08f64ffb3e4980b1f8f991ec8cbb65df57bb5f6a70466d9cfa"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 666174926,
+          "size": 185,
+          "sha256": "7c31eb6cc3f4e6d21ae91e994c8946559fac2c18065f6cae9bdd86b146085fd0"
+        }
+      ]
+    },
+    {
+      "tag": "v2.6.6",
+      "assets": [
+        {
+          "name": "Naivka-v2.6.6-windows.zip",
+          "id": 663621693,
+          "size": 8997659,
+          "sha256": "bff6f4607e60cb40732c87340b015361c379f2683967c7d5481de831de150525"
+        },
+        {
+          "name": "Naivka-v2.6.6-windows7.zip",
+          "id": 663621691,
+          "size": 7173944,
+          "sha256": "b2b39ce7171e983b6756df4e8d5aafc5e3b0ffc442407a362ffcc62511bdb5b3"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 663621690,
+          "size": 185,
+          "sha256": "d7c94aa69e92bfba0f88c26993922db57b3f4e369d729cc8b30b9e22d541dbcb"
+        }
+      ]
+    },
+    {
+      "tag": "v2.6.5",
+      "assets": [
+        {
+          "name": "Naivka-v2.6.5-windows.zip",
+          "id": 663589479,
+          "size": 8996650,
+          "sha256": "05f79e0ecbe2c52721568d7db7b3550383b1fe940470893b8e4c4481db8a5132"
+        },
+        {
+          "name": "Naivka-v2.6.5-windows7.zip",
+          "id": 663589481,
+          "size": 7164148,
+          "sha256": "43dd525ffcbc2e0e6f53f28d555ce1c7c832975b084f04844266f027292ec5ac"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 663589475,
+          "size": 185,
+          "sha256": "c213886e444a3b953583526ebe149c3f5abe71d0d818642b0221f1b4d19f6d12"
+        }
+      ]
+    },
+    {
+      "tag": "v2.6.4",
+      "assets": [
+        {
+          "name": "Naivka-v2.6.4-windows.zip",
+          "id": 663504047,
+          "size": 8995552,
+          "sha256": "37586023e6c289b27cca19695a1834d69d0cb9fd5a0173224557d3333e4029f5"
+        },
+        {
+          "name": "Naivka-v2.6.4-windows7.zip",
+          "id": 663504055,
+          "size": 7161914,
+          "sha256": "e2c67dd7f84dbc7cc663179c8bf6d6a920c9ad0980e029bc69934c3f66a73c3e"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 663504048,
+          "size": 185,
+          "sha256": "ec99287eae3bc84b65112224417000753588cb24d23bdfbe29f33a3d3ef8c738"
+        }
+      ]
+    },
+    {
+      "tag": "v2.6.3",
+      "assets": [
+        {
+          "name": "Naivka-v2.6.3-windows.zip",
+          "id": 663456302,
+          "size": 8995214,
+          "sha256": "64b6821c923ee2cb2eba4f78836e97722d2dedcececdb669ec986c4e89c33615"
+        },
+        {
+          "name": "Naivka-v2.6.3-windows7.zip",
+          "id": 663456314,
+          "size": 7161721,
+          "sha256": "c974bd50ebc688a56153352ddcedcb4bed45546216843854ba8e913c4df66d60"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 663456297,
+          "size": 185,
+          "sha256": "acfd8db52cc8bf7c535809569e75e1840ac1a0066e4b89b9f03d2cf985443463"
+        }
+      ]
+    },
+    {
+      "tag": "v2.6.2",
+      "assets": [
+        {
+          "name": "Naivka-v2.6.2-windows.zip",
+          "id": 663412862,
+          "size": 8991675,
+          "sha256": "0e987f31da37ca7c31a3c0a26c547d311b48eca8ef5331b9d72d87156d283a4c"
+        },
+        {
+          "name": "Naivka-v2.6.2-windows7.zip",
+          "id": 663412865,
+          "size": 7159130,
+          "sha256": "3fda44239c0f54d388bf864515ca17377b31ef1049fdc5d7d370e66cc24e572b"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 663412866,
+          "size": 185,
+          "sha256": "c014d369e52e5e85c38010644e1b5fa991ebaea1f28d10063133f09b59f2d2ad"
+        }
+      ]
+    },
+    {
+      "tag": "v2.6.1",
+      "assets": [
+        {
+          "name": "Naivka-v2.6.1-windows.zip",
+          "id": 663345566,
+          "size": 8977617,
+          "sha256": "451ad7190557d11e2e8f3a1a3b8af87504814c5225da5527c4f9d217438f302b"
+        },
+        {
+          "name": "Naivka-v2.6.1-windows7.zip",
+          "id": 663345564,
+          "size": 7140045,
+          "sha256": "fa20d6cfdfadd3c2364f081d88abc6f579f5137c6a09ee3041e146eeace9c919"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 663345565,
+          "size": 185,
+          "sha256": "389a0e8cc03dce86c033fc5129de0c3b37cce89e90b428bb93e48890ddb3521f"
+        }
+      ]
+    },
+    {
+      "tag": "v2.6.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.6.0-windows.zip",
+          "id": 663307286,
+          "size": 8971193,
+          "sha256": "0fb76442d0294202339d34d6bc09dddc08e2ce69e8166693c9367e944bdf1ff7"
+        },
+        {
+          "name": "Naivka-v2.6.0-windows7.zip",
+          "id": 663307285,
+          "size": 7134364,
+          "sha256": "51cd9547ba1964a63cc4d00b65526e2ed9b310ac32d3709c2e486bfb87041cd1"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 663307291,
+          "size": 185,
+          "sha256": "5b3dad73823e053bd8b6f865379ccb22cf8f788e75c45a416880a776f4fee9d7"
+        }
+      ]
+    },
+    {
+      "tag": "v2.5.2",
+      "assets": [
+        {
+          "name": "Naivka-v2.5.2-windows.zip",
+          "id": 657152236,
+          "size": 8941084,
+          "sha256": "cdc7883aaa9f8b7f05be80272648f0a2a9ae8f1a680ef5cdaa063e98778e21c1"
+        },
+        {
+          "name": "Naivka-v2.5.2-windows7.zip",
+          "id": 657152235,
+          "size": 7085902,
+          "sha256": "216ff8a3a4c5d3a5769d691d9144c4782e2c2feb1c38b02e4a907ab64b42d8a3"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 657152234,
+          "size": 185,
+          "sha256": "5245a0d723f7adf24258c919fca46ba0c5efc85501971ecbbeb8623326ee326a"
+        }
+      ]
+    },
+    {
+      "tag": "v2.5.1",
+      "assets": [
+        {
+          "name": "Naivka-v2.5.1-windows.zip",
+          "id": 656975950,
+          "size": 8932263,
+          "sha256": "797f66fb6acff0ea97f6279d41ffbcd9dacf31824d3a1f902d50bac7bf3414be"
+        },
+        {
+          "name": "Naivka-v2.5.1-windows7.zip",
+          "id": 656975952,
+          "size": 7077210,
+          "sha256": "82377f5d007db7d9bc256153eb1ce3eb7da5cbcec8fb18a288e74a86621e107c"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 656975949,
+          "size": 185,
+          "sha256": "49cd105bc3e1b5623cb67059e3019ed42f9f494b5f1fcdfebb0bdf01837a1f82"
+        }
+      ]
+    },
+    {
+      "tag": "v2.5.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.5.0-windows.zip",
+          "id": 656936205,
+          "size": 8934575,
+          "sha256": "052d429e6d91ce70f2588a7ab3fec9b4df57d1655721ceff8a2d889fbde51904"
+        },
+        {
+          "name": "Naivka-v2.5.0-windows7.zip",
+          "id": 656936204,
+          "size": 7081858,
+          "sha256": "815061698138256773c1cd8afcdd068ef265b9fcace0b2c970530c149669b17c"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 656936203,
+          "size": 185,
+          "sha256": "7e229ae34327241711e68368ad11025d92b15880134fed189ef10c09bc55e837"
+        }
+      ]
+    },
+    {
+      "tag": "v2.4.1",
+      "assets": [
+        {
+          "name": "Naivka-v2.4.1-windows.zip",
+          "id": 656903527,
+          "size": 8904044,
+          "sha256": "eccdbddbe10d2b947866e370c3044c3a4a7b624b2f3b3cc17bae7a0200838454"
+        },
+        {
+          "name": "Naivka-v2.4.1-windows7.zip",
+          "id": 656903528,
+          "size": 7045426,
+          "sha256": "b1746519a603e62a3c368b175cfb1688cda0cccee05fe3fc54260d558e0975e3"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 656903526,
+          "size": 185,
+          "sha256": "d4d33fec43b83b4978c57bb29542ecb82e3803fbd5b979c2c08f1c34e8c73460"
+        }
+      ]
+    },
+    {
+      "tag": "v2.4.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.4.0-windows.zip",
+          "id": 656788817,
+          "size": 8933441,
+          "sha256": "2f2877eae7dda57022c56cfe6ef01113c9685efe491fa364af933749b8870177"
+        },
+        {
+          "name": "Naivka-v2.4.0-windows7.zip",
+          "id": 656788815,
+          "size": 7078169,
+          "sha256": "e86685b30a43c33dda2ba76067e6304efd784c3943c7c1d49c200663508213cb"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 656788812,
+          "size": 185,
+          "sha256": "2b00e79fccfe6cdbf19408768869a2afb20d6033761245d2dd806398b25be640"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.9",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.9-windows.zip",
+          "id": 648326338,
+          "size": 8904039,
+          "sha256": "d5a8deaeca4f4cdf125143e4c7b10d7805cfbc2ed8a1f83f19ad74c390e48158"
+        },
+        {
+          "name": "Naivka-v2.3.9-windows7.zip",
+          "id": 648326339,
+          "size": 7045424,
+          "sha256": "5891799af20b23e68fa49ccc03cbf7bd92c74a91dc35043f22b63aad21249ef1"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 648326337,
+          "size": 185,
+          "sha256": "2e998775d751a8bdfe084a4d9874a9bbabbb3968e86a0412a0fca9e1b7862e1a"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.8",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.8-windows.zip",
+          "id": 648303945,
+          "size": 8904884,
+          "sha256": "4b2ba5436d3b9e5427584c0ca1acbc80a9802289c5af6583a58bff7b46548021"
+        },
+        {
+          "name": "Naivka-v2.3.8-windows7.zip",
+          "id": 648303950,
+          "size": 7045657,
+          "sha256": "b408bc230414f101c1dddbafa1f7fac44166b4410d5b829bd12855d00a4e5171"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 648303948,
+          "size": 185,
+          "sha256": "b6b11816e24162cbaae5388286521f51f6d2c33956ac7fe38721c3c094d6c298"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.7",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.7-windows.zip",
+          "id": 648284829,
+          "size": 8895826,
+          "sha256": "33568b8efd0f1f0adac904c33eed9fec705f09fab0dabc978633ca64ff30cbea"
+        },
+        {
+          "name": "Naivka-v2.3.7-windows7.zip",
+          "id": 648284830,
+          "size": 7045295,
+          "sha256": "a03d12c282fbd75b9f4cce7c4da75bab91e66fbeea3b7f6f3f8333afb53648e5"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 648284823,
+          "size": 185,
+          "sha256": "595afae019211707f9611bcdf816f956ccce1b94a831bad85e7ee11d62b1fd5b"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.6",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.6-windows.zip",
+          "id": 648257174,
+          "size": 8895486,
+          "sha256": "988cf5da7ef788a73aa01ad8753474baf0e9468d709e6512ecc0b9a1041195d1"
+        },
+        {
+          "name": "Naivka-v2.3.6-windows7.zip",
+          "id": 648257163,
+          "size": 7044999,
+          "sha256": "020ba588152a1a7ab2401db5cc952f39f4bac8d504d2dfe00671271b90a53340"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 648257164,
+          "size": 185,
+          "sha256": "d5bfd1590972b166ee1411b2163d7393bf86ac78cc5b0d96ca22076e2df9fcd8"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.5",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.5-windows.zip",
+          "id": 648176764,
+          "size": 8863164,
+          "sha256": "be306dda1241e8f416e8abe064352c22b78fd39ea337f67452686199c273a065"
+        },
+        {
+          "name": "Naivka-v2.3.5-windows7.zip",
+          "id": 648176763,
+          "size": 7010110,
+          "sha256": "e5b2d30053ccb06dfb171f36afc6d245d7edd8a84b83aa88f9803015c593adf3"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 648176761,
+          "size": 185,
+          "sha256": "8f0fc82addb9b80615bee2946f82529022057abdb33d32ab0acc5edba9bbda0d"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.4",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.4-windows.zip",
+          "id": 648134237,
+          "size": 8862595,
+          "sha256": "b3db7054e67bdb118ff19059c4f301edde614436f74df8d169d4766d1658feca"
+        },
+        {
+          "name": "Naivka-v2.3.4-windows7.zip",
+          "id": 648134241,
+          "size": 7008533,
+          "sha256": "16ed7a723ae8563a72579defa7ee1ed81f5836cb80f7963dad7c1e62ea7d74c3"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 648134238,
+          "size": 185,
+          "sha256": "b80b005a6bacb6f118dcd82d920e448b213330b1c02d3fed8d273d15acb3787d"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.3",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.3-windows.zip",
+          "id": 648010552,
+          "size": 8821773,
+          "sha256": "0e25f7c47e1cfee15896a89c8d095801dfbfbb54ff21d4c55a3593130dab4b4e"
+        },
+        {
+          "name": "Naivka-v2.3.3-windows7.zip",
+          "id": 648010549,
+          "size": 6968131,
+          "sha256": "86e720cf5d0e1a23cc6d897449a0046e60cbae6edc3f45980918153158378202"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 648010550,
+          "size": 185,
+          "sha256": "1ee40065bc2ec5854e6bab97f9be12d77128ee3ca4104736dd4a2b3b4e09ead1"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.2",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.2-windows.zip",
+          "id": 647718348,
+          "size": 8829494,
+          "sha256": "48158b7fdc640311903bc7ac6007312ad22e205e5cb7e5a6e502eeab257932cf"
+        },
+        {
+          "name": "Naivka-v2.3.2-windows7.zip",
+          "id": 647718345,
+          "size": 6961921,
+          "sha256": "78354ac0afa52c66fe29427a373bf92e80f19c918511e0b78ca7dffef785174c"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 647718346,
+          "size": 185,
+          "sha256": "f0b7f857aae860313d5221d7f75ceab56a415e703303702c691d2f5a11ba9816"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.1",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.1-windows.zip",
+          "id": 647678716,
+          "size": 8825609,
+          "sha256": "b0d97a51d3821b36e0afdc119c8e4e3f445667e2b2dd4adc095582d74a1a2c30"
+        },
+        {
+          "name": "Naivka-v2.3.1-windows7.zip",
+          "id": 647678715,
+          "size": 6964814,
+          "sha256": "ceba7893a0b94160f0b90e01bf1ea7776bca28733627ad0f339b4ddb366ef393"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 647678713,
+          "size": 185,
+          "sha256": "4ee063692b2f05f3a2ea2979d0ce95d36ebe7b39a3024b86d2ecc7efac12dc9e"
+        }
+      ]
+    },
+    {
+      "tag": "v2.3.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.3.0-windows.zip",
+          "id": 647617171,
+          "size": 8823206,
+          "sha256": "e821e17a64833e24a2132493e8dbe3f963c7aa7b799a61b70cae2fb6928dad46"
+        },
+        {
+          "name": "Naivka-v2.3.0-windows7.zip",
+          "id": 647617168,
+          "size": 6960920,
+          "sha256": "e29d28149757ee7e2926da6df0b99957d2615d86010ab61989ce1b8898b8fe07"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 647617164,
+          "size": 185,
+          "sha256": "d4786c3ebe9ea25400e8a6d610a572be944a844694fb8b6c5b5f5ff7e0b9550f"
+        }
+      ]
+    },
+    {
+      "tag": "v2.2.6",
+      "assets": [
+        {
+          "name": "Naivka-v2.2.6-windows.zip",
+          "id": 647352250,
+          "size": 8792243,
+          "sha256": "db3abf138f8a8e1f44df9c922f76695a2e7c8f35e3eb59c281e4e184a0b9adc1"
+        },
+        {
+          "name": "Naivka-v2.2.6-windows7.zip",
+          "id": 647352249,
+          "size": 6935975,
+          "sha256": "569aae62639455daf97e61867c47b6d666d133204ac36d4871a3fa428c751c03"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 647352252,
+          "size": 185,
+          "sha256": "8b16528b5154c4d06314cd429d8c36e0cec7fe43ea455c07785a153705327fdd"
+        }
+      ]
+    },
+    {
+      "tag": "v2.2.5",
+      "assets": [
+        {
+          "name": "Naivka-v2.2.5-windows.zip",
+          "id": 647316548,
+          "size": 8798625,
+          "sha256": "d295ceb1cc2cecf50c4d7b10865f670fa3bd31eee681556affe9a38c0560e68e"
+        },
+        {
+          "name": "Naivka-v2.2.5-windows7.zip",
+          "id": 647316549,
+          "size": 6944426,
+          "sha256": "6a7138544fcdd09a3f7e70c290df381aa8c597da67bdf1db33c7c82427f52355"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 647316551,
+          "size": 185,
+          "sha256": "c0e4f108dda4fa3eb904cf75bd0bfe918c73223c5844ef9710b6ac0a9eff90a7"
+        }
+      ]
+    },
+    {
+      "tag": "v2.2.4",
+      "assets": [
+        {
+          "name": "Naivka-v2.2.4-windows.zip",
+          "id": 647286099,
+          "size": 8798302,
+          "sha256": "e84e00959ca17870ef4115ea9c617708f595ddfc359c5bd4d584eb629e4732d6"
+        },
+        {
+          "name": "Naivka-v2.2.4-windows7.zip",
+          "id": 647286098,
+          "size": 6941907,
+          "sha256": "bde1f055d7741d84233f9b4e95ebb3316a82e73c20ea38bd5faa9d9707480750"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 647286097,
+          "size": 185,
+          "sha256": "b7b7a5da87131f9c2e6ae6a36539d83e6519969c8d558c95dd405920c8bb7bfc"
+        }
+      ]
+    },
+    {
+      "tag": "v2.2.3",
+      "assets": [
+        {
+          "name": "Naivka-v2.2.3-windows.zip",
+          "id": 647248654,
+          "size": 8797980,
+          "sha256": "72033793a8d54d1d245ae9f9aa7273240d2eeb9a7cd7312c591faafe1710f895"
+        },
+        {
+          "name": "Naivka-v2.2.3-windows7.zip",
+          "id": 647248655,
+          "size": 6939264,
+          "sha256": "04e975ca020138157159d5c2c3466dfe5c6ef75df3eed254a38742e5efaf1171"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 647248652,
+          "size": 185,
+          "sha256": "fe165db9badd3e088a2d870970bd4b08ec05dcc0cce871265f6a5c56f76d0328"
+        }
+      ]
+    },
+    {
+      "tag": "v2.2.2",
+      "assets": [
+        {
+          "name": "Naivka-v2.2.2-windows.zip",
+          "id": 645426368,
+          "size": 8751323,
+          "sha256": "7da2684638aa7732af6a387e8bfb82ed4089710ae5a87ac425188d8e181f7b4a"
+        },
+        {
+          "name": "Naivka-v2.2.2-windows7.zip",
+          "id": 645426365,
+          "size": 6889899,
+          "sha256": "3f6081b5903fd08a2b61dda4242a48877f2aa25151190fb4054021a07efb95da"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 645426366,
+          "size": 185,
+          "sha256": "6cbe67eaa6552736828fef12fa4ae294e4da70ae23dbc8f16690d321d32405cd"
+        }
+      ]
+    },
+    {
+      "tag": "v2.2.1",
+      "assets": [
+        {
+          "name": "Naivka-v2.2.1-windows.zip",
+          "id": 644897023,
+          "size": 8737407,
+          "sha256": "28737d766f56299b9e79c5382740212f19361b5d00322015c188e2b1c5ed3b1d"
+        },
+        {
+          "name": "Naivka-v2.2.1-windows7.zip",
+          "id": 644897022,
+          "size": 6880589,
+          "sha256": "e2c0bd748298b059cac594c6dc241aedd7156349d44ca3d7ce714ab7b0fdcf5a"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 644897021,
+          "size": 185,
+          "sha256": "ebec8ac246a9ea5b8c64691fae97e0d2980e708f7f366ed918f23ceb1c7e76b2"
+        }
+      ]
+    },
+    {
+      "tag": "v2.2.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.2.0-windows.zip",
+          "id": 644867860,
+          "size": 8777305,
+          "sha256": "4d0fb40bdbf811bc1e589aeea6f0535fb2031e5f33521a22f8f4a79f9bb2adaa"
+        },
+        {
+          "name": "Naivka-v2.2.0-windows7.zip",
+          "id": 644867858,
+          "size": 6914747,
+          "sha256": "2f833bc6d5e9d877ed9b791168571d87c92976977efd99f012f389b58289fd07"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 644867862,
+          "size": 185,
+          "sha256": "61ea451a2aa57647bb126fa2718b955cff07f13e870d3a395d180c79c8ed9ce5"
+        }
+      ]
+    },
+    {
+      "tag": "v2.1.3",
+      "assets": [
+        {
+          "name": "Naivka-v2.1.3-windows.zip",
+          "id": 643445917,
+          "size": 8754309,
+          "sha256": "e7084bf8156a696243c55d1ed2a9e0a78fb080cf8c0cc063cadef7f69dff77ee"
+        },
+        {
+          "name": "Naivka-v2.1.3-windows7.zip",
+          "id": 643445916,
+          "size": 6894088,
+          "sha256": "4bcee0b3e5755f334fbdcc002c0ea413aca7d4dd99c907f014c3cf6cfdf9d4b3"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 643445914,
+          "size": 185,
+          "sha256": "97116f11dfec1e4b8c334cc8ae81737ab3c9f3faa7136a30ad5975e4cdce43de"
+        }
+      ]
+    },
+    {
+      "tag": "v2.1.2",
+      "assets": [
+        {
+          "name": "Naivka-v2.1.2-windows.zip",
+          "id": 641299514,
+          "size": 8756944,
+          "sha256": "0744b94f6df3a2f83c193b8e00f238ea777fa456b801f3fe41e2b4fc34ec4b3b"
+        },
+        {
+          "name": "Naivka-v2.1.2-windows7.zip",
+          "id": 641299510,
+          "size": 6896200,
+          "sha256": "feba832711d870c2fff1bb53c0ed0b36830ef126fd1891f0db8facd552f9cab4"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 641299513,
+          "size": 185,
+          "sha256": "e816c827983e36abe375a7abb60727e2178d0ecf769b91c1d72e2ed3e1b77ca1"
+        }
+      ]
+    },
+    {
+      "tag": "v2.1.1",
+      "assets": [
+        {
+          "name": "Naivka-v2.1.1-windows.zip",
+          "id": 641118997,
+          "size": 8748747,
+          "sha256": "7663929e505778f8b135a968f4fbda11ab295bade97923176e7d6a896cbff9c8"
+        },
+        {
+          "name": "Naivka-v2.1.1-windows7.zip",
+          "id": 641118995,
+          "size": 6892107,
+          "sha256": "0ed6549341f5f791e7529763399edbb8432d78a4ab230e9eba06d7cda75bc002"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 641118993,
+          "size": 185,
+          "sha256": "9ef44acf28be6215fd72d622a3129c654b258cfe4f1ed1496f17f65a7fc4ca99"
+        }
+      ]
+    },
+    {
+      "tag": "v2.1.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.1.0-windows.zip",
+          "id": 639936801,
+          "size": 8742110,
+          "sha256": "93c54241ab3541a24cfe034c428347b250ac3827b26e74630050a0c3109c7075"
+        },
+        {
+          "name": "Naivka-v2.1.0-windows7.zip",
+          "id": 639936797,
+          "size": 6880358,
+          "sha256": "e74227f7f7f99d4be28cef95d2bc321c226e769865f4e6c2388720a1aad8823d"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 639936795,
+          "size": 185,
+          "sha256": "b5a79ce3d391904b73cc2c0d1ccf914b938fec40649f2984b9a24eb1d4794d76"
+        }
+      ]
+    },
+    {
+      "tag": "v2.0.0",
+      "assets": [
+        {
+          "name": "Naivka-v2.0.0-windows.zip",
+          "id": 639813004,
+          "size": 8690251,
+          "sha256": "32c26f06370d365550ad445e86d4185fff2ed4edd97706f4e42a4153f93c4d0f"
+        },
+        {
+          "name": "Naivka-v2.0.0-windows7.zip",
+          "id": 639813003,
+          "size": 6826781,
+          "sha256": "e0b758c45dfc5a610cf9424b01967f86f67f45e441e434bd46fd4cef0863b602"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "id": 639813006,
+          "size": 185,
+          "sha256": "233fd93e7f8938d304acfd3c6577eba0083a66ef84d412fe8d25ea72a1207f17"
+        }
+      ]
+    }
+  ]
+}
