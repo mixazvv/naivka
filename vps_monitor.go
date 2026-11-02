@@ -150,7 +150,7 @@ func parseVPSReport(raw string) (vpsReport, error) {
 	}
 	for _, k := range []string{"cpu_usage", "uptime", "load", "cpus", "memory_total", "memory_used", "disk_total", "disk_used", "network_rx", "network_tx", "server_time", "network_set", "load5", "load15", "swap_total", "swap_used", "inodes_total", "inodes_used", "processes", "pressure_cpu", "pressure_memory", "pressure_io"} {
 		if v, err := strconv.ParseFloat(values[k], 64); err == nil && !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v <= 1e20 {
-			if k != "cpu_usage" || v <= 100 {
+			if (k != "cpu_usage" && !strings.HasPrefix(k, "pressure_")) || v <= 100 {
 				r.Metrics[k] = v
 			}
 		}

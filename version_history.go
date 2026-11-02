@@ -55,7 +55,7 @@ func versionRequest(ctx context.Context, path string, out any) error {
 	return json.Unmarshal(b, out)
 }
 func versionAvailable(r versionRelease) bool {
-	if r.Draft || r.Prerelease || !releaseTagPattern.MatchString(r.Tag) {
+	if r.Draft || r.Prerelease || !releaseTagPattern.MatchString(r.Tag) || parseVer(r.Tag) == nil {
 		return false
 	}
 	need := map[string]bool{releaseAsset(r.Tag): false, "SHA256SUMS.txt": false, "SHA256SUMS.txt.sig": false}

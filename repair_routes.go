@@ -82,9 +82,23 @@ func repairRouteSignature(data []byte) []string {
 	result := make([]string, 0, n)
 	for i := 0; i < int(n); i++ {
 		row := data[8+i*104 : 8+(i+1)*104]
-		b := append([]byte{}, row[8:41]...)
-		b = append(b, row[48:76]...)
-		b = append(b, row[84:88]...)
+		b := append([]byte{}, row[8:14]...)
+		family := binary.LittleEndian.Uint16(row[12:14])
+		if family == 2 {
+			b = append(b, row[16:20]...)
+		} else if family == 23 {
+			b = append(b, row[20:40]...)
+		}
+		b = append(b, row[40], row[44])
+		b = append(b, row[48:50]...)
+		nextFamily := binary.LittleEndian.Uint16(row[48:50])
+		if nextFamily == 2 {
+			b = append(b, row[52:56]...)
+		} else if nextFamily == 23 {
+			b = append(b, row[56:76]...)
+		}
+		b = append(b, row[84:96]...)
+		b = append(b, row[100:104]...)
 		result = append(result, string(b))
 	}
 	return result
@@ -142,7 +156,7 @@ func repairRouteAudit(data []byte, index uint32) (ipv4, ipv6, bypass string) {
 		default:
 			continue
 		}
-		if ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() {
+		if (family == 2 && prefix < 8) || (family == 23 && prefix < 4) || (ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast()) {
 			bypass = "REVIEW_EXCLUSIONS"
 		}
 	}

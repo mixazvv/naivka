@@ -19,6 +19,7 @@ const {chromium}=require('playwright');const root=path.resolve(__dirname,'../web
     else {assert.equal(await page.locator('.pet-peeking').count(),1);}
     await page.clock.runFor(1400);assert.equal(await page.locator('.pet-playing').count(),1);
     await page.keyboard.press('Escape');assert.equal(await page.locator('.pet-playing,.pet-peeking,.pet-dot').count(),0);
+    await page.evaluate(()=>Pet.recall()); // Independent game fixture after a travelling hide-and-seek round.
   }
   assert(await page.evaluate(()=>Pet.game('cursor')));
   await page.locator('#typing').fill('формы работают');assert.equal(await page.locator('#typing').inputValue(),'формы работают');

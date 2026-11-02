@@ -39,6 +39,11 @@ func TestRepairRouteAuditAndFreshness(t *testing.T) {
 	if a[3] != b[3] {
 		t.Fatal("volatile lifetime invalidates transaction")
 	}
+	r[41]++
+	r[42]++
+	if repairRouteSignature(data)[3] != b[3] {
+		t.Fatal("padding invalidates transaction")
+	}
 	r[84]++
 	if repairRouteSignature(data)[3] == b[3] {
 		t.Fatal("metric change not detected")

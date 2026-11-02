@@ -1,7 +1,7 @@
 // Opt-in visible-window monitoring. No saved credentials or persistent history.
 const VPS_HISTORY = new Map();
 const VPS_CHECKS = {
-  root_login: ['Вход root по SSH', 'sshd -T; правила Match для конкретного подключения не проверены.'],
+  root_login: ['Вход root по SSH', 'Базовый контекст sshd -T. Результат Match для текущего SSH-сеанса показан отдельно.'],
   password_auth: ['Парольный вход SSH', 'Эффективные значения sshd -T по умолчанию.'],
   keyboard_auth:['Интерактивный вход SSH','Может использовать PAM и пароль даже при PasswordAuthentication no.'],
   pam:['PAM','Проверяется включение PAM; содержимое цепочек PAM не анализируется.'],
@@ -16,8 +16,8 @@ const VPS_CHECKS = {
   nft_input:['nftables','Наблюдение input hook и drop/reject в ruleset; не анализ достижимости или всех цепочек и namespaces.'],
   iptables_input:['iptables INPUT','Только политика цепочки INPUT IPv4; исключения и IPv6 отдельно не подтверждены.'],
   firewall: ['UFW', 'Активность UFW не подтверждает достаточность правил. Другие firewall здесь не проверяются.'],
-  config_mode: ['Права /etc/sing-box/config.json', 'Проверяются только Unix-биты доступа; ACL и владелец не проверены.'],
-  certificate: ['Сертификат Hysteria2', 'Только /etc/sing-box/naivka-hy2.crt. Проверяется срок окончания, без проверки доверия и имени. Сертификаты панелей и Caddy не проверены.'],
+  config_mode: ['Права /etc/sing-box/config.json', 'Unix-биты доступа; владелец и именованные ACL показаны отдельно.'],
+  certificate: ['Сертификат Hysteria2', 'Только /etc/sing-box/naivka-hy2.crt. Проверяется срок окончания, без проверки доверия и имени. Сертификаты панели и Caddy по фиксированным путям показаны отдельно.'],
   os_updates: ['Обновления ОС по локальному кэшу', 'Debian/Ubuntu: только существующие индексы APT. Полнота источников и security-обновления отдельно не проверены. Скачивание и установка не выполняются.'],
   local_listeners: ['Локальные TCP/UDP-порты', 'Привязки в сетевом окружении SSH. Firewall, NAT и другие сетевые пространства контейнеров могут менять доступность из интернета.'],
   external_ports: ['Порты, доступные из интернета', 'Внешнее сканирование не выполнялось. Наличие нестандартного порта само по себе не означает уязвимость.']
@@ -63,7 +63,7 @@ function vpsResults(report, history) {
   return h('div', null,
     h('p', { class: 'hint' }, 'SSH доступен · ' + new Date(report.checkedAt * 1000).toLocaleString('ru-RU')),
     h('table', { class: 'table' }, h('tbody', null, rows.map(([label, value]) => h('tr', null, h('td', null, label), h('td', null, value))))),
-    h('p', { class: 'hint' }, 'Нагрузка CPU — очередь задач, не процент использования. Скорость — разница счётчиков интерфейсов кроме lo по времени сервера; туннели могут учитывать трафик повторно. После перезагрузки, смены интерфейсов, сброса счётчиков или перерыва больше 5 минут скорость не вычисляется.'),
+    h('p', { class: 'hint' }, 'Нагрузка CPU — очередь задач, не процент использования. Скорость — разница счётчиков интерфейсов кроме lo по времени сервера; туннели могут учитывать трафик повторно. После перезагрузки, смены интерфейсов, снижения суммарных счётчиков или перерыва больше 5 минут скорость не вычисляется.'),
     h('h3', null, 'Службы и аудит безопасности'),
     h('p', { class: 'hint' }, 'Это частичная проверка, а не заключение о безопасности. Неизвестный результат обычно означает отсутствие службы, утилиты или прав.'),
     ...(report.checks || []).map(c => {
@@ -114,6 +114,7 @@ function vpsNetworkRate(report,history){
   if(!a||!b||!report.bootId||report.bootId!==prev.bootId||!Number.isFinite(b.network_set)||b.network_set!==a.network_set)return null;
   const dt=b.server_time-a.server_time,du=b.uptime-a.uptime;
   if(!(dt>0&&dt<=300&&du>0&&Math.abs(dt-du)<=3))return null;
+  if(!['network_rx','network_tx'].every(k=>Number.isSafeInteger(a[k])&&Number.isSafeInteger(b[k])))return null;
   const diff=['network_rx','network_tx'].map(k=>b[k]-a[k]);
   return diff.every(n=>Number.isFinite(n)&&n>=0)?diff.map(n=>n/dt):null;
 }
