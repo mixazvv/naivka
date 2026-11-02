@@ -890,7 +890,8 @@ const Pet = (() => {
     }, 700);
   }
   // Курсор задержался на коте — ластится, а если давно не гладили — просит погладить.
-  function hoverStart() {
+  function hoverStart(e) {
+    if(game?.kind==='hide'){gamePointer(e);return;}
     stopGame();
     hovering = true;
     cancel(hoverTimer);
@@ -910,7 +911,7 @@ const Pet = (() => {
   // ---------- ласка и тычки ----------
   let strokes = 0, strokeAt = 0, lastX = null, lastPurr = 0, petCount = 0;
   function pet(e) {
-    if (press) return;
+    if (press || game) return;
     if (lastX != null && Math.abs(e.clientX - lastX) > 3) {
       const now = performance.now();
       if (now - strokeAt > 900) strokes = 0;
