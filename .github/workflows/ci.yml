@@ -25,6 +25,7 @@ jobs:
           node tests/pet-mind.cjs
           node tests/vps-ui.cjs
           node tests/server-scores.cjs
+          node tests/branch-geometry.cjs
           python3 scripts/sign-historical-releases.py --check-only
           python3 tests/historical-signatures.py
       - name: go vet

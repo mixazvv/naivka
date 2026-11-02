@@ -7,7 +7,9 @@
 const Branches = (() => {
   let box = null, cv = null, ctx = null, nodesEl = null, leavesEl = null, toastFn = null;
   let W = 0, H = 0, dpr = 1, raf = 0, ro = null;
-  let frameRect = null;
+  let frameRect = null, leavesVisible = false;
+  let geometryKey = "";
+  const geometries = new Map(), samples = new Map();
   let data = null;             // последнее состояние из app.js
   let dragOver = null;
   let dragging = false;        // что-то тащат (лист или программу с полки) — ветки показываются широкими дорожками
@@ -30,13 +32,17 @@ const Branches = (() => {
   const netPoint = () => [narrow() ? W - 40 : W - 155, H * .5];
   const rootPoint = () => [cx0(), H * .5];
   function geom(key) {
-    const c = rootPoint(), end = netPoint();
     const telegram = !!(br.tg?.active && br.tg.target > 0);
+    const signature = W + '|' + H + '|' + telegram;
+    if (signature !== geometryKey) { geometryKey = signature; geometries.clear(); samples.clear(); }
+    if (geometries.has(key)) return geometries.get(key);
+    const c = rootPoint(), end = netPoint();
     const y = { proxy: H * (telegram ? .32 : .24), direct: H * .54, zapret: H * .83, tg: H * .1 }[key];
     // Одинаковые X узлов и управляющих точек сохраняют порядок маршрутов на всём пути.
     const x = W * .5;
     const reach = Math.min(W * .16, (x - c[0]) * .55, (end[0] - x) * .5);
-    return [c, [c[0] + reach, c[1]], [x - reach, y], [x, y], [x + reach, y], [end[0] - reach, end[1]], end];
+    const curve = [c, [c[0] + reach, c[1]], [x - reach, y], [x, y], [x + reach, y], [end[0] - reach, end[1]], end];
+    geometries.set(key, curve); return curve;
   }
   const cubic = (p, t) => { const u = 1 - t; return [0, 1].map(i => u*u*u*p[0][i] + 3*u*u*t*p[1][i] + 3*u*t*t*p[2][i] + t*t*t*p[3][i]); };
   const cubicTan = (p, t) => { const u = 1 - t; return [0, 1].map(i => 3*u*u*(p[1][i]-p[0][i]) + 6*u*t*(p[2][i]-p[1][i]) + 3*t*t*(p[3][i]-p[2][i])); };
@@ -72,6 +78,7 @@ const Branches = (() => {
     box.querySelectorAll('.br-more').forEach(el => el.remove());
     box.classList.remove('branches');
     box = null; leaves.clear(); dragging = false; dragOver = null;
+    geometries.clear(); samples.clear(); geometryKey = '';
     for (const k in parts) delete parts[k];
   }
   function resize() {
@@ -387,20 +394,34 @@ const Branches = (() => {
     const name = v.startsWith('var(') ? v.slice(4, -1) : v;
     return cssCache[name] ??= getComputedStyle(box).getPropertyValue(name).trim() || '#888';
   }
+  // Centreline, normals and droop wave depend only on size/route geometry.
+  // Keep the same 81 samples and reuse outline buffers between animation frames.
+  function curveSamples(k) {
+    const p = geom(k);
+    if (!samples.has(k)) {
+      const points = [];
+      for (let i = 0; i <= 80; i++) {
+        const t = i / 80;
+        points.push({ t, point: bez(p, t), normal: norm(p, t), droop: Math.sin(Math.PI * t * 2) ** 2 * 14 });
+      }
+      samples.set(k, { points, L: [], R: [], w0: 0 });
+    }
+    return samples.get(k);
+  }
   function shape(k, time) {
-    const b = br[k], p = geom(k), steps = 80, until = Math.max(2, Math.floor(steps * b.grow));
+    const b = br[k], sampled = curveSamples(k), steps = 80, until = Math.max(2, Math.floor(steps * b.grow));
     const kb = Math.max(0, b.speed) / 1024;
     const w0 = b.thin ? 1.5 : b.active ? 2 + Math.min(1.6, Math.log2(kb + 1) * .2) : 1.5, w1 = Math.max(1, w0 * .5);
-    const L = [], R = [];
+    const { L, R, points } = sampled;
     for (let i = 0; i <= until; i++) {
-      const t = i / steps, pt = bez(p, t), n = norm(p, t);
-      // Геометрия остаётся стабильной; движение трафика показывают частицы.
-      const droop = b.droop * Math.sin(Math.PI * t * 2) ** 2 * 14;
-      const w = (w0 + (w1 - w0) * t) / 2;
-      L.push([pt[0] + n[0] * w, pt[1] + n[1] * w + droop]);
-      R.push([pt[0] - n[0] * w, pt[1] - n[1] * w + droop]);
+      const { t, point: pt, normal: n, droop: wave } = points[i];
+      const droop = b.droop * wave, w = (w0 + (w1 - w0) * t) / 2;
+      const left = L[i] || (L[i] = [0, 0]), right = R[i] || (R[i] = [0, 0]);
+      left[0] = pt[0] + n[0] * w; left[1] = pt[1] + n[1] * w + droop;
+      right[0] = pt[0] - n[0] * w; right[1] = pt[1] - n[1] * w + droop;
     }
-    return { L, R, w0 };
+    L.length = R.length = until + 1; sampled.w0 = w0;
+    return sampled;
   }
   function drawBranch(k, time) {
     const b = br[k];
@@ -423,7 +444,7 @@ const Branches = (() => {
     }
     // Hidden labels have no screen position. Do not draw stems towards the
     // zero rectangle returned by getBoundingClientRect() in compact mode.
-    if (b.grow > .6 && leavesEl.getClientRects().length) for (const lf of leaves.values()) if (lf.b === k && lf.base && !lf.over && lf.pos && !lf.el.classList.contains('drag') && lf.el.getClientRects().length) {
+    if (b.grow > .6 && leavesVisible) for (const lf of leaves.values()) if (lf.b === k && lf.base && !lf.over && lf.pos && !lf.el.classList.contains('drag') && lf.el.getClientRects().length) {
       // Короткая связь следует за меткой, включая CSS-переход при переносе.
       const rect = lf.el.getBoundingClientRect();
       const tip = [rect.left - frameRect.left + rect.width / 2, rect.top - frameRect.top + (lf.side > 0 ? 0 : rect.height)];
@@ -494,10 +515,12 @@ const Branches = (() => {
   const GROW_DELAY = { proxy: 250, tg: 450, zapret: 650, direct: 0 };
   let onAt = 0, lastPhase = '', lastFrame = 0, frameDt = 1 / 60;
   function frame(time) {
-    raf = !document.hidden && !reduce() ? requestAnimationFrame(frame) : 0;
+    raf = 0;
     if (!box || !box.isConnected || document.hidden || box.closest('[inert]') || !data) { lastFrame = 0; return; }
+    if (!reduce()) raf = requestAnimationFrame(frame);
     frameDt = lastFrame ? Math.min(.05, (time - lastFrame) / 1000) : 1 / 60; lastFrame = time;
-    frameRect = box.getBoundingClientRect();
+    leavesVisible = leavesEl.getClientRects().length > 0;
+    if (leavesVisible) frameRect = box.getBoundingClientRect();
     ctx.clearRect(0, 0, W, H);
     const since = performance.now() - onAt;
     for (const k in br) {
