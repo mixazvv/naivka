@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -184,5 +187,90 @@ func TestSubscriptionCommitAtomicAndPreviewOneUse(t *testing.T) {
 	_, e = a.commitSubscriptions(func(s *Settings) error { s.Subscriptions = nil; return nil })
 	if e == nil || len(a.settings.Subscriptions) != len(before.Subscriptions) {
 		t.Fatal("failed save committed")
+	}
+}
+
+func TestSubscriptionClientFormatNegotiation(t *testing.T) {
+	for _, plain := range []bool{false, true} {
+		calls := 0
+		hc := &http.Client{Transport: subscriptionTransport(func(r *http.Request) (*http.Response, error) {
+			calls++
+			body := subscriptionFixture
+			if !plain && r.UserAgent() == "Naivka" {
+				body = "<!doctype html><html>Subscription connection page</html>"
+			} else if !plain {
+				if !strings.Contains(r.UserAgent(), "v2rayNG/") {
+					t.Fatal("missing compatible client request")
+				}
+				body = base64.StdEncoding.EncodeToString([]byte(subscriptionFixture))
+			}
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+		})}
+		list, skipped, e := fetchSubscription(context.Background(), hc, "https://subscription.example.invalid/secret-token")
+		if e != nil || len(list) != 2 || skipped != 0 {
+			t.Fatal(e, len(list), skipped)
+		}
+		want := 2
+		if plain {
+			want = 1
+		}
+		if calls != want {
+			t.Fatal("unexpected number of requests", calls, want)
+		}
+	}
+}
+func TestSubscriptionAlternatePathAndSafeErrors(t *testing.T) {
+	goodCalls, badCalls := 0, 0
+	bad := &http.Client{Transport: subscriptionTransport(func(r *http.Request) (*http.Response, error) {
+		badCalls++
+		return nil, &net.DNSError{Err: "no such host", Name: "private-host-secret-token"}
+	})}
+	good := &http.Client{Transport: subscriptionTransport(func(r *http.Request) (*http.Response, error) {
+		goodCalls++
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(subscriptionFixture)), Request: r}, nil
+	})}
+	list, _, e := fetchAvailableSubscription(context.Background(), []*http.Client{bad, good}, "https://subscription.example.invalid/secret-token")
+	if e != nil || len(list) != 2 || badCalls != 1 || goodCalls != 1 {
+		t.Fatal(e, badCalls, goodCalls)
+	}
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{&net.DNSError{Err: "no such host", Name: "private-secret-token"}, "DNS"},
+		{context.DeadlineExceeded, "вовремя"},
+		{x509.HostnameError{Host: "private-secret-token"}, "TLS"},
+		{context.Canceled, "отменена"},
+		{errors.New("private-secret-token"), "соединение"},
+	}
+	for _, tc := range cases {
+		message := subscriptionNetworkFailure(&url.Error{Op: "Get", URL: "https://private/secret-token", Err: tc.err}).Error()
+		if !strings.Contains(message, tc.want) || strings.Contains(message, "private") || strings.Contains(message, "secret-token") {
+			t.Fatal(message)
+		}
+	}
+	blockedCalls := 0
+	blocked := &http.Client{Transport: subscriptionTransport(func(r *http.Request) (*http.Response, error) {
+		blockedCalls++
+		return &http.Response{StatusCode: 429, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("private-token")), Request: r}, nil
+	})}
+	goodCalls = 0
+	_, _, e = fetchAvailableSubscription(context.Background(), []*http.Client{blocked, good}, "https://subscription.example.invalid/secret-token")
+	if e == nil || blockedCalls != 1 || goodCalls != 0 {
+		t.Fatal("rate limit retried", e, blockedCalls, goodCalls)
+	}
+}
+func TestSubscriptionCompatibilityDoesNotDowngradeTLS(t *testing.T) {
+	calls := 0
+	hc := &http.Client{Transport: subscriptionTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.URL.Scheme != "https" {
+			t.Fatal("insecure request")
+		}
+		return &http.Response{StatusCode: 302, Header: http.Header{"Location": []string{"http://subscription.example.invalid/secret-token"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+	})}
+	_, _, e := fetchSubscription(context.Background(), hc, "https://subscription.example.invalid/secret-token")
+	if e == nil || calls != 1 || strings.Contains(e.Error(), "secret-token") {
+		t.Fatal(e, calls)
 	}
 }
