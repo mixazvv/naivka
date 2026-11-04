@@ -261,6 +261,7 @@ func (a *App) commitSubscriptions(change func(*Settings) error) (*Settings, erro
 		return nil, errors.New("Не удалось сохранить подписку; прежний список сохранён")
 	}
 	changed := a.settings.fingerprint() != next.fingerprint()
+	result := next.clone()
 	a.settings = next
 	a.mu.Unlock()
 	if changed {
@@ -269,7 +270,7 @@ func (a *App) commitSubscriptions(change func(*Settings) error) (*Settings, erro
 		_ = a.repair.stop("")
 		a.scheduleAutoApply()
 	}
-	return next.clone(), nil
+	return result, nil
 }
 func (a *App) apiSubscriptionPreview(r *http.Request) (any, error) {
 	var req struct {
