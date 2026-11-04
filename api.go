@@ -142,6 +142,11 @@ func (a *App) routes() http.Handler {
 	})
 	api("POST", "/api/settings", a.apiSaveSettings)
 	api("POST", "/api/import", a.apiImport)
+	api("POST", "/api/subscriptions/preview", a.apiSubscriptionPreview)
+	api("POST", "/api/subscriptions/add", a.apiSubscriptionAdd)
+	api("POST", "/api/subscriptions/update", a.apiSubscriptionUpdate)
+	api("POST", "/api/subscriptions/remove", a.apiSubscriptionRemove)
+	api("POST", "/api/subscriptions/auto", a.apiSubscriptionAuto)
 	api("POST", "/api/connect", func(*http.Request) (any, error) { return nil, a.connect() })
 	api("POST", "/api/disconnect", func(*http.Request) (any, error) {
 		a.disconnect()
@@ -554,6 +559,9 @@ func (a *App) apiSaveSettings(r *http.Request) (any, error) {
 	if err := decode(r, ns); err != nil {
 		return nil, err
 	}
+	a.mu.Lock()
+	mergeSubscriptionSettings(ns, a.settings)
+	a.mu.Unlock()
 	ns.normalize()
 	if err := ns.Validate(); err != nil {
 		return nil, err

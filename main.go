@@ -66,10 +66,11 @@ type App struct {
 	ui      uiHost         // окно и значок в трее (зависит от платформы)
 	sleep   sleepState     // сон и пробуждение компьютера
 
-	candidate *updateHandshake
-	transfer  *updateTransfer // guarded by life.intentMu
-	repair    repairState
-	quitOnce  sync.Once
+	candidate     *updateHandshake
+	transfer      *updateTransfer // guarded by life.intentMu
+	repair        repairState
+	quitOnce      sync.Once
+	subscriptions subscriptionState
 }
 
 type instanceInfo struct {
@@ -242,6 +243,7 @@ func main() {
 	go a.dnsWatch()
 	go a.youtubeDNSWatch()
 	go a.smart.run()
+	go a.subscriptionLoop()
 	go a.updatesLoop()
 	go a.wl.loop()
 	go fixUnsafeAutostart(s.clone())

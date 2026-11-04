@@ -455,7 +455,8 @@ async function saveNow() {
   if (!savePending) return true;
   savePending = false;
   try {
-    await api('/api/settings', S);
+    const saved=await api('/api/settings', S);
+    SubscriptionsUI.adopt(saved);
     refreshState();
     return true;
   } catch (e) {
@@ -561,6 +562,7 @@ async function tick() {
     refreshIP(false);
     if (view === 'diag' && diagTab === 'conns' && running) await refreshConns();
     if (view === 'diag' && diagTab === 'logs') await refreshLogs();
+    if(view==='servers'&&tickN%30===0)SubscriptionsUI.sync();
     if (view === 'bypass' || tickN % 4 === 0) await refreshAddons();
     if (S && S.wl && S.wl.enabled && (view === 'servers' ? tickN % 3 === 0 : tickN % 20 === 2)) { await refreshWL(); if (view === 'servers') renderServers(); }
     if (view === 'diag' && diagTab === 'speed') await refreshSpeed();
@@ -2485,8 +2487,10 @@ function viewServers() {
       h('div', { class: 'row' },
         h('button', { class: 'btn', id: 'testAll', onclick: () => testServers(''), title: 'Проверить пинг всех серверов' }, 'Проверить все'),
         h('button', { class: 'btn', onclick: importLinksDialog }, 'Вставить ссылки'),
+        h('button',{class:'btn',onclick:()=>SubscriptionsUI.add()},'Добавить подписку'),
         h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
     h('input',{type:'search',id:'serverSearch',placeholder:'Найти сервер по имени, адресу или протоколу','aria-label':'Поиск серверов',oninput:()=>renderServers(true)}),
+    h('div',{class:'subscription-list',id:'subscriptionList'}),
     h('div', { class: 'scards server-list', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
     h('p', { class: 'hint mt' }, 'Строки можно перетаскивать вверх и вниз; звёздочка поднимает сервер в избранное.'),
     h('div', { id: 'wlBox' }));
@@ -2551,6 +2555,7 @@ function srvCardBase(id, cls, kids, opts = {}) {
 }
 
 function renderServers(force) {
+  SubscriptionsUI.render();
   const list = $('#srvList');
   if (!list || (dragId && !force)) return;
   renderOwn();
@@ -2595,7 +2600,7 @@ function renderServers(force) {
         h('div', { class: 'scard-top' },
           h('span', { class: 'scard-flag' }, cc ? flag(cc, true) : h('span', { class: 'scard-ico' }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: ICONS.globe })))),
           h('div', { class: 'scard-title' }, h('b', { title: sv.name }, sv.name),
-            h('small', { title: `${sv.host}:${sv.port}` }, h('span', { class: 'proto' }, protoName(sv)))),
+            h('small', { title: `${sv.host}:${sv.port}` }, h('span', { class: 'proto' }, protoName(sv),sv.subscriptionId?' · '+((S.subscriptions||[]).find(x=>x.id===sv.subscriptionId)?.name||'Подписка'):''))),
           // Действия — значками, появляются при наведении: карточка компактнее, адрес — во всплывающей подсказке.
           h('div', { class: 'scard-tools' },
             h('button', { class: 'btn small', type:'button',onclick:()=>WorkspaceUI.server(sv) }, 'Подробнее')),

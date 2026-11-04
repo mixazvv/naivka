@@ -34,3 +34,5 @@
 @media(max-width:1000px){.stage-inner.home-compact{height:auto;min-height:0;grid-template-rows:repeat(7,auto)}.home-compact .lanes-box{flex:0 0 auto}}
 
 .home-compact :is(button,input,summary){scroll-margin-block-start:150px}@media(max-width:540px){.home-compact :is(button,input,summary){scroll-margin-block-start:250px}}
+
+.subscription-list{display:grid;gap:8px;margin-bottom:12px}.subscription-list:empty{display:none}.subscription-row>summary{cursor:pointer;font-weight:600;overflow-wrap:anywhere}.subscription-row .row{flex-wrap:wrap;gap:10px}.subscription-row .check{margin:0}.subscription-preview{max-height:240px;overflow:auto;overflow-wrap:anywhere}.subscription-row .err-text{overflow-wrap:anywhere}
