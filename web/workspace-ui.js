@@ -7,7 +7,7 @@ const WorkspaceUI=(()=>{
     if(!root||!S)return;
     const was=root.classList.contains('home-compact'),small=compact();root.classList.toggle('home-compact',small);root.classList.toggle('diagram-expanded',!!prefs().expanded);
     const params=root.querySelector('.home-parameters');if(params){if(!small)params.open=true;else if(!was)params.open=false;}
-    const power=root.querySelector('#connectBtn');if(power){power.tabIndex=small?-1:0;if(small)power.setAttribute('aria-hidden','true');else power.removeAttribute('aria-hidden');}
+    const power=root.querySelector('#connectBtn');if(power){power.tabIndex=0;power.removeAttribute('aria-hidden');}
     const expand=root.querySelector('#diagramExpand');if(expand){expand.textContent=prefs().expanded?'Свернуть схему':'Развернуть схему';expand.setAttribute('aria-expanded',String(!!prefs().expanded));}
   }
   function home(root){

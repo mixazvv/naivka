@@ -9,8 +9,8 @@
 .home-compact>.home-pulse{grid-row:4;grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;min-width:0}.home-pulse>.btn{font-size:12px;white-space:normal;text-align:left}
 .home-compact>.lanes-stage{grid-row:5;grid-column:1;margin:0;min-width:0;min-height:0;height:auto}
 .home-compact .lanes-box{height:270px!important;min-height:0!important;max-height:none!important}.home-compact.diagram-expanded .lanes-box{height:clamp(360px,45vh,520px)!important}
-.home-compact .lanes-box .power{pointer-events:none}.home-compact .br-node.comp .br-txt{display:none}
-.home-compact:not(.diagram-expanded) .br-leaves,.home-compact:not(.diagram-expanded) .br-more,.home-compact:not(.diagram-expanded) .route-services,.home-compact:not(.diagram-expanded) #procShelf{display:none}
+.home-compact .br-node.comp .br-txt{display:none}
+.home-compact:not(.diagram-expanded) #procShelf{display:none}
 .home-compact>.stage-tiles{display:none}.home-compact>.stage-ready{grid-row:6;grid-column:1/-1}.home-compact>.live-col{display:flex;grid-row:5;grid-column:2;max-height:none;align-self:start;padding:14px}
 .home-compact .live-head .seg{margin-top:8px}.home-compact .live-hint{margin-top:6px}.home-compact .live-row{min-width:0}.home-compact .live-speed{display:block}.home-compact .live-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .home-custom .home-pulse,.stage-inner:not(.home-compact) .home-pulse{display:none}.stage-inner:not(.home-compact) .home-parameters>summary{display:none}
