@@ -35,17 +35,23 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
    if(width>1000){const fill=await page.evaluate(()=>{const main=document.querySelector('#main').getBoundingClientRect(),card=document.querySelector('#lanesCard').getBoundingClientRect(),box=document.querySelector('#lanesBox').getBoundingClientRect();return {gap:main.bottom-card.bottom,inside:card.bottom-box.bottom};});assert(fill.gap<=65,`${theme}/${width}: unused height below diagram: ${fill.gap}`);assert(fill.inside<=85,`${theme}/${width}: unused height inside diagram card: ${fill.inside}`);}
    if(process.env.CONTROL_SCREENSHOTS&&[1920,1280,320].includes(width))await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,`home-${theme}-${width}.png`)});
   }
-  // Capture the actual canvas operation used by leaf stems. In collapsed
-  // mode labels have no DOM rectangle, so drawing towards them creates the
-  // spurious curves to the top-left corner reported in the screenshot.
+  // Visible site/process labels and the computer button remain functional
+  // in compact mode. Hidden labels must still never leave stray canvas stems.
   await page.setViewportSize({width:1920,height:1080});await page.evaluate(()=>{
    S.theme='dark';S.telegram.enabled=true;S.zapret.enabled=true;AD.telegram.running=true;AD.zapret.running=true;applyTheme();updateStatusNow();renderLanes();
    window.stemCalls=0;const original=CanvasRenderingContext2D.prototype.quadraticCurveTo;
    CanvasRenderingContext2D.prototype.quadraticCurveTo=function(...args){if(this.canvas.classList.contains('br-canvas'))stemCalls++;return original.apply(this,args);};
   });
-  await page.waitForTimeout(1600);assert.equal(await page.evaluate(()=>stemCalls),0,'hidden labels must not leave canvas stems');assert.equal(await page.locator('.br-leaves').isVisible(),false);
-  await page.getByRole('button',{name:'Развернуть схему',exact:true}).click();await page.waitForFunction(()=>stemCalls>0);assert(await page.locator('.br-leaves').isVisible());
-  await page.getByRole('button',{name:'Свернуть схему',exact:true}).click();await page.evaluate(()=>{stemCalls=0;});await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>stemCalls),0,'collapsing must remove stems again');
+  await page.waitForFunction(()=>stemCalls>0);assert(await page.locator('.br-leaves').isVisible());
+  await page.waitForFunction(()=>[...document.querySelectorAll('.br-leaf[data-kind="process"]')].some(e=>e.dataset.hidden==='false'&&e.getBoundingClientRect().width>0));
+  assert(await page.locator('.br-leaf[data-kind="site"][data-hidden="false"]').count()>0,'no site labels in compact view');
+  await page.evaluate(()=>{document.querySelector('.br-leaves').style.display='none';stemCalls=0;});await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>stemCalls),0,'hidden labels must not leave canvas stems');
+  await page.evaluate(()=>{document.querySelector('.br-leaves').style.removeProperty('display');renderLanes();});await page.waitForFunction(()=>stemCalls>0);
+  await page.getByRole('button',{name:'Развернуть схему',exact:true}).click();assert(await page.locator('.br-leaves').isVisible());
+  await page.getByRole('button',{name:'Свернуть схему',exact:true}).click();assert(await page.locator('.br-leaves').isVisible());
+  const computer=page.locator('#connectBtn');assert.equal(await computer.getAttribute('aria-hidden'),null);assert.equal(await computer.evaluate(e=>e.tabIndex),0);
+  const disconnects=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length);await computer.click();await page.waitForFunction(()=>!busy);assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length),disconnects+1);assert.equal(await page.evaluate(()=>ST.running),false);
+  const connects=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/connect').length);await computer.focus();await page.keyboard.press('Enter');await page.waitForFunction(()=>!busy);assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/connect').length),connects+1);assert.equal(await page.evaluate(()=>ST.running),true);
   await page.evaluate(()=>{window.paintCalls=0;const clear=CanvasRenderingContext2D.prototype.clearRect;CanvasRenderingContext2D.prototype.clearRect=function(...args){if(this.canvas.classList.contains('br-canvas'))paintCalls++;return clear.apply(this,args);};main.setAttribute('inert','');renderLanes();});await page.waitForTimeout(200);assert.equal(await page.evaluate(()=>paintCalls),0,'covered main continues painting');
   await page.evaluate(()=>{main.removeAttribute('inert');renderLanes();});await page.waitForFunction(()=>paintCalls>0);
   await page.setViewportSize({width:1280,height:720});await page.evaluate(()=>{S.telegram.enabled=false;S.zapret.enabled=false;AD.telegram.running=false;AD.zapret.running=false;updateStatusNow();});
