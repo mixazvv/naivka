@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +20,41 @@ import (
 
 const subscriptionLimit = 4 << 20
 const subscriptionInterval = 6 * time.Hour
+
+var errSubscriptionFormat = errors.New("Сервис не вернул список серверов. Поддерживаются списки ссылок и Base64; HTML, Clash YAML и sing-box JSON пока не поддерживаются")
+
+type subscriptionNetworkError struct{ message string }
+
+func (e *subscriptionNetworkError) Error() string {
+	return e.message + "; прежние серверы сохранены"
+}
+
+type subscriptionHTTPError struct{ status int }
+
+func (e *subscriptionHTTPError) Error() string {
+	return fmt.Sprintf("Сервис подписки ответил HTTP %d; прежние серверы сохранены", e.status)
+}
+
+// Never expose url.Error: its string contains the complete private subscription URL.
+func subscriptionNetworkFailure(err error) error {
+	var dns *net.DNSError
+	var timeout net.Error
+	var unknown x509.UnknownAuthorityError
+	var hostname x509.HostnameError
+	var invalid x509.CertificateInvalidError
+	switch {
+	case errors.As(err, &dns):
+		return &subscriptionNetworkError{"DNS не смог определить адрес сервиса подписки"}
+	case errors.As(err, &unknown) || errors.As(err, &hostname) || errors.As(err, &invalid):
+		return &subscriptionNetworkError{"Не удалось проверить TLS-сертификат сервиса подписки. Проверьте дату Windows и сертификаты системы"}
+	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()):
+		return &subscriptionNetworkError{"Сервис подписки не ответил вовремя"}
+	case errors.Is(err, context.Canceled):
+		return &subscriptionNetworkError{"Загрузка подписки отменена"}
+	default:
+		return &subscriptionNetworkError{"Не удалось установить соединение с сервисом подписки"}
+	}
+}
 
 type Subscription struct {
 	ID      string `json:"id"`
@@ -87,7 +124,7 @@ func parseSubscription(body string) ([]Server, int, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, len(errs), errors.New("Серверы не найдены. Поддерживаются списки ссылок и Base64; HTML, Clash YAML и sing-box JSON пока не поддерживаются")
+		return nil, len(errs), errSubscriptionFormat
 	}
 	if len(out) > 500 {
 		return nil, 0, errors.New("В одной подписке допускается до 500 серверов")
@@ -113,13 +150,21 @@ func fetchSubscription(ctx context.Context, hc *http.Client, raw string) ([]Serv
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	// Some subscription panels return a landing page to unknown clients, and
+	// URI/Base64 profiles to clients that advertise a compatible profile format.
+	servers, skipped, e := requestSubscription(ctx, hc, u, "Naivka")
+	if errors.Is(e, errSubscriptionFormat) && ctx.Err() == nil {
+		return requestSubscription(ctx, hc, u, "v2rayNG/1.10.11 (Naivka)")
+	}
+	return servers, skipped, e
+}
+func requestSubscription(ctx context.Context, hc *http.Client, u, agent string) ([]Server, int, error) {
 	client := *hc
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return errors.New("redirect limit")
 		}
-		_, e := subscriptionURL(req.URL.String())
-		if e != nil {
+		if _, e := subscriptionURL(req.URL.String()); e != nil {
 			return e
 		}
 		if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
@@ -131,28 +176,53 @@ func fetchSubscription(ctx context.Context, hc *http.Client, raw string) ([]Serv
 	if e != nil {
 		return nil, 0, errors.New("Не удалось создать запрос подписки")
 	}
-	req.Header.Set("User-Agent", "Naivka")
+	req.Header.Set("User-Agent", agent)
 	req.Header.Set("Accept", "text/plain, application/octet-stream;q=0.9, */*;q=0.5")
 	resp, e := client.Do(req)
 	if e != nil {
-		return nil, 0, errors.New("Не удалось загрузить подписку. Проверьте ссылку и соединение; прежние серверы сохранены")
+		return nil, 0, subscriptionNetworkFailure(e)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, 0, fmt.Errorf("Сервис подписки ответил HTTP %d; прежние серверы сохранены", resp.StatusCode)
+		return nil, 0, &subscriptionHTTPError{resp.StatusCode}
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, subscriptionLimit+1))
 	if e != nil {
-		return nil, 0, errors.New("Загрузка подписки прервалась; прежние серверы сохранены")
+		return nil, 0, subscriptionNetworkFailure(e)
 	}
 	if len(b) > subscriptionLimit {
 		return nil, 0, errors.New("Подписка больше 4 МБ; прежние серверы сохранены")
 	}
 	return parseSubscription(string(b))
 }
-func (a *App) subscriptionClient() *http.Client { // Use the explicit local proxy, never the OS proxy (which may point at us).
-	port := a.core.SystemProxyPort()
-	return geoClient(port)
+func fetchAvailableSubscription(ctx context.Context, clients []*http.Client, raw string) ([]Server, int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	var last error
+	for _, client := range clients {
+		servers, skipped, e := fetchSubscription(ctx, client, raw)
+		if e == nil {
+			return servers, skipped, nil
+		}
+		last = e
+		var network *subscriptionNetworkError
+		var status *subscriptionHTTPError
+		retry := errors.As(e, &network) || errors.Is(e, errSubscriptionFormat) || (errors.As(e, &status) && (status.status == 403 || status.status >= 500))
+		if !retry || ctx.Err() != nil {
+			break
+		}
+	}
+	return nil, 0, last
+}
+func (a *App) fetchUserSubscription(ctx context.Context, raw string) ([]Server, int, error) {
+	primary := a.core.SystemProxyPort()
+	clients := []*http.Client{geoClient(primary)}
+	if primary > 0 {
+		clients = append(clients, geoClient(0))
+	} else if _, proxy := a.core.ProbePorts(); proxy > 0 {
+		clients = append(clients, geoClient(proxy))
+	}
+	return fetchAvailableSubscription(ctx, clients, raw)
 }
 
 // Managed entries are authoritative. A stale settings form must not undo a
@@ -287,7 +357,7 @@ func (a *App) apiSubscriptionPreview(r *http.Request) (any, error) {
 	}
 	a.subscriptions.mu.Lock()
 	defer a.subscriptions.mu.Unlock()
-	servers, skipped, e := fetchSubscription(r.Context(), a.subscriptionClient(), u)
+	servers, skipped, e := a.fetchUserSubscription(r.Context(), u)
 	if e != nil {
 		return nil, e
 	}
@@ -374,7 +444,7 @@ func (a *App) updateSubscription(ctx context.Context, id string) (*Settings, err
 	if sub == nil {
 		return nil, errors.New("Подписка не найдена")
 	}
-	servers, skipped, fetchErr := fetchSubscription(ctx, a.subscriptionClient(), sub.URL)
+	servers, skipped, fetchErr := a.fetchUserSubscription(ctx, sub.URL)
 	if fetchErr == nil && skipped > 0 {
 		fetchErr = errors.New("Подписка содержит неподдерживаемые или повреждённые строки; прежний список сохранён")
 	}
