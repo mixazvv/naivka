@@ -45,7 +45,7 @@ const SubscriptionsUI=(()=>{
    try{const r=await api('/api/subscriptions/preview',{url:url.value,name:name.value,auto:auto.checked});if(!dialog.isConnected)return;token=r.token;preview.replaceChildren(h('div',null,h('b',null,'Найдено серверов: '+r.count),h('ul',null,r.names.slice(0,8).map(n=>h('li',null,n))),r.count>8?h('p',{class:'hint'},'Ещё '+(r.count-8)):null));error.textContent=r.skipped?'Пропущено неподдерживаемых строк: '+r.skipped:'';confirm.disabled=false;}
    catch(e){error.textContent=e.message;}finally{working=false;load.disabled=false;url.disabled=name.disabled=auto.disabled=false;}
   }},'Посмотреть серверы');
-  const dialog=openDialog(h('h2',null,'Добавить подписку'),h('label',{class:'field'},h('span',null,'Ссылка на подписку'),url),h('label',{class:'field'},h('span',null,'Название'),name),h('label',{class:'check'},auto,'Автообновление раз в 6 часов'),h('p',{class:'hint'},'Список ссылок или Base64. Ссылка может содержать личный ключ — не публикуйте её.'),error,preview,h('div',{class:'row end'},h('button',{class:'btn',onclick:()=>dialog.close()},'Отмена'),load,confirm));url.focus();
+  const dialog=openDialog(h('h2',null,'Добавить подписку'),h('label',{class:'field'},h('span',null,'Ссылка на подписку'),url),h('label',{class:'field'},h('span',null,'Название'),name),h('label',{class:'check'},auto,'Автообновление раз в 6 часов'),h('p',{class:'hint'},'Список ссылок, Base64 или Xray JSON. Ссылка может содержать личный ключ — не публикуйте её.'),error,preview,h('div',{class:'row end'},h('button',{class:'btn',onclick:()=>dialog.close()},'Отмена'),load,confirm));url.focus();
  }
  return{add,render,adopt,sync};
 })();

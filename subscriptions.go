@@ -21,7 +21,7 @@ import (
 const subscriptionLimit = 4 << 20
 const subscriptionInterval = 6 * time.Hour
 
-var errSubscriptionFormat = errors.New("Сервис не вернул список серверов. Поддерживаются списки ссылок и Base64; HTML, Clash YAML и sing-box JSON пока не поддерживаются")
+var errSubscriptionFormat = errors.New("Сервис не вернул список серверов. Поддерживаются списки ссылок, Base64 и Xray JSON (VLESS, Trojan, Shadowsocks); HTML, Clash YAML и sing-box JSON пока не поддерживаются")
 
 type subscriptionNetworkError struct{ message string }
 
@@ -97,17 +97,25 @@ func parseSubscription(body string) ([]Server, int, error) {
 			}
 		}
 	}
-	var lines []string
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "#") {
-			lines = append(lines, line)
+	var parsed []Server
+	skipped := 0
+	if strings.HasPrefix(strings.TrimSpace(text), "{") || strings.HasPrefix(strings.TrimSpace(text), "[") {
+		parsed, skipped = parseXraySubscription(text)
+	} else {
+		var lines []string
+		for _, line := range strings.Split(text, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") {
+				lines = append(lines, line)
+			}
 		}
+		if len(lines) > 2000 {
+			return nil, 0, errors.New("В подписке слишком много строк")
+		}
+		var errs []string
+		parsed, errs = ParseShareLinks(strings.Join(lines, "\n"))
+		skipped = len(errs)
 	}
-	if len(lines) > 2000 {
-		return nil, 0, errors.New("В подписке слишком много строк")
-	}
-	parsed, errs := ParseShareLinks(strings.Join(lines, "\n"))
 	out := []Server{}
 	seen := map[string]bool{}
 	for _, sv := range parsed {
@@ -124,12 +132,12 @@ func parseSubscription(body string) ([]Server, int, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, len(errs), errSubscriptionFormat
+		return nil, skipped, errSubscriptionFormat
 	}
 	if len(out) > 500 {
 		return nil, 0, errors.New("В одной подписке допускается до 500 серверов")
 	}
-	return out, len(errs), nil
+	return out, skipped, nil
 }
 func subscriptionKey(s Server) string {
 	s.ID = ""
