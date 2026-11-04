@@ -33,6 +33,9 @@ func sealSettings(s *Settings) (*Settings, error) {
 	}
 	seal(&c.Share.Password)
 	seal(&c.Telegram.Secret)
+	for i := range c.Subscriptions {
+		seal(&c.Subscriptions[i].URL)
+	}
 	for i := range c.Panels {
 		// Секретный путь и логин панели — такая же тайна, как пароль: по ним панель находят и подбирают.
 		for _, p := range []*string{&c.Panels[i].Pass, &c.Panels[i].Path, &c.Panels[i].User} {
@@ -52,6 +55,17 @@ func sealSettings(s *Settings) (*Settings, error) {
 
 func openSettings(s *Settings) []string {
 	var problems []string
+	for i := range s.Subscriptions {
+		if strings.HasPrefix(s.Subscriptions[i].URL, secretPrefix) {
+			plain, err := unprotectSecret(s.Subscriptions[i].URL)
+			if err != nil {
+				problems = append(problems, "не удалось расшифровать ссылку подписки")
+				s.Subscriptions[i].URL = ""
+			} else {
+				s.Subscriptions[i].URL = plain
+			}
+		}
+	}
 	if strings.HasPrefix(s.Share.Password, secretPrefix) {
 		if plain, err := unprotectSecret(s.Share.Password); err == nil {
 			s.Share.Password = plain

@@ -21,12 +21,13 @@ import (
 
 // Server — один сервер.
 type Server struct {
-	ID   string `json:"id"`
-	Type string `json:"type"` // naive | vless | hysteria2 | tuic | trojan | shadowsocks | anytls
-	Name string `json:"name"`
-	Host string `json:"host"`
-	Port int    `json:"port"`
-	SNI  string `json:"sni"` // если пусто — используется Host
+	SubscriptionID string `json:"subscriptionId,omitempty"`
+	ID             string `json:"id"`
+	Type           string `json:"type"` // naive | vless | hysteria2 | tuic | trojan | shadowsocks | anytls
+	Name           string `json:"name"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	SNI            string `json:"sni"` // если пусто — используется Host
 
 	// Naive
 	Username string `json:"username"`
@@ -213,11 +214,12 @@ func (e *ExperienceSettings) normalize() {
 }
 
 type Settings struct {
-	PetMemory  PetMemory          `json:"petMemory"`
-	Layout     HomeLayout         `json:"layout"`
-	Experience ExperienceSettings `json:"experience"`
-	Servers    []Server           `json:"servers"`
-	Selected   string             `json:"selected"` // "auto" или ID сервера
+	Subscriptions []Subscription     `json:"subscriptions,omitempty"`
+	PetMemory     PetMemory          `json:"petMemory"`
+	Layout        HomeLayout         `json:"layout"`
+	Experience    ExperienceSettings `json:"experience"`
+	Servers       []Server           `json:"servers"`
+	Selected      string             `json:"selected"` // "auto" или ID сервера
 
 	Mode string `json:"mode"` // proxy | tun
 	// ProxyPAC — системный прокси через PAC-скрипт: без Naivka (сбой, выключение) интернет идёт напрямую.
@@ -487,6 +489,7 @@ func (s *Settings) needsAdmin() bool {
 // fingerprint — всё, что требует перезапуска ядра (выбор сервера применяется на лету).
 func (s *Settings) fingerprint() string {
 	c := s.clone()
+	c.Subscriptions = nil
 	c.Selected = ""
 	c.AutoConnect = false
 	c.ExitWithWindow = false
@@ -500,6 +503,7 @@ func (s *Settings) fingerprint() string {
 	c.Mascot, c.PetTaskbar, c.PetHopOff, c.Achievements, c.Achv, c.PetSpot = false, false, false, false, nil, nil
 	// Порядок и «избранное» на ядро не влияют: автовыбор всё равно берёт самый быстрый.
 	for i := range c.Servers {
+		c.Servers[i].SubscriptionID = ""
 		c.Servers[i].Fav = false
 	}
 	sort.Slice(c.Servers, func(i, j int) bool { return c.Servers[i].ID < c.Servers[j].ID })
