@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -15,11 +16,14 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
 const subscriptionLimit = 4 << 20
 const subscriptionInterval = 6 * time.Hour
+
+var errSubscriptionRedirect = errors.New("Сервис перенаправляет запрос на недопустимый адрес или делает слишком много перенаправлений")
 
 var errSubscriptionFormat = errors.New("Сервис не вернул список серверов. Поддерживаются списки ссылок, Base64 и Xray JSON (VLESS, Trojan, Shadowsocks); HTML, Clash YAML и sing-box JSON пока не поддерживаются")
 
@@ -42,7 +46,13 @@ func subscriptionNetworkFailure(err error) error {
 	var unknown x509.UnknownAuthorityError
 	var hostname x509.HostnameError
 	var invalid x509.CertificateInvalidError
+	var record tls.RecordHeaderError
+	var system syscall.Errno
 	switch {
+	case errors.Is(err, errSubscriptionRedirect):
+		return &subscriptionNetworkError{errSubscriptionRedirect.Error()}
+	case errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF):
+		return &subscriptionNetworkError{"Соединение оборвалось до получения полного ответа (EOF)"}
 	case errors.As(err, &dns):
 		return &subscriptionNetworkError{"DNS не смог определить адрес сервиса подписки"}
 	case errors.As(err, &unknown) || errors.As(err, &hostname) || errors.As(err, &invalid):
@@ -51,12 +61,17 @@ func subscriptionNetworkFailure(err error) error {
 		return &subscriptionNetworkError{"Сервис подписки не ответил вовремя"}
 	case errors.Is(err, context.Canceled):
 		return &subscriptionNetworkError{"Загрузка подписки отменена"}
+	case errors.As(err, &record):
+		return &subscriptionNetworkError{"Сервис вернул некорректный TLS-ответ"}
+	case errors.As(err, &system):
+		return &subscriptionNetworkError{fmt.Sprintf("Сбой соединения при загрузке подписки (системный код %d)", system)}
 	default:
 		return &subscriptionNetworkError{"Не удалось установить соединение с сервисом подписки"}
 	}
 }
 
 type Subscription struct {
+	Client  string `json:"client,omitempty"`
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	URL     string `json:"url"`
@@ -151,7 +166,11 @@ func subscriptionKey(s Server) string {
 func subscriptionEndpoint(s Server) string {
 	return strings.Join([]string{s.Type, strings.ToLower(s.Host), fmt.Sprint(s.Port), s.Transport, s.Path, s.ServiceName, s.SNI, s.Username}, "|")
 }
-func fetchSubscription(ctx context.Context, hc *http.Client, raw string) ([]Server, int, error) {
+func fetchSubscription(ctx context.Context, hc *http.Client, raw string, options ...subscriptionFetchOptions) ([]Server, int, error) {
+	var opt subscriptionFetchOptions
+	if len(options) > 0 {
+		opt = options[0]
+	}
 	u, e := subscriptionURL(raw)
 	if e != nil {
 		return nil, 0, e
@@ -160,23 +179,33 @@ func fetchSubscription(ctx context.Context, hc *http.Client, raw string) ([]Serv
 	defer cancel()
 	// Some subscription panels return a landing page to unknown clients, and
 	// URI/Base64 profiles to clients that advertise a compatible profile format.
-	servers, skipped, e := requestSubscription(ctx, hc, u, "Naivka")
-	if errors.Is(e, errSubscriptionFormat) && ctx.Err() == nil {
-		return requestSubscription(ctx, hc, u, "v2rayNG/1.10.11 (Naivka)")
+	agent := "Naivka"
+	if opt.client == "happ" {
+		agent = "Happ/3.23.0"
+	}
+	servers, skipped, e := requestSubscription(ctx, hc, u, agent, opt)
+	var status *subscriptionHTTPError
+	if opt.client != "happ" && (errors.Is(e, errSubscriptionFormat) || (errors.As(e, &status) && status.status == http.StatusForbidden)) && ctx.Err() == nil {
+		return requestSubscription(ctx, hc, u, "v2rayNG/1.10.11 (Naivka)", opt)
 	}
 	return servers, skipped, e
 }
-func requestSubscription(ctx context.Context, hc *http.Client, u, agent string) ([]Server, int, error) {
+func requestSubscription(ctx context.Context, hc *http.Client, u, agent string, opt subscriptionFetchOptions) ([]Server, int, error) {
 	client := *hc
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
-			return errors.New("redirect limit")
+			return errSubscriptionRedirect
 		}
 		if _, e := subscriptionURL(req.URL.String()); e != nil {
-			return e
+			return errSubscriptionRedirect
 		}
 		if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
-			return errors.New("https downgrade")
+			return errSubscriptionRedirect
+		}
+		// Never forward the installation identifier to another origin.
+		if !strings.EqualFold(req.URL.Host, via[0].URL.Host) || req.URL.Scheme != via[0].URL.Scheme {
+			req.Header.Del("x-hwid")
+			req.Header.Del("x-device-os")
 		}
 		return nil
 	}
@@ -185,30 +214,37 @@ func requestSubscription(ctx context.Context, hc *http.Client, u, agent string) 
 		return nil, 0, errors.New("Не удалось создать запрос подписки")
 	}
 	req.Header.Set("User-Agent", agent)
+	if opt.deviceID != "" {
+		req.Header.Set("x-hwid", opt.deviceID)
+		req.Header.Set("x-device-os", "Windows")
+	}
 	req.Header.Set("Accept", "text/plain, application/octet-stream;q=0.9, */*;q=0.5")
 	resp, e := client.Do(req)
 	if e != nil {
 		return nil, 0, subscriptionNetworkFailure(e)
 	}
 	defer resp.Body.Close()
+	if e := subscriptionProviderError(resp.Header); e != nil {
+		return nil, 0, e
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, 0, &subscriptionHTTPError{resp.StatusCode}
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, subscriptionLimit+1))
 	if e != nil {
-		return nil, 0, subscriptionNetworkFailure(e)
+		return nil, 0, fmt.Errorf("HTTP %d, чтение ответа: %w", resp.StatusCode, subscriptionNetworkFailure(e))
 	}
 	if len(b) > subscriptionLimit {
 		return nil, 0, errors.New("Подписка больше 4 МБ; прежние серверы сохранены")
 	}
 	return parseSubscription(string(b))
 }
-func fetchAvailableSubscription(ctx context.Context, clients []*http.Client, raw string) ([]Server, int, error) {
+func fetchAvailableSubscription(ctx context.Context, clients []*http.Client, raw string, options ...subscriptionFetchOptions) ([]Server, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	var last error
 	for _, client := range clients {
-		servers, skipped, e := fetchSubscription(ctx, client, raw)
+		servers, skipped, e := fetchSubscription(ctx, client, raw, options...)
 		if e == nil {
 			return servers, skipped, nil
 		}
@@ -222,7 +258,18 @@ func fetchAvailableSubscription(ctx context.Context, clients []*http.Client, raw
 	}
 	return nil, 0, last
 }
-func (a *App) fetchUserSubscription(ctx context.Context, raw string) ([]Server, int, error) {
+func (a *App) fetchUserSubscription(ctx context.Context, raw, mode string) ([]Server, int, error) {
+	if !validSubscriptionClient(mode) {
+		return nil, 0, errors.New("Неизвестный режим подписки")
+	}
+	opt := subscriptionFetchOptions{client: mode}
+	if mode != "" {
+		var e error
+		opt.deviceID, e = subscriptionDeviceID(a.dir, raw)
+		if e != nil {
+			return nil, 0, e
+		}
+	}
 	primary := a.core.SystemProxyPort()
 	clients := []*http.Client{geoClient(primary)}
 	if primary > 0 {
@@ -230,7 +277,7 @@ func (a *App) fetchUserSubscription(ctx context.Context, raw string) ([]Server, 
 	} else if _, proxy := a.core.ProbePorts(); proxy > 0 {
 		clients = append(clients, geoClient(proxy))
 	}
-	return fetchAvailableSubscription(ctx, clients, raw)
+	return fetchAvailableSubscription(ctx, clients, raw, opt)
 }
 
 // Managed entries are authoritative. A stale settings form must not undo a
@@ -352,9 +399,10 @@ func (a *App) commitSubscriptions(change func(*Settings) error) (*Settings, erro
 }
 func (a *App) apiSubscriptionPreview(r *http.Request) (any, error) {
 	var req struct {
-		URL  string `json:"url"`
-		Name string `json:"name"`
-		Auto bool   `json:"auto"`
+		URL    string `json:"url"`
+		Name   string `json:"name"`
+		Auto   bool   `json:"auto"`
+		Client string `json:"client"`
 	}
 	if e := decode(r, &req); e != nil {
 		return nil, e
@@ -365,7 +413,7 @@ func (a *App) apiSubscriptionPreview(r *http.Request) (any, error) {
 	}
 	a.subscriptions.mu.Lock()
 	defer a.subscriptions.mu.Unlock()
-	servers, skipped, e := a.fetchUserSubscription(r.Context(), u)
+	servers, skipped, e := a.fetchUserSubscription(r.Context(), u, req.Client)
 	if e != nil {
 		return nil, e
 	}
@@ -390,7 +438,7 @@ func (a *App) apiSubscriptionPreview(r *http.Request) (any, error) {
 		a.subscriptions.previews = map[string]subscriptionPreview{}
 	}
 	token := randHex(24)
-	a.subscriptions.previews[token] = subscriptionPreview{Subscription{ID: randHex(8), Name: name, URL: u, Auto: req.Auto}, servers, now.Add(10 * time.Minute)}
+	a.subscriptions.previews[token] = subscriptionPreview{Subscription{ID: randHex(8), Name: name, URL: u, Auto: req.Auto, Client: req.Client}, servers, now.Add(10 * time.Minute)}
 	names := []string{}
 	for _, sv := range servers {
 		names = append(names, sv.Name)
@@ -452,7 +500,7 @@ func (a *App) updateSubscription(ctx context.Context, id string) (*Settings, err
 	if sub == nil {
 		return nil, errors.New("Подписка не найдена")
 	}
-	servers, skipped, fetchErr := a.fetchUserSubscription(ctx, sub.URL)
+	servers, skipped, fetchErr := a.fetchUserSubscription(ctx, sub.URL, sub.Client)
 	if fetchErr == nil && skipped > 0 {
 		fetchErr = errors.New("Подписка содержит неподдерживаемые или повреждённые строки; прежний список сохранён")
 	}

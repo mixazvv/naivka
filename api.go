@@ -147,6 +147,7 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/subscriptions/update", a.apiSubscriptionUpdate)
 	api("POST", "/api/subscriptions/remove", a.apiSubscriptionRemove)
 	api("POST", "/api/subscriptions/auto", a.apiSubscriptionAuto)
+	api("POST", "/api/subscriptions/client", a.apiSubscriptionClient)
 	api("POST", "/api/connect", func(*http.Request) (any, error) { return nil, a.connect() })
 	api("POST", "/api/disconnect", func(*http.Request) (any, error) {
 		a.disconnect()
