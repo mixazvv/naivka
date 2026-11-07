@@ -121,7 +121,7 @@ const Branches = (() => {
       const extra = l.node?.cc && d.flag ? d.flag(l.node.cc) : null;
       const el = mk(l.key, 'route-node', ICONS[l.node?.icon] || ICONS.route || ICONS.globe, l.node?.title || title, l.node?.sub || '', extra, () => d.onNode(l.key));
       el.title = l.node ? [l.node.title, l.node.sub].filter(Boolean).join(' · ') : title;
-      if (d.phase !== 'on' || !l.active) el.dataset.off = '';
+      if (!l.active) el.dataset.off = '';
       out.push(el);
     }
     if (d.lanes.some(l => l.key !== 'tg')) out.push(mk('net', narrow() ? 'end' : 'side', ICONS.globe, 'Интернет', d.endSub));
@@ -130,7 +130,20 @@ const Branches = (() => {
     comp.querySelector('b').textContent = d.controlLabel;
     comp.querySelector('small').textContent = d.compSub;
     out.push(comp);
-    nodesEl.replaceChildren(...out);
+    // Preserve button identity and focus while changing speed/latency labels.
+    const previous = new Map([...nodesEl.children].map(el => [el.dataset.key, el]));
+    for (let i = 0; i < out.length; i++) {
+      const next = out[i], existing = previous.get(next.dataset.key);
+      if (!existing) continue;
+      existing.title = next.title;
+      existing.className = next.className;
+      if (next.hasAttribute('data-off')) existing.dataset.off = ''; else delete existing.dataset.off;
+      if (existing.innerHTML !== next.innerHTML) existing.replaceChildren(...next.childNodes);
+      out[i] = existing;
+    }
+    const keep = new Set(out);
+    for (const el of [...nodesEl.children]) if (!keep.has(el)) el.remove();
+    out.forEach((el, i) => { if (nodesEl.children[i] !== el) nodesEl.insertBefore(el, nodesEl.children[i] || null); });
     if (popNodes) {
       popNodes = false;
       for (const el of out) {

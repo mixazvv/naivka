@@ -66,6 +66,15 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   await page.evaluate(()=>{S.layout={};HomeLayout.apply();});const before=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length);await page.locator('#homeConnect').click();await page.waitForFunction(()=>!busy);assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length),before+1);
   await page.evaluate(()=>{view='servers';drawerBody.replaceChildren(viewServers());document.querySelector('#drawer').hidden=false;document.querySelector('#drawer').classList.add('open');main.setAttribute('inert','');renderServers();});
   await page.getByLabel('Поиск серверов').fill('Германия');assert.equal(await page.locator('#srvList .scard').count(),1);const selectedBefore=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/select').length);await page.getByRole('button',{name:'Подробнее',exact:true}).click();assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/select').length),selectedBefore);assert.equal(await page.locator('dialog').getByText('secret',{exact:true}).count(),0);assert((await page.locator('dialog').textContent()).includes('de.example.invalid'));await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});
+  // Route button identity survives periodic latency/text refreshes.
+  await page.evaluate(()=>{
+   const root=document.createElement('div');root.style.cssText='position:fixed;width:800px;height:400px';document.body.append(root);
+   const d={phase:'on',lanes:[{key:'proxy',active:true,speed:0,color:'var(--tunnel)',node:{title:'Test',sub:'20 ms',icon:'server'}}],top:[],controlLabel:'Отключить',compSub:'Компьютер',endSub:'',onNode:()=>{}};
+   Branches.update(root,d);const node=root.querySelector('[data-key="proxy"]');node.focus();
+   Branches.update(root,{...d,lanes:[{...d.lanes[0],node:{...d.lanes[0].node,sub:'30 ms'}}]});
+   if(root.querySelector('[data-key="proxy"]')!==node||document.activeElement!==node)throw new Error('Route update replaced focused button');
+   Branches.unmount();root.remove();
+  });
   // Subscription UI uses in-page provider fixtures, never a real subscription URL.
   await page.evaluate(()=>{
    const previous=api;window.subscriptionFixture={settings:JSON.parse(JSON.stringify(S)),fail:false};
