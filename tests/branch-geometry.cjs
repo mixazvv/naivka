@@ -11,7 +11,7 @@ vm.runInContext(source.replace('return { update, unmount, hoverAt, endHover, mov
 };return { update, unmount, hoverAt, endHover, moveLeaf, clearLeaf };`),context);
 const probe=context.probe;assert(probe,'test hook missing');
 function point(points,t){let row=points.map(p=>[...p]);while(row.length>1)row=row.slice(1).map((p,i)=>p.map((v,j)=>row[i][j]*(1-t)+v*t));return row[0];}
-function reference(curve,t){const half=t<=.5?curve.slice(0,4):curve.slice(3),u=t<=.5?t*2:(t-.5)*2;
+function reference(curve,t){const half=curve.terminal?curve.slice(0,4):t<=.5?curve.slice(0,4):curve.slice(3),u=curve.terminal?t:t<=.5?t*2:(t-.5)*2;
  const p=point(half,u),d=point(half.slice(1).map((p,i)=>p.map((v,j)=>3*(v-half[i][j]))),u),length=Math.hypot(...d)||1;
  return {p,n:[-d[1]/length,d[0]/length]};}
 let maxError=0,cases=0;
@@ -22,6 +22,7 @@ for(const [width,height] of [[320,260],[800,480],[1200,700]])for(const tg of [fa
  for(let i=0;i<=steps;i++){const t=i/80,{p,n}=reference(curve,t),w=(w0+(w1-w0)*t)/2,dy=droop*Math.sin(Math.PI*t*2)**2*14;
   for(const [actual,sign] of [[output.L[i],1],[output.R[i],-1]])for(let j=0;j<2;j++)maxError=Math.max(maxError,Math.abs(actual[j]-(p[j]+sign*n[j]*w+(j?dy:0))));
  }
+ if(key==='tg'&&grow===1){assert.equal(curve.terminal,true);assert(Math.abs((output.L[80][0]+output.R[80][0])/2-curve[3][0])<1e-9,'Telegram must terminate at its node');}
  cases++;
 }
 assert(maxError<1e-9,`outline changed: ${maxError}`);

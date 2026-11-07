@@ -42,12 +42,13 @@ const Branches = (() => {
     const x = W * .5;
     const reach = Math.min(W * .16, (x - c[0]) * .55, (end[0] - x) * .5);
     const curve = [c, [c[0] + reach, c[1]], [x - reach, y], [x, y], [x + reach, y], [end[0] - reach, end[1]], end];
+    curve.terminal = key === 'tg';
     geometries.set(key, curve); return curve;
   }
   const cubic = (p, t) => { const u = 1 - t; return [0, 1].map(i => u*u*u*p[0][i] + 3*u*u*t*p[1][i] + 3*u*t*t*p[2][i] + t*t*t*p[3][i]); };
   const cubicTan = (p, t) => { const u = 1 - t; return [0, 1].map(i => 3*u*u*(p[1][i]-p[0][i]) + 6*u*t*(p[2][i]-p[1][i]) + 3*t*t*(p[3][i]-p[2][i])); };
-  const bez = (p, t) => t <= .5 ? cubic(p.slice(0, 4), t * 2) : cubic(p.slice(3), (t - .5) * 2);
-  const tan = (p, t) => t <= .5 ? cubicTan(p.slice(0, 4), t * 2) : cubicTan(p.slice(3), (t - .5) * 2);
+  const bez = (p, t) => p.terminal ? cubic(p.slice(0, 4), t) : t <= .5 ? cubic(p.slice(0, 4), t * 2) : cubic(p.slice(3), (t - .5) * 2);
+  const tan = (p, t) => p.terminal ? cubicTan(p.slice(0, 4), t) : t <= .5 ? cubicTan(p.slice(0, 4), t * 2) : cubicTan(p.slice(3), (t - .5) * 2);
   const norm = (p, t) => { const d = tan(p, t), l = Math.hypot(d[0], d[1]) || 1; return [-d[1] / l, d[0] / l]; };
 
   // ---------- построение ----------
@@ -123,7 +124,7 @@ const Branches = (() => {
       if (d.phase !== 'on' || !l.active) el.dataset.off = '';
       out.push(el);
     }
-    out.push(mk('net', narrow() ? 'end' : 'side', ICONS.globe, 'Интернет', d.endSub));
+    if (d.lanes.some(l => l.key !== 'tg')) out.push(mk('net', narrow() ? 'end' : 'side', ICONS.globe, 'Интернет', d.endSub));
     const comp = document.createElement('div'); comp.className = 'br-node comp'; comp.dataset.key = 'comp';
     comp.innerHTML = '<span class="br-txt"><b></b><small></small></span>';
     comp.querySelector('b').textContent = d.controlLabel;
@@ -147,7 +148,7 @@ const Branches = (() => {
       let p;
       if (k === 'comp') p = [cx0(), H * 0.5 + (narrow() ? 44 : 60)]; // подпись под кнопкой
       else if (k === 'net') p = netPoint();
-      else p = bez(geom(k), .5);
+      else p = bez(geom(k), k === 'tg' ? 1 : .5);
       el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px';
     }
     measureHoles();
@@ -558,9 +559,9 @@ const Branches = (() => {
       const b = br[l.key] || (br[l.key] = { grow: 0, speed: 0, down: 0, up: 0, droop: 0 });
       Object.assign(b, { color: l.color, active: l.active, want: l.active ? l.speed : 0, wilt: l.wilt,
         wantDown: l.active ? Math.max(0, l.down ?? l.speed) : 0, wantUp: l.active ? Math.max(0, l.up || 0) : 0,
-        thin: !!l.thin, target: ['on', 'revive', 'blocked'].includes(d.phase) || l.key === 'direct' ? 1 : 0 });
+        thin: !!l.thin, target: l.active ? 1 : 0 });
     }
-    for (const k in br) if (!keys.has(k)) br[k].target = 0;
+    for (const k in br) if (!keys.has(k)) { delete br[k]; delete parts[k]; }
     try { renderNodes(); } catch (e) { nodesSig = ''; console.error('branches: nodes', e); }
     placeNodes();
     syncLeaves();

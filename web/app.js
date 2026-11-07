@@ -1256,7 +1256,7 @@ function laneList() {
   const g = cs.id && srvGeo[cs.id] && srvGeo[cs.id].info;
   const d = cs.id ? delayFor(cs.id) : null;
   const ms = d && !d.error && d.ms ? `${d.ms} мс` : '';
-  const lanes = zapretOnly() ? [] : [{
+  const lanes = zapretOnly() || !on ? [] : [{
     key: 'proxy', name: 'Через сервер', color: 'var(--tunnel)', speed: on ? sp.pd + sp.pu : 0, active: on,
     node: cs.wlGroup
       ? { icon: 'server', title: cs.name, cc: cs.cc, sub: [cs.host, cs.wlMs ? `${cs.wlMs} мс` : ''].filter(Boolean).join(', ') }
@@ -1271,7 +1271,7 @@ function laneList() {
     // AD (сведения о zapret) приходит позже состояния: при запуске zapret уже работает, а AD ещё нет.
     node: { icon: 'shield', title: 'zapret', sub: AD && AD.zapret && AD.zapret.degraded ? 'не справляется' : (AD && AD.zapret && AD.zapret.strategy) || S.zapret.strategy || '' },
   });
-  lanes.push({ key: 'direct', name: 'Напрямую', color: 'var(--direct)', speed: on ? sp.dd + sp.du : 0, active: true, unmeasured: !on, node: null });
+  if (on) lanes.push({ key: 'direct', name: 'Напрямую', color: 'var(--direct)', speed: on ? sp.dd + sp.du : 0, active: true, unmeasured: !on, node: null });
   return lanes;
 }
 
@@ -1322,11 +1322,12 @@ function renderLanes() {
     const paths = [], nodes = [];
     const dots = s('g', { class: 'lane-pts' });
     geo.forEach(l => {
-      const d = lanePath(95, Y0, l.nx, l.ny, 905, Y0);
+      const endX = l.key === 'tg' ? l.nx : 905, endY = l.key === 'tg' ? l.ny : Y0;
+      const d = lanePath(95, Y0, l.nx, l.ny, endX, endY);
       let line;
       if (mc) {
         // Клетки 4×4: одинаковая толщина сохраняет читаемость на любом трафике.
-        paths.push(s('path', { d: pxLaneCells(95, Y0, l.nx, l.ny, 905, Y0, 4, 1), class: 'px-lane' + (l.active ? '' : ' idle'), style: `fill:${l.color}` }));
+        paths.push(s('path', { d: pxLaneCells(95, Y0, l.nx, l.ny, endX, endY, 4, 1), class: 'px-lane' + (l.active ? '' : ' idle'), style: `fill:${l.color}` }));
         line = s('path', { d, class: 'lane-motion' });
         paths.push(line);
       } else {
@@ -1376,7 +1377,7 @@ function renderLanes() {
     return s('svg', { class: 'lanes', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Схема маршрутов трафика' },
       defs, ...paths, dots, ...nodes,
       ...end(95, 'pc', 'Компьютер', phase() === 'on' ? (S.mode === 'tun' ? 'весь трафик' : `прокси :${S.mixedPort}`) : phase() === 'revive' ? 'нажмите, чтобы отключить' : 'нажмите, чтобы подключить'),
-      ...end(905, 'globe', 'Интернет', ROUTING[S.routing]));
+      ...(lanes.some(l => l.key !== 'tg') ? end(905, 'globe', 'Интернет', ROUTING[S.routing]) : []));
   });
   // Кнопка подключения стоит точно на месте узла «Компьютер».
   const lb = $('#lanesBox');

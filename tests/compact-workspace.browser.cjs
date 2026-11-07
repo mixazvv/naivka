@@ -115,5 +115,11 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   await page.getByRole('button',{name:'Аудит безопасности',exact:true}).click();assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/vps/report').length),reportCalls+1);const checks=await page.locator('dialog .vps-audit .panel').allTextContents();assert(checks[0].includes('Парольный вход'));assert(checks[1].includes('Сертификат'));await page.getByRole('button',{name:'Мониторинг',exact:true}).click();assert.equal(await page.locator('.vps-audit').count(),0);
   await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});assert.deepEqual(errors,[]);
   console.log('Compact/full/custom home, primary action, activity grouping/keyboard, IP disclosure, server search/details, generated UDP and VPS tabs: OK');
+  await page.evaluate(()=>{
+   S.telegram={enabled:false};S.zapret.enabled=false;ST.running=false;ST.starting=false;AD.telegram={running:false};AD.zapret={running:false};
+   if(laneList().length)throw new Error('Disconnected diagram contains routes');
+   S.telegram.enabled=true;AD.telegram.running=true;
+   if(laneList().map(l=>l.key).join(',')!=='tg')throw new Error('Standalone Telegram must be the only route');
+  });
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());
