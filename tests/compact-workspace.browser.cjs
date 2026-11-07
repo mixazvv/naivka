@@ -76,6 +76,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
      if(url.endsWith('/preview'))return {token:'preview-token',names:['Сервер подписки'],count:1,skipped:0};
      if(url.endsWith('/add')){f.settings.subscriptions=[{id:'sub',name:'Тестовая подписка',auto:true,updated:1800000000}];f.settings.servers.push({id:'subscription-server',subscriptionId:'sub',name:'Сервер подписки',type:'trojan',host:'sub.example.invalid',port:443,password:'initial'});}
      if(url.endsWith('/update')){if(f.fail){f.settings.subscriptions[0].error='Не удалось загрузить подписку; прежние серверы сохранены';throw new Error(f.settings.subscriptions[0].error);}f.settings.subscriptions[0].error='';f.settings.servers.find(x=>x.subscriptionId).password='rotated';}
+     if(url.endsWith('/client'))f.settings.subscriptions[0].client=body.client;
      if(url.endsWith('/auto'))f.settings.subscriptions[0].auto=body.auto;
      if(url.endsWith('/remove')){f.settings.subscriptions=[];f.settings.servers=f.settings.servers.filter(x=>!x.subscriptionId);}
      return {settings:JSON.parse(JSON.stringify(f.settings))};
@@ -85,10 +86,17 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   });
   await page.getByRole('button',{name:'Добавить подписку',exact:true}).click();assert(await page.getByRole('dialog').getByRole('button',{name:'Добавить',exact:true}).isDisabled());
   await page.getByLabel('Ссылка на подписку',{exact:true}).fill('https://subscription.example.invalid/private-token');await page.getByLabel('Название подписки',{exact:true}).fill('Тестовая подписка');
+  await page.getByLabel('Режим подписки',{exact:true}).selectOption('happ');
   const importCount=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/subscriptions/add').length);await page.getByRole('button',{name:'Посмотреть серверы',exact:true}).click();await page.getByText('Найдено серверов: 1',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/subscriptions/add').length),importCount,'preview committed servers');assert(!(await page.getByRole('dialog').textContent()).includes('private-token'));
+  assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/subscriptions/preview').at(-1).body.client),'happ');
   await page.getByRole('dialog').getByRole('button',{name:'Добавить',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});assert.equal(await page.evaluate(()=>S.subscriptions.length),1);
   await page.getByLabel('Поиск серверов').fill('Сервер подписки');await page.locator('#srvList').getByRole('button',{name:'Подробнее',exact:true}).click();assert(await page.getByRole('dialog').getByRole('button',{name:'Изменить',exact:true}).isDisabled());await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});
-  await page.locator('#subscriptionList summary').click();await page.evaluate(()=>{subscriptionFixture.fail=true;});await page.locator('#subscriptionList').getByRole('button',{name:'Обновить',exact:true}).click();await page.locator('#subscriptionList .err-text').waitFor();assert.equal(await page.evaluate(()=>S.servers.filter(x=>x.subscriptionId).length),1,'failed refresh erased servers');
+  await page.locator('#subscriptionList summary').click();
+  await page.locator('#subscriptionList').getByRole('button',{name:'Режим подписки',exact:true}).click();
+  await page.getByLabel('Режим подписки',{exact:true}).selectOption('device');
+  await page.getByRole('dialog').getByRole('button',{name:'Сохранить',exact:true}).click();
+  await page.locator('dialog').waitFor({state:'detached'});assert.equal(await page.evaluate(()=>S.subscriptions[0].client),'device');
+  await page.evaluate(()=>{subscriptionFixture.fail=true;});await page.locator('#subscriptionList').getByRole('button',{name:'Обновить',exact:true}).click();await page.locator('#subscriptionList .err-text').waitFor();assert.equal(await page.evaluate(()=>S.servers.filter(x=>x.subscriptionId).length),1,'failed refresh erased servers');
   await page.evaluate(()=>{subscriptionFixture.fail=false;});await page.locator('#subscriptionList').getByRole('button',{name:'Обновить',exact:true}).click();await page.waitForFunction(()=>S.servers.find(x=>x.subscriptionId)?.password==='rotated');
   await page.getByLabel('Автообновление раз в 6 часов',{exact:true}).uncheck();await page.waitForFunction(()=>!S.subscriptions[0].auto);
   await page.locator('#subscriptionList').getByRole('button',{name:'Удалить подписку',exact:true}).click();await page.waitForFunction(()=>S.subscriptions.length===0);assert.equal(await page.evaluate(()=>S.servers.filter(x=>x.subscriptionId).length),0);assert(await page.evaluate(()=>S.servers.some(x=>x.id==='a')),'removal erased manual servers');
