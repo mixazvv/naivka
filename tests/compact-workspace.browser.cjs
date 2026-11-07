@@ -84,7 +84,8 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
     return previous(url,body);
    };window.ask=()=>true;
   });
-  await page.getByRole('button',{name:'Добавить подписку',exact:true}).click();assert(await page.getByRole('dialog').getByRole('button',{name:'Добавить',exact:true}).isDisabled());
+  await page.getByRole('button',{name:'Добавить',exact:true}).click();
+  await page.getByRole('button',{name:/Добавить подписку/}).click();assert(await page.getByRole('dialog').getByRole('button',{name:'Добавить',exact:true}).isDisabled());
   const popupStyles=await page.evaluate(()=>{
    document.documentElement.classList.add('mica');
    const d=document.querySelector('dialog'),select=d.querySelector('select'),option=select.querySelector('option');

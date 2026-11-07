@@ -2481,14 +2481,24 @@ function delayEl(id) {
   return h('span', { class: 'delay ' + cls, title: d.kind === 'tls' ? 'TLS-рукопожатие без подключения' : 'Реальный запрос через сервер' }, `${d.ms} мс` + (d.kind === 'tls' ? ' TLS' : ''));
 }
 
+function addConnectionDialog() {
+  const choice = (title, note, action) => h('button', {class:'connection-choice', type:'button', onclick:()=>{dlg.close();action();}},
+    h('span', null, h('b', null, title), h('small', null, note)), h('span', {'aria-hidden':'true'}, '→'));
+  const dlg = openDialog(h('h2', null, 'Добавить подключение'),
+    h('p', {class:'hint'}, 'Выберите, что у вас есть'),
+    h('div', {class:'connection-choices'},
+      choice('Добавить подписку', 'Одна ссылка со списком серверов и автообновлением', ()=>SubscriptionsUI.add()),
+      choice('Вставить ссылки', 'Одна или несколько ссылок на серверы', importLinksDialog),
+      choice('Добавить сервер', 'Ввести адрес и параметры вручную', ()=>editServer(null))),
+    h('div', {class:'row end'}, h('button', {class:'btn',onclick:()=>dlg.close()}, 'Отмена')));
+}
+
 function viewServers() {
   return h('div', { class: 'view' },
     h('div', { class: 'title-row' }, h('h1', null, 'Серверы'),
       h('div', { class: 'row' },
         h('button', { class: 'btn', id: 'testAll', onclick: () => testServers(''), title: 'Проверить пинг всех серверов' }, 'Проверить все'),
-        h('button', { class: 'btn', onclick: importLinksDialog }, 'Вставить ссылки'),
-        h('button',{class:'btn',onclick:()=>SubscriptionsUI.add()},'Добавить подписку'),
-        h('button', { class: 'btn primary', onclick: () => editServer(null) }, 'Добавить сервер'))),
+        h('button', { class: 'btn primary', onclick: addConnectionDialog }, 'Добавить'))),
     h('input',{type:'search',id:'serverSearch',placeholder:'Найти сервер по имени, адресу или протоколу','aria-label':'Поиск серверов',oninput:()=>renderServers(true)}),
     h('div',{class:'subscription-list',id:'subscriptionList'}),
     h('div', { class: 'scards server-list', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
@@ -3203,7 +3213,7 @@ function friendLinks(o, f, fresh) {
   };
   const copy = async v => { try { await navigator.clipboard.writeText(v); toast('Скопировано'); } catch (_) { toast('Не удалось скопировать', true); } };
   const d = openDialog(h('h2', null, fresh ? `Готово: вход «${f.name}»` : `Ссылки: ${f.name}`),
-    h('p', { class: 'hint' }, 'Отправьте другу все ссылки — он вставит их в Naivka («Серверы» → «Вставить ссылки») или отсканирует QR-код в Hiddify, v2rayNG, sing-box на телефоне. Ссылки — это ключи: не публикуйте их.'),
+    h('p', { class: 'hint' }, 'Отправьте другу все ссылки — он вставит их в Naivka («Серверы» → «Добавить» → «Вставить ссылки») или отсканирует QR-код в Hiddify, v2rayNG, sing-box на телефоне. Ссылки — это ключи: не публикуйте их.'),
     f.links.length > 1 ? tabs : null, qr, text,
     h('div', { class: 'row end mt' },
       h('button', { class: 'btn', onclick: () => copy(f.links[cur]) }, 'Скопировать эту'),
@@ -5250,7 +5260,7 @@ function openGuide() {
     h('ol', { class: 'guide' },
       needCore ? step('Скачайте ядро.', 'Один раз после установки: «Настройки» → «Ядро sing-box» → «Скачать ядро». Это движок, через который идёт трафик.',
         h('button', { class: 'btn small', onclick: goto('settings') }, 'Открыть «Настройки»')) : null,
-      step('Добавьте сервер.', 'Скопируйте ссылку, которую вам дали (начинается с naive+https://, vless://, hysteria2:// и т. п.). Откройте «Серверы» → «Вставить ссылки» и вставьте её.',
+      step('Добавьте сервер.', 'Скопируйте ссылку, которую вам дали (начинается с naive+https://, vless://, hysteria2:// и т. п.). Откройте «Серверы» → «Добавить» → «Вставить ссылки» и вставьте её.',
         h('button', { class: 'btn small', onclick: goto('servers') }, 'Открыть «Серверы»')),
       step('Нажмите большую кнопку на главном экране.', 'Когда она светится и написано «Подключено» — всё работает. Российские сайты идут напрямую, заблокированные — через сервер, Naivka решает это сама. Хотите иначе — нажмите на сайт или программу под схемой и выберите путь.'),
       step('YouTube и Discord без сервера — по желанию.', '«Обход» → включите zapret. Windows спросит разрешение — нажмите «Да». Нет своего сервера — переключите на главном экране режим «Только zapret».',
