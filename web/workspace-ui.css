@@ -36,3 +36,22 @@
 .home-compact :is(button,input,summary){scroll-margin-block-start:150px}@media(max-width:540px){.home-compact :is(button,input,summary){scroll-margin-block-start:250px}}
 
 .subscription-list{display:grid;gap:8px;margin-bottom:12px}.subscription-list:empty{display:none}.subscription-row>summary{cursor:pointer;font-weight:600;overflow-wrap:anywhere}.subscription-row .row{flex-wrap:wrap;gap:10px}.subscription-row .check{margin:0}.subscription-preview{max-height:240px;overflow:auto;overflow-wrap:anywhere}.subscription-row .err-text{overflow-wrap:anywhere}
+
+/* Quiet surfaces and a consistent action hierarchy, without changing skins. */
+:root:not([data-skin]) dialog { padding:24px; line-height:1.55; }
+:root:not([data-skin]) dialog>h2 { margin-bottom:16px; }
+:root:not([data-skin]) dialog>.field { margin:14px 0; }
+:root:not([data-skin]) dialog>.row.end:last-child { margin-top:24px; padding-top:16px; border-top:1px solid var(--line); gap:10px; flex-wrap:wrap; }
+.connection-choices { display:grid; gap:10px; margin:20px 0; }
+.connection-choice { display:flex; align-items:center; justify-content:space-between; gap:18px; width:100%; padding:16px; text-align:left; cursor:pointer; border:1px solid var(--line); border-radius:var(--r-md); background:var(--surface); color:var(--ink); }
+.connection-choice b,.connection-choice small { display:block; }
+.connection-choice small { color:var(--muted); margin-top:4px; line-height:1.5; }
+.connection-choice:hover { border-color:var(--tunnel); background:var(--raised); }
+:root:not([data-skin]) .home-pulse>.btn { border-color:transparent; background:var(--surface); border-radius:10px; }
+:root:not([data-skin]) .home-pulse>.btn:hover { border-color:var(--line); background:var(--raised); }
+:root:not([data-skin]) .home-parameters>summary { color:var(--muted); font-weight:500; }
+:root:not([data-skin]) .home-parameters[open]>summary { color:var(--ink); }
+:root:not([data-skin]) .settings-categories button { border-radius:10px; }
+:root:not([data-skin]) .settings-workspace { border-radius:18px; }
+:root:not([data-skin]) .settings-topbar .hint { margin:6px 0 0; }
+@media(max-width:540px) { :root:not([data-skin]) dialog { padding:18px; } .connection-choice { padding:14px; } }
