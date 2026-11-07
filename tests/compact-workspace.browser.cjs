@@ -85,6 +85,13 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
    };window.ask=()=>true;
   });
   await page.getByRole('button',{name:'Добавить подписку',exact:true}).click();assert(await page.getByRole('dialog').getByRole('button',{name:'Добавить',exact:true}).isDisabled());
+  const popupStyles=await page.evaluate(()=>{
+   document.documentElement.classList.add('mica');
+   const d=document.querySelector('dialog'),select=d.querySelector('select'),option=select.querySelector('option');
+   const result=[d,select,option].map(e=>({bg:getComputedStyle(e).backgroundColor,color:getComputedStyle(e).color}));
+   document.documentElement.classList.remove('mica');return result;
+  });
+  for(const style of popupStyles){assert(style.bg.startsWith('rgb('),'Mica popup/control must be opaque');assert.notEqual(style.bg,style.color,'popup text must contrast with its background');}
   await page.getByLabel('Ссылка на подписку',{exact:true}).fill('https://subscription.example.invalid/private-token');await page.getByLabel('Название подписки',{exact:true}).fill('Тестовая подписка');
   await page.getByLabel('Режим подписки',{exact:true}).selectOption('happ');
   const importCount=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/subscriptions/add').length);await page.getByRole('button',{name:'Посмотреть серверы',exact:true}).click();await page.getByText('Найдено серверов: 1',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/subscriptions/add').length),importCount,'preview committed servers');assert(!(await page.getByRole('dialog').textContent()).includes('private-token'));

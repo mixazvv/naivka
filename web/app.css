@@ -489,7 +489,7 @@ td.empty::before { margin-bottom: 8px; }
 .tag-select.proxy { background: var(--tunnel-soft); color: var(--tunnel); }
 .tag-select.direct { background: var(--direct-soft); color: var(--direct); }
 .tag-select.block { background: var(--danger-soft); color: var(--danger); }
-.tag-select option { background: var(--raised); color: var(--ink); }
+select option, select optgroup { background: var(--popup, var(--raised)); color: var(--ink); }
 .cat-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); margin: 10px 0 6px; }
 .cat-bar span { display: block; height: 100%; }
 
@@ -534,7 +534,7 @@ textarea.rules-input { min-height: 190px; margin: 6px 0 12px; }
 .exit-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); }
 
 /* ---------- диалоги, сообщения ---------- */
-dialog { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px 24px; background: var(--raised); color: var(--ink); width: min(560px, 92vw); box-shadow: var(--shadow); max-height: 90vh; overflow: auto; }
+dialog { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px 24px; background: var(--popup, var(--raised)); color: var(--ink); width: min(560px, 92vw); box-shadow: var(--shadow); max-height: 90vh; overflow: auto; }
 dialog.wide { width: min(700px, 94vw); }
 dialog::backdrop { background: rgba(5, 10, 18, .55); }
 dialog h2 { margin-top: 0; }
@@ -1565,3 +1565,7 @@ body[data-state="err"] .home-led, body[data-state="blocked"] .home-led { backgro
 @media(prefers-reduced-motion:reduce){.pet-dot,.pet-yarn{display:none}.pet-peeking{opacity:1;clip-path:none}}
 
 .vps-chart{height:90px;display:flex;gap:2px;align-items:flex-end;border-bottom:1px solid var(--line);overflow:hidden}.vps-bar{flex:1;min-width:2px;background:var(--accent,#89b746);border-radius:2px 2px 0 0}
+
+/* Floating surfaces must remain opaque over Mica. Keep custom/skin palettes. */
+:root.mica:not([data-solid]) { --popup: #2E3237; }
+:root.mica:not([data-solid]) dialog { --bg: #171A1E; --surface: #222529; --raised: #2E3237; }
