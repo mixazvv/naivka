@@ -91,7 +91,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
      return {settings:JSON.parse(JSON.stringify(f.settings))};
     }
     return previous(url,body);
-   };window.ask=()=>true;
+   };window.confirmAction=ask;window.ask=()=>true;
   });
   await page.getByRole('button',{name:'Добавить',exact:true}).click();
   await page.getByRole('button',{name:/Добавить подписку/}).click();assert(await page.getByRole('dialog').getByRole('button',{name:'Добавить',exact:true}).isDisabled());
@@ -130,5 +130,26 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
    S.telegram.enabled=true;AD.telegram.running=true;
    if(laneList().map(l=>l.key).join(',')!=='tg')throw new Error('Standalone Telegram must be the only route');
   });
+  await page.evaluate(()=>{
+   ask=window.confirmAction;S.confirm=true;window.confirm=()=>{throw new Error('Native confirm used');};
+   window.beforeDelete=S.servers[0];editServer(beforeDelete);
+  });
+  await page.getByRole('dialog').getByRole('button',{name:'Удалить',exact:true}).click();
+  await page.getByRole('dialog').filter({has:page.getByText('Подтвердите действие',{exact:true})}).getByRole('button',{name:'Отмена',exact:true}).click();
+  assert(await page.evaluate(()=>S.servers.some(s=>s.id===beforeDelete.id)),'cancel deleted server');
+  await page.evaluate(()=>{saveNow=async()=>false;});
+  await page.getByRole('dialog').getByRole('button',{name:'Удалить',exact:true}).click();
+  await page.getByRole('button',{name:'Подтвердить',exact:true}).click();
+  assert(await page.evaluate(()=>S.servers.some(s=>s.id===beforeDelete.id)),'failed save removed server');
+  await page.evaluate(()=>{saveNow=async()=>true;});
+  await page.getByRole('dialog').getByRole('button',{name:'Удалить',exact:true}).click();
+  await page.getByRole('button',{name:'Подтвердить',exact:true}).click();
+  await page.waitForFunction(()=>!S.servers.some(s=>s.id===beforeDelete.id));
+  await page.evaluate(()=>{const o={id:'delete-own',host:'vps.example.invalid',sshUser:'root',sshPort:22};S.ownHosts.push(o);const box=h('div',{id:'deleteOwnTest'},hostCard(o));document.body.append(box);});
+  await page.locator('#deleteOwnTest').getByRole('button',{name:'Убрать сервер из списка',exact:true}).click();
+  await page.keyboard.press('Escape');assert(await page.evaluate(()=>S.ownHosts.some(s=>s.id==='delete-own')));
+  await page.locator('#deleteOwnTest').getByRole('button',{name:'Убрать сервер из списка',exact:true}).click();
+  await page.getByRole('button',{name:'Подтвердить',exact:true}).click();
+  await page.waitForFunction(()=>!S.ownHosts.some(s=>s.id==='delete-own'));await page.locator('#deleteOwnTest').evaluate(e=>e.remove());
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());

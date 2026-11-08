@@ -139,3 +139,24 @@ func TestFriendsReqCheck(t *testing.T) {
 		}
 	}
 }
+
+// The Reality profile emitted by the installer must retain authentication and
+// transport parameters when re-exported to a phone, including an IPv6 endpoint.
+func TestInstalledRealityPhoneExport(t *testing.T) {
+	for _, host := range []string{"203.0.113.10", "[2001:db8::10]"} {
+		raw := "vless://11111111-1111-4111-8111-111111111111@" + host + ":8443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.example.com&fp=chrome&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=0123456789abcdef&type=tcp#Phone"
+		servers, errs := ParseShareLinks(raw)
+		if len(errs) > 0 || len(servers) != 1 {
+			t.Fatal(errs)
+		}
+		exported := ShareLink(servers[0])
+		again, errs := ParseShareLinks(exported)
+		if len(errs) > 0 || len(again) != 1 {
+			t.Fatal(errs)
+		}
+		a, b := servers[0], again[0]
+		if a.Host != b.Host || b.Port != 8443 || a.UUID != b.UUID || b.Flow != "xtls-rprx-vision" || b.Security != "reality" || a.PublicKey != b.PublicKey || a.ShortID != b.ShortID || a.SNI != b.SNI || b.Fingerprint != "chrome" || b.Transport != "tcp" {
+			t.Fatal("Reality export lost phone connection parameters")
+		}
+	}
+}

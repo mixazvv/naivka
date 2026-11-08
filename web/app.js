@@ -933,7 +933,19 @@ function segmented(options, get, set, label) {
 }
 
 // Подтверждение перед удалением — его можно выключить в настройках («Спрашивать перед удалением»).
-function ask(msg) { return S.confirm === false || confirm(msg); }
+async function ask(msg) {
+  if (S.confirm === false) return true;
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => { if (settled) return; settled = true; dlg.close(); resolve(value); };
+    const cancel = h('button', {class:'btn', onclick:()=>finish(false)}, 'Отмена');
+    const dlg = openDialog(h('h2', null, 'Подтвердите действие'), h('p', null, msg),
+      h('div', {class:'row end'}, cancel, h('button', {class:'btn danger', onclick:()=>finish(true)}, 'Подтвердить')));
+    dlg.addEventListener('cancel', e => { e.preventDefault(); finish(false); });
+    dlg.addEventListener('close', ()=>{ if (!settled) { settled=true; resolve(false); } });
+    cancel.focus();
+  });
+}
 
 function check(key, title, desc, after) {
   return h('label', { class: 'check' },
@@ -2661,6 +2673,13 @@ async function testServers(id) {
   renderServers(); updateStatus();
 }
 
+function mobileLinkHelp(type) {
+  if (type === 'naive') return 'NaiveProxy поддерживается не всеми клиентами телефона. Для первой проверки используйте ссылку VLESS Reality этого же VPS в приложении с поддержкой Reality. Установка Naive на ПК не означает поддержку Naive на телефоне.';
+  if (type === 'hysteria2') return 'Hysteria2 использует UDP. Установленный Naivka сервер использует закрепление сертификата pubkey-sha256: клиент телефона должен поддерживать этот параметр. Для сравнения проверьте VLESS Reality; проверку сертификата отключать не нужно.';
+  if (type === 'vless') return 'На телефоне нужен клиент с поддержкой VLESS Reality. Импортируйте ссылку целиком: UUID, public key, short ID, SNI и flow. Если на ПК этот же сервер работает, сравните Wi-Fi и мобильную сеть. При Naive на VPS порт Reality обычно 8443 — он должен быть открыт в панели хостинга.';
+  return 'Клиент телефона должен поддерживать выбранный протокол и параметры ссылки.';
+}
+
 async function qrDialog(sv) {
   await saveNow();
   let link;
@@ -2668,6 +2687,7 @@ async function qrDialog(sv) {
   const dlg = openDialog(
     h('h2', null, `${sv.name}: QR-код`),
     h('p', { class: 'hint' }, 'Отсканируйте в приложении на телефоне. В коде пароль сервера — не показывайте его посторонним.'),
+    h('p', { class:'hint' }, mobileLinkHelp(sv.type)),
     h('div', { class: 'qr-box' }, qrSvg(link)),
     h('div', { class: 'link-box' }, link),
     h('div', { class: 'row end mt' },
@@ -2813,10 +2833,13 @@ function editServer(srv) {
     fields, err,
     h('div', { class: 'row mt' },
       !isNew && h('button', { class: 'btn danger', onclick: async () => {
-        if (!ask(`Удалить сервер «${d.name}»?`)) return;
+        if (!await ask(`Удалить сервер «${d.name}»?`)) return;
+        const previous = S.servers, selected = S.selected;
         S.servers = S.servers.filter(x => x.id !== d.id);
         if (S.selected === d.id) S.selected = 'auto';
-        save(0); await saveNow(); dlg.close(); renderServers();
+        save(0);
+        if (!await saveNow()) { S.servers = previous; S.selected = selected; return; }
+        dlg.close(); renderServers();
       } }, 'Удалить'),
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'),
@@ -3094,10 +3117,12 @@ function hostCard(o) {
     h('button', { class: 'btn small', onclick: () => vpsDialog(o) }, 'Состояние VPS'),
     h('button', { class: 'btn small', disabled: st && st.busy, onclick: () => friendsCall(o, { action: 'list' }) }, st && st.list ? 'Обновить' : 'Открыть список'),
     h('button', { class: 'tool', title: 'Убрать сервер из списка', 'aria-label': 'Убрать сервер из списка', onclick: async () => {
-      if (!ask(`Убрать ${o.name || o.host} из списка? Друзья на сервере останутся и продолжат работать.`)) return;
+      if (!await ask(`Убрать ${o.name || o.host} из списка? Друзья на сервере останутся и продолжат работать.`)) return;
+      const previous = S.ownHosts;
+      S.ownHosts = S.ownHosts.filter(x => x.id !== o.id); save(0);
+      if (!await saveNow()) { S.ownHosts = previous; return; }
       api('/api/friends/close', { host: o.id }).catch(() => {});
-      delete FRIENDS[o.id];
-      S.ownHosts = S.ownHosts.filter(x => x.id !== o.id); save(0); await saveNow(); renderOwn();
+      delete FRIENDS[o.id]; renderOwn();
     } }, btnIcon('close')));
   let body = null;
   if (st && st.busy && !st.list) body = h('p', { class: 'hint' }, 'Подключаюсь к серверу…');
@@ -3114,8 +3139,8 @@ function hostCard(o) {
           ? h('button', { class: 'btn small', disabled: st.busy, onclick: () => friendsCall(o, { action: 'resume', fid: f.id }, `${f.name}: доступ снова открыт`) }, 'Возобновить')
           : h('button', { class: 'btn small', disabled: st.busy, onclick: () => friendsCall(o, { action: 'pause', fid: f.id }, `${f.name}: доступ приостановлен`) }, 'Пауза'),
         h('button', { class: 'btn small', disabled: st.busy, onclick: () => renewDialog(o, f) }, 'Продлить'),
-        h('button', { class: 'btn small', disabled: st.busy, onclick: () => {
-          if (!ask(`Удалить вход ${f.name}? Его ссылки перестанут работать сразу.`)) return;
+        h('button', { class: 'btn small', disabled: st.busy, onclick: async () => {
+          if (!await ask(`Удалить вход ${f.name}? Его ссылки перестанут работать сразу.`)) return;
           friendsCall(o, { action: 'remove', fid: f.id }, `${f.name}: вход удалён`);
         } }, 'Удалить'))));
   }))));
@@ -3206,16 +3231,17 @@ const linkProto = l => l.startsWith('vless:') ? 'Reality' : l.startsWith('hyster
 
 function friendLinks(o, f, fresh) {
   let cur = 0;
-  const qr = h('div', { class: 'qr-box' }), text = h('div', { class: 'link-box' });
+  const qr = h('div', { class: 'qr-box' }), text = h('div', { class: 'link-box' }), mobileHelp = h('p', {class:'hint'});
   const tabs = h('div', { class: 'seg' });
   const show = () => {
     qr.replaceChildren(qrSvg(f.links[cur])); text.textContent = f.links[cur];
+    mobileHelp.textContent = mobileLinkHelp(f.links[cur].startsWith('naive') ? 'naive' : f.links[cur].startsWith('vless:') ? 'vless' : f.links[cur].startsWith('hysteria2:') ? 'hysteria2' : '');
     tabs.replaceChildren(...f.links.map((l, i) => h('button', { 'aria-pressed': String(i === cur), onclick: () => { cur = i; show(); } }, linkProto(l))));
   };
   const copy = async v => { try { await navigator.clipboard.writeText(v); toast('Скопировано'); } catch (_) { toast('Не удалось скопировать', true); } };
   const d = openDialog(h('h2', null, fresh ? `Готово: вход «${f.name}»` : `Ссылки: ${f.name}`),
     h('p', { class: 'hint' }, 'Отправьте другу все ссылки — он вставит их в Naivka («Серверы» → «Добавить» → «Вставить ссылки») или отсканирует QR-код в Hiddify, v2rayNG, sing-box на телефоне. Ссылки — это ключи: не публикуйте их.'),
-    f.links.length > 1 ? tabs : null, qr, text,
+    f.links.length > 1 ? tabs : null, mobileHelp, qr, text,
     h('div', { class: 'row end mt' },
       h('button', { class: 'btn', onclick: () => copy(f.links[cur]) }, 'Скопировать эту'),
       h('button', { class: 'btn', onclick: () => copy(f.links.join('\n')) }, 'Скопировать все'),
@@ -3266,7 +3292,7 @@ function panelsBox() {
         h('button', { class: 'btn small', onclick: () => openPanel(p) }, 'Открыть'),
         h('button', { class: 'btn small', onclick: () => panelCreds(p) }, 'Логин и пароль'),
         h('button', { class: 'btn small', onclick: async () => {
-          if (!ask(`Убрать панель ${PANEL_TITLE[p.type]} на ${p.host} из списка? На сервере она останется.`)) return;
+          if (!await ask(`Убрать панель ${PANEL_TITLE[p.type]} на ${p.host} из списка? На сервере она останется.`)) return;
           S.panels = S.panels.filter(x => x.id !== p.id); save(0); await saveNow(); renderServers(); renderOwn();
         } }, 'Убрать')))))))),
     h('p', { class: 'hint' }, 'Панель откроется в браузере через защищённый SSH-туннель.'));
@@ -3456,8 +3482,8 @@ async function renderLists() {
       h('td', null, h('div', { class: 'cell-main trunc', title: l.url }, l.name), h('div', { class: 'cell-sub' }, LIST_FORMAT[l.format] + ' · ', sub)),
       h('td', null, h('select', { onchange: e => { l.action = e.target.value; save(0); } },
         Object.entries(LIST_ACTION).map(([v, t]) => h('option', { value: v, selected: l.action === v }, t)))),
-      h('td', { class: 'r' }, h('button', { class: 'btn small', onclick: () => {
-        if (!ask(`Удалить список «${l.name}»?`)) return;
+      h('td', { class: 'r' }, h('button', { class: 'btn small', onclick: async () => {
+        if (!await ask(`Удалить список «${l.name}»?`)) return;
         S.ruleLists = S.ruleLists.filter(x => x !== l); save(0); renderLists();
       } }, 'Удалить')));
   })))));
@@ -3563,7 +3589,7 @@ async function renderSmart() {
         ? h('div', { class: 'panel' }, h('table', { class: 'table' }, h('tbody', null, ...rows)))
         : h('p', { class: 'hint' }, 'Пока пусто: сайты появятся здесь, когда вы начнёте их открывать.'),
       h('p', { class: 'hint' }, 'Ваши правила, zapret, заблокированное в России и сервисы, закрытые для России, автоопределение не трогает. Нужно, чтобы сайт всегда шёл определённым путём, — добавьте правило.'),
-      h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: () => { if (ask('Забыть всё, что определилось? Сайты будут проверены заново.')) forget(''); } }, 'Сбросить всё'))));
+      h('div', { class: 'row mt' }, h('button', { class: 'btn', onclick: async () => { if (await ask('Забыть всё, что определилось? Сайты будут проверены заново.')) forget(''); } }, 'Сбросить всё'))));
   }
   box.replaceChildren(...parts);
 }
@@ -3639,8 +3665,8 @@ function renderRules() {
   foot.replaceChildren(...[
     visible.length > LIMIT ? h('p', { class: 'hint mt' }, `Показаны первые ${LIMIT} из ${visible.length}. Воспользуйтесь поиском.`) : null,
     S.rules.length ? h('div', { class: 'row end mt' }, h('button', {
-      class: 'btn link danger', onclick: () => {
-        if (!ask(`Удалить все ${count(S.rules.length, 'правило', 'правила', 'правил')}? Перед этим можно сделать экспорт.`)) return;
+      class: 'btn link danger', onclick: async () => {
+        if (!await ask(`Удалить все ${count(S.rules.length, 'правило', 'правила', 'правил')}? Перед этим можно сделать экспорт.`)) return;
         S.rules = [];
         save(0);
         renderRules();
@@ -4351,7 +4377,7 @@ function askBackupPassword(wrong) {
       inp,
       h('div', { class: 'row end mt' },
         h('button', { class: 'btn', onclick: () => finish(null) }, 'Отмена'),
-        h('button', { class: 'btn primary', onclick: () => finish(inp.value) }, 'Открыть')));
+        h('button', { class: 'btn primary', onclick: async () => finish(inp.value) }, 'Открыть')));
     dlg.addEventListener('close', () => finish(null));
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') finish(inp.value); });
     inp.focus();
@@ -4365,7 +4391,7 @@ function restoreBackup() {
     const f = input.files && input.files[0];
     if (!f) return;
     const text = await f.text();
-    if (!ask('Заменить текущие серверы, правила и настройки содержимым копии?')) return;
+    if (!await ask('Заменить текущие серверы, правила и настройки содержимым копии?')) return;
     let password = '', advanced = '';
     for (let attempt = 0; ; attempt++) {
       try {
