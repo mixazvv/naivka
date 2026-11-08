@@ -4,6 +4,14 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 [ "$(uname -s 2>/dev/null)" = Linux ] || exit 2
 printf 'protocol=1\n'
 date '+server_time=%s'
+# Fixed system identity and version probes. Never source os-release as shell code.
+awk -F= '$1=="PRETTY_NAME" {v=substr($0,index($0,"=")+1);gsub(/^"|"$/,"",v);print "info_os=" substr(v,1,120);exit}' /etc/os-release 2>/dev/null
+uname -r 2>/dev/null | cut -c1-120 | sed 's/^/info_kernel=/'
+uname -m 2>/dev/null | cut -c1-120 | sed 's/^/info_arch=/'
+hostname 2>/dev/null | cut -c1-120 | sed 's/^/info_hostname=/'
+if command -v sing-box >/dev/null 2>&1; then sing-box version 2>/dev/null | head -n1 | cut -c1-120 | sed 's/^/info_singbox=/'; fi
+if command -v xray >/dev/null 2>&1; then xray version 2>/dev/null | head -n1 | cut -c1-120 | sed 's/^/info_xray=/'; fi
+if [ -x /usr/local/bin/caddy-naive ]; then /usr/local/bin/caddy-naive version 2>/dev/null | head -n1 | cut -c1-120 | sed 's/^/info_caddy=/'; fi
 # Identity prevents rates across reboots or changed interface sets.
 if [ -r /proc/sys/kernel/random/boot_id ]; then tr -d '\n' < /proc/sys/kernel/random/boot_id | sed 's/^/boot_id=/'; printf '\n'; fi
 awk -F: 'NR>2 {n=$1; gsub(/[ \t]/,"",n);if(n!="lo")print n}' /proc/net/dev 2>/dev/null | sort | cksum | awk '{print "network_set=" $1}'
@@ -51,7 +59,7 @@ fi
 if command -v iptables >/dev/null 2>&1; then
   iptables -S INPUT 2>/dev/null | awk '$1=="-P"&&$2=="INPUT" {if($3=="ACCEPT")print "iptables_input=accept";else if($3=="DROP")print "iptables_input=drop"}'
 fi
-for service in sing-box xray naivka-caddy x-ui marzban nginx caddy fail2ban ssh sshd;  do
+for service in sing-box xray naivka-caddy x-ui marzban nginx caddy fail2ban ssh sshd s-ui;  do
   [ "$(systemctl show "$service" -p LoadState --value 2>/dev/null)" = loaded ] || continue
   state=$(systemctl is-active "$service" 2>/dev/null)
   case "$state" in active|inactive|failed) printf 'service_%s=%s\n' "$service" "$state";; esac
