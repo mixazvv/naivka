@@ -2881,12 +2881,12 @@ function installServerDialog(prev) {
         h('li', null, 'sing-box из официального репозитория SagerNet (apt): VLESS + Reality на TCP 443 или 8443 и, по желанию, Hysteria2 на UDP. Нужен Debian 11+ или Ubuntu 20.04+.'),
         h('li', null, 'NaiveProxy: Caddy с модулем forwardproxy — готовая сборка автора NaiveProxy (проверяется по контрольной сумме) или сборка из исходников прямо на сервере. Нужен свой домен; Caddy займёт порты 80 и 443 и получит сертификат Let\'s Encrypt.'),
         h('li', null, 'Веб-панель 3X-UI или s-ui — их официальными установщиками с GitHub.'),
-        h('li', null, 'Файл /etc/sing-box/config.json будет перезаписан — прежний сохранится рядом с пометкой .bak. Службы включатся в автозапуск; если работает ufw, в нём откроются нужные порты; по желанию — BBR.')),
+        h('li', null, 'Файл /etc/sing-box/config.json будет перезаписан — перед изменением будет создана закрытая резервная копия конфигурации. При сбое применения файлы и состояние служб восстанавливаются. Службы включатся в автозапуск; если работает ufw, в нём откроются нужные порты; по желанию — BBR.')),
       h('h3', null, 'Что останется как было'),
       h('ul', { class: 'steps' },
         h('li', null, 'SSH, пароли, пользователи, другие программы и их порты.'),
         h('li', null, 'Пароль и ключ SSH Naivka не сохраняет — они нужны только на время установки (и потом — чтобы открыть панель).')),
-      h('p', { class: 'hint' }, 'Перед вводом пароля Naivka покажет отпечаток ключа сервера — сверьте его с панелью хостинга или консолью. Скрипты, которые выполнятся на сервере, можно прочитать заранее. Откатить протоколы: на сервере bash install-server.sh --remove; панели удаляются их же меню (x-ui uninstall, s-ui uninstall).'),
+      h('p', { class: 'hint' }, 'Перед вводом пароля Naivka покажет отпечаток ключа сервера — сверьте его с панелью хостинга или консолью. Скрипты, которые выполнятся на сервере, можно прочитать заранее. Удалить протоколы: на сервере bash install-server.sh --remove (это удаление, не восстановление из резервной копии); панели удаляются их же меню (x-ui uninstall, s-ui uninstall).'),
       h('label', { class: 'check mt' }, ok, h('span', null, h('b', null, 'Понимаю, что делаю, и это мой сервер'))),
       h('div', { class: 'row mt' },
         h('button', { class: 'btn', onclick: () => showScript(false) }, 'Скрипт протоколов'),
@@ -2987,6 +2987,14 @@ function installServerDialog(prev) {
           h('label', { class: 'check' }, agree, h('span', null, h('b', null, 'Отпечаток совпадает — это мой сервер')))));
       } catch (e) { fpBox.replaceChildren(); err.textContent = e.message; }
     };
+    const protocolsChoice = box('protocols', 'Поставить протоколы Naivka', 'Снимите, если нужна только панель.', renderProto);
+    const methodHelp = h('p', {class:'hint'}, 'Простая установка создаёт готовые ссылки на sing-box. Xray через 3X-UI требует создать вход и ссылки в самой панели.');
+    const useMethod = xray => {
+      f.protocols = !xray; protocolsChoice.querySelector('input').checked = !xray;
+      f.panel = xray ? '3x-ui' : ''; panelSel.value = f.panel; f.panelConfirm = false;
+      renderProto(); renderPanel();
+      methodHelp.textContent = xray ? 'Будет установлена только 3X-UI с Xray. После установки создайте VLESS Reality в панели и импортируйте её ссылку. Ранее установленные сервисы и ссылки не мигрируют автоматически.' : 'Будут установлены протоколы Naivka на sing-box с готовыми ссылками. При повторной установке версия ядра сохраняется; рабочая конфигурация резервируется.';
+    };
     body.replaceChildren(
       h('div', { class: 'grid2' },
         inp('host', 'IP или домен сервера', { placeholder: '203.0.113.10' }),
@@ -2995,8 +3003,11 @@ function installServerDialog(prev) {
         inp('password', 'Пароль SSH', { type: 'password', hint: 'Не сохраняется.', resets: false })),
       h('label', { class: 'check' }, useKey, h('span', null, h('b', null, 'Вход по ключу SSH'))),
       keyBox,
+      h('h3', { class: 'mt' }, 'Способ установки'),
+      h('div', {class:'row'}, h('button', {class:'btn',type:'button',onclick:()=>useMethod(false)}, 'Готовый VPN · sing-box'), h('button', {class:'btn',type:'button',onclick:()=>useMethod(true)}, 'Xray через 3X-UI')),
+      methodHelp,
       h('h3', { class: 'mt' }, 'Протоколы'),
-      box('protocols', 'Поставить протоколы Naivka', 'Снимите, если нужна только панель.', renderProto),
+      protocolsChoice,
       protoBody,
       h('h3', { class: 'mt' }, 'Веб-панель (необязательно)'),
       h('p', { class: 'hint' }, 'Панель нужна, чтобы раздавать доступ друзьям и ставить лимиты. Для себя одного не нужна.'),

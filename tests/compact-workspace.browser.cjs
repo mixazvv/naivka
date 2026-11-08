@@ -151,5 +151,14 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   await page.locator('#deleteOwnTest').getByRole('button',{name:'Убрать сервер из списка',exact:true}).click();
   await page.getByRole('button',{name:'Подтвердить',exact:true}).click();
   await page.waitForFunction(()=>!S.ownHosts.some(s=>s.id==='delete-own'));await page.locator('#deleteOwnTest').evaluate(e=>e.remove());
+  await page.evaluate(()=>installServerDialog());
+  await page.getByRole('dialog').getByLabel('Понимаю, что делаю, и это мой сервер').check();
+  await page.getByRole('button',{name:'Дальше',exact:true}).click();
+  await page.getByRole('button',{name:'Xray через 3X-UI',exact:true}).click();
+  assert(!(await page.getByLabel('Поставить протоколы Naivka',{exact:false}).isChecked()));
+  assert(await page.getByText(/Будет установлена только 3X-UI с Xray/).isVisible());
+  await page.getByRole('button',{name:'Готовый VPN · sing-box',exact:true}).click();
+  assert(await page.getByLabel('Поставить протоколы Naivka',{exact:false}).isChecked());
+  await page.getByRole('dialog').evaluate(d=>d.close());
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());
