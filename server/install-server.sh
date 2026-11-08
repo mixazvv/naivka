@@ -33,7 +33,9 @@
 #     сайт-заглушка /var/www/naivka; порты 80 и 443 TCP.
 # Что НЕ делается: не меняются пароли, SSH, пользователи; не трогаются другие программы.
 #
-# Повторный запуск безопасен: ключи сохраняются в /etc/sing-box/naivka.env, ссылки выводятся заново.
+# Перед изменениями сохраняются конфигурация и состояние служб. При отказе они восстанавливаются.
+# Установленные пакеты и добавленные правила UFW автоматически не удаляются.
+# Повторный запуск: ключи сохраняются в /etc/sing-box/naivka.env, ссылки выводятся заново.
 # Удаление: bash install-server.sh --remove
 #
 # Последние строки вывода «NAIVKA-LINK <ссылка>» Naivka добавляет в список серверов.
@@ -79,6 +81,84 @@ if [[ "${1:-}" == "--remove" ]]; then
   exit 0
 fi
 
+# ---------- резервная копия и восстановление ----------
+# Only files owned/modified by this installer are restored. Package installation,
+# OS users and external hosting firewalls are outside this file transaction.
+BACKUP=""; BACKUP_READY=0; COMMITTED=0; SB_APPLIED=0; CADDY_APPLIED=0; PACKAGE_MASK=0
+SB_ACTIVE=0; SB_ENABLED=0; CADDY_ACTIVE=0; CADDY_ENABLED=0
+snapshot_item() { # key path
+  [[ ! -e "$2" && ! -L "$2" ]] || cp -a -- "$2" "$BACKUP/$1" || die "Не удалось создать резервную копию; установка остановлена."
+}
+restore_item() { # key path
+  rm -rf -- "$2" || return 1
+  if [[ -e "$BACKUP/$1" || -L "$BACKUP/$1" ]]; then
+    mkdir -p -- "$(dirname "$2")" || return 1
+    cp -a -- "$BACKUP/$1" "$2"
+  fi
+}
+begin_transaction() {
+  local old_umask
+  old_umask="$(umask)"; umask 077
+  BACKUP="$(mktemp -d "${CONF_DIR}.backup.XXXXXXXX")"
+  umask "$old_umask"
+  snapshot_item config "$CONF_DIR"
+  if [[ "$TEST" != 1 ]]; then
+    systemctl is-active --quiet sing-box && SB_ACTIVE=1 || true
+    systemctl is-enabled --quiet sing-box && SB_ENABLED=1 || true
+    systemctl is-active --quiet naivka-caddy && CADDY_ACTIVE=1 || true
+    systemctl is-enabled --quiet naivka-caddy && CADDY_ENABLED=1 || true
+    snapshot_item dropin "$DROPIN_DIR"
+    snapshot_item caddy "$CADDY_DIR"
+    snapshot_item caddy-unit "$CADDY_UNIT"
+    snapshot_item caddy-bin "$CADDY_BIN"
+    snapshot_item sysctl "$SYSCTL_FILE"
+  fi
+  BACKUP_READY=1
+  log "Резервная копия конфигурации: $BACKUP"
+}
+finish_transaction() {
+  local status=$?
+  trap - EXIT ERR INT TERM HUP
+  set +e
+  if [[ "$PACKAGE_MASK" == 1 ]]; then systemctl unmask --runtime sing-box.service >/dev/null 2>&1; fi
+  if [[ -n "$BACKUP" && "$BACKUP_READY" == 1 && "$COMMITTED" != 1 ]]; then
+    warn "Установка не завершена. Восстанавливаю прежнюю конфигурацию."
+    if [[ "$TEST" != 1 ]]; then
+      [[ "$SB_APPLIED" == 0 ]] || systemctl stop sing-box >/dev/null 2>&1
+      [[ "$CADDY_APPLIED" == 0 ]] || systemctl stop naivka-caddy >/dev/null 2>&1
+    fi
+    local failed=0
+    restore_item config "$CONF_DIR" || failed=1
+    if [[ "$TEST" != 1 ]]; then
+      restore_item dropin "$DROPIN_DIR" || failed=1
+      restore_item caddy "$CADDY_DIR" || failed=1
+      restore_item caddy-unit "$CADDY_UNIT" || failed=1
+      restore_item caddy-bin "$CADDY_BIN" || failed=1
+      restore_item sysctl "$SYSCTL_FILE" || failed=1
+      systemctl daemon-reload || failed=1
+      if [[ "$SB_APPLIED" == 1 ]]; then
+        if [[ "$SB_ENABLED" == 1 ]]; then systemctl enable sing-box >/dev/null 2>&1; else systemctl disable sing-box >/dev/null 2>&1; fi
+        [[ "$SB_ACTIVE" == 0 ]] || systemctl start sing-box || failed=1
+      fi
+      if [[ "$CADDY_APPLIED" == 1 ]]; then
+        if [[ "$CADDY_ENABLED" == 1 ]]; then systemctl enable naivka-caddy >/dev/null 2>&1; else systemctl disable naivka-caddy >/dev/null 2>&1; fi
+        [[ "$CADDY_ACTIVE" == 0 ]] || systemctl start naivka-caddy || failed=1
+      fi
+    fi
+    if [[ "$failed" == 0 ]]; then
+      warn "Прежние файлы восстановлены. Пакеты, системные пользователи и добавленные правила UFW автоматически не удаляются."
+    else
+      warn "Откат завершён с ошибками. Резервная копия сохранена: $BACKUP"
+    fi
+    status=1
+  fi
+  exit "$status"
+}
+trap finish_transaction EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
 # ---------- параметры ----------
 SERVER_ADDR="${SERVER_ADDR:-}"
 REALITY_SNI="${REALITY_SNI:-}"
@@ -121,6 +201,12 @@ port_busy() { # port_busy t|u порт
 }
 tcp_busy() { port_busy t "$1"; }
 udp_busy() { port_busy u "$1"; }
+
+# Serialize installs touching the same configuration, including test fixtures.
+mkdir -p "$(dirname "$CONF_DIR")"
+exec 8>"${CONF_DIR}.install.lock"
+flock -n 8 || die "Установка для этого сервера уже выполняется."
+begin_transaction
 
 # Повторный запуск: те же ключи и порты.
 if [[ -r "$STATE_FILE" ]]; then
@@ -169,6 +255,13 @@ if [[ "$TEST" != 1 ]]; then
   apt-get install -y curl ca-certificates openssl iproute2 >/dev/null
   [[ "$NAIVE" == 1 ]] && apt-get install -y xz-utils jq >/dev/null
   if ! command -v sing-box >/dev/null; then
+    # Respect masks set by the administrator before this installer.
+    MASK_STATE="$(systemctl is-enabled sing-box.service 2>/dev/null || true)"
+    [[ "$MASK_STATE" != masked* ]] || die "Служба sing-box заблокирована администратором. Сначала проверьте причину блокировки."
+    SB_APPLIED=1
+    # Do not let the package start an example config during first install.
+    systemctl mask --runtime sing-box.service >/dev/null
+    PACKAGE_MASK=1
     log "Устанавливаю sing-box из официального репозитория SagerNet…"
     mkdir -p /etc/apt/keyrings
     curl -fsSL https://sing-box.app/gpg.key -o /etc/apt/keyrings/sagernet.asc
@@ -184,12 +277,22 @@ EOF
     apt-get update -y >/dev/null
     apt-get install -y -o Dpkg::Options::=--force-confold sing-box >/dev/null
   fi
-  # Конфиг из пакета поднимает Shadowsocks с паролем из примера — не даём ему поработать.
-  systemctl stop sing-box 2>/dev/null || true
+  if [[ "$PACKAGE_MASK" == 1 ]]; then
+    systemctl unmask --runtime sing-box.service >/dev/null
+    PACKAGE_MASK=0
+  fi
+  # An existing running service stays up throughout preparation.
   id sing-box >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin sing-box
 fi
 command -v sing-box >/dev/null || die "sing-box не установился."
-log "sing-box: $(sing-box version | head -n1)"
+CORE_VERSION="$(sing-box version | head -n1)"
+log "Ядро: $CORE_VERSION"
+CORE_SEMVER="$(awk '{print $3}' <<<"$CORE_VERSION" | sed 's/^v//')"
+if [[ "$TEST" != 1 ]]; then
+  dpkg --compare-versions "$CORE_SEMVER" ge 1.12.0 || die "Нужен sing-box 1.12.0 или новее. Установленная версия не подходит; рабочая конфигурация сохранена. Обновите ядро отдельно и повторите."
+fi
+log "Повторная установка сохраняет версию ядра; обновление пакета выполняется отдельно."
+
 
 CURL_K=()
 [[ "$TEST" == 1 ]] && CURL_K=(-k)
@@ -332,6 +435,7 @@ if [[ "$NAIVE" == 1 ]]; then
     die "Конфиг Caddy не прошёл проверку."
   fi
 
+  start_naive_caddy() {
   if [[ "$TEST" != 1 ]]; then
     id naivka-caddy >/dev/null 2>&1 || useradd --system --home /var/lib/naivka-caddy --shell /usr/sbin/nologin naivka-caddy
     chown root:naivka-caddy "$CADDY_CONF_DIR/Caddyfile"
@@ -363,13 +467,14 @@ if [[ "$NAIVE" == 1 ]]; then
       "" \
       "[Install]" \
       "WantedBy=multi-user.target" > "$CADDY_UNIT"
+    CADDY_APPLIED=1
     systemctl daemon-reload
     systemctl enable naivka-caddy >/dev/null 2>&1
     systemctl restart naivka-caddy
   else
     pkill -f "caddy-naive run --config $CADDY_CONF_DIR" 2>/dev/null || true
     XDG_DATA_HOME="$CONF_DIR/caddy-data" XDG_CONFIG_HOME="$CONF_DIR/caddy-data" \
-      nohup "$CADDY_BIN" run --config "$CADDY_CONF_DIR/Caddyfile" --adapter caddyfile >"$CONF_DIR/caddy.log" 2>&1 &
+      nohup "$CADDY_BIN" run --config "$CADDY_CONF_DIR/Caddyfile" --adapter caddyfile >"$CONF_DIR/caddy.log" 2>&1 8>&- &
   fi
   log "Жду, пока Caddy получит сертификат для ${DOMAIN} (до 3 минут)…"
   ok=0
@@ -382,6 +487,8 @@ if [[ "$NAIVE" == 1 ]]; then
     die "Caddy не получил сертификат. Проверьте, что порты 80 и 443 открыты в панели хостинга и домен указывает на сервер."
   fi
   log "Сайт https://${DOMAIN}/ работает, сертификат есть."
+  }
+
 else
   # ---------- сайт для маскировки ----------
   # Reality показывает постороннему настоящий сайт REALITY_SNI, поэтому он должен отвечать по TLS 1.3 с HTTP/2.
@@ -418,7 +525,8 @@ if [[ "$HY2" == 1 ]]; then
   HY2_PIN="$(openssl x509 -in "$HY2_CERT" -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64)"
 fi
 
-cat > "$STATE_FILE" <<EOF
+NEW_STATE="$(mktemp "$CONF_DIR/.naivka-state.XXXXXXXX")"
+cat > "$NEW_STATE" <<EOF
 UUID=$UUID
 PRIVATE_KEY=$PRIVATE_KEY
 PUBLIC_KEY=$PUBLIC_KEY
@@ -431,7 +539,7 @@ NAIVE_USER=${NAIVE_USER:-}
 NAIVE_PASS=${NAIVE_PASS:-}
 DOMAIN=${DOMAIN:-}
 EOF
-chmod 600 "$STATE_FILE"
+chmod 600 "$NEW_STATE"
 
 # ---------- конфиг ----------
 if [[ -e "$CONFIG" ]] && ! grep -q '"tag": "naivka-reality"' "$CONFIG"; then
@@ -499,13 +607,20 @@ cat > "$NEW_CONFIG" <<EOF
   }
 }
 EOF
-sing-box check -c "$NEW_CONFIG" || { rm -f "$NEW_CONFIG"; die "Конфиг не прошёл проверку sing-box — на сервере ничего не изменено."; }
+sing-box check -c "$NEW_CONFIG" || { rm -f "$NEW_CONFIG"; die "Конфиг не прошёл проверку sing-box — восстанавливаю прежние файлы."; }
+if [[ "$TEST" != 1 ]]; then
+  SB_APPLIED=1
+  systemctl stop sing-box
+fi
+# Caddy may need the old Reality port 443; start it only after validation.
+[[ "$NAIVE" != 1 ]] || start_naive_caddy
 if [[ "$TEST" == 1 ]]; then
   install -m 600 "$NEW_CONFIG" "$CONFIG"
 else
   install -m 640 -o root -g sing-box "$NEW_CONFIG" "$CONFIG"
   [[ "$HY2" == 1 ]] && chown root:sing-box "$HY2_KEY" "$HY2_CERT" && chmod 640 "$HY2_KEY" "$HY2_CERT"
 fi
+mv -f "$NEW_STATE" "$STATE_FILE"
 rm -f "$NEW_CONFIG"
 # sing-box склеивает все json из папки — чужие отключаем.
 find "$CONF_DIR" -maxdepth 1 -name '*.json' ! -name 'config.json' -exec mv {} {}.disabled \;
@@ -513,7 +628,7 @@ find "$CONF_DIR" -maxdepth 1 -name '*.json' ! -name 'config.json' -exec mv {} {}
 FRIENDS_BIN="/usr/local/sbin/naivka-friends" FRIENDS_LIST="/etc/naivka-friends/friends.json"
 [[ "$TEST" == 1 ]] && FRIENDS_BIN="$CONF_DIR/naivka-friends" FRIENDS_LIST="$CONF_DIR/friends/friends.json"
 if [[ -x "$FRIENDS_BIN" && -s "$FRIENDS_LIST" ]]; then
-  ACTION=apply NO_SINGBOX_RESTART=1 CONF_DIR="$CONF_DIR" NAIVKA_TEST="$TEST" "$FRIENDS_BIN" || warn "Друзей вернуть не удалось — откройте «Друзья» в Naivka."
+  ACTION=apply NO_SINGBOX_RESTART=1 CONF_DIR="$CONF_DIR" NAIVKA_TEST="$TEST" "$FRIENDS_BIN" || die "Не удалось восстановить доступ друзей — отменяю установку."
 fi
 
 # ---------- служба, файрвол, BBR ----------
@@ -562,7 +677,7 @@ EOF
   systemctl is-active --quiet sing-box || { journalctl -u sing-box -n 30 --no-pager; die "sing-box не запустился (журнал выше)."; }
 else
   pkill -f "sing-box run -c $CONFIG" 2>/dev/null || true
-  nohup sing-box run -c "$CONFIG" >"$CONF_DIR/test.log" 2>&1 &
+  nohup sing-box run -c "$CONFIG" >"$CONF_DIR/test.log" 2>&1 8>&- &
   sleep 1.5
 fi
 log "sing-box запущен."
@@ -603,6 +718,11 @@ if [[ "$NAIVE" == 1 ]]; then
     -x "https://${DOMAIN}:443" "$SELFTEST_URL")" || true
   if [[ "$code" != 204 ]]; then log "Маскировка NaiveProxy: без пароля прокси не отвечает."; else warn "Без пароля прокси пропускает трафик!"; fi
 fi
+
+# Local traffic and selected protocols were verified. Keep the backup for manual recovery.
+COMMITTED=1
+log "Конфигурация применена и проверена; резервная копия сохранена."
+log "Локальная проверка не проверяет файрвол хостинга и доступность порта с телефона."
 
 # ---------- ссылки ----------
 urlenc() { # процентное кодирование для имени в ссылке
