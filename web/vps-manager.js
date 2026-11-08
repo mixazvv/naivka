@@ -24,7 +24,7 @@ function vpsManagerDialog(host){
   }else if(!report){body.replaceChildren(h('p',{class:'hint'},'Нажмите «Получить сведения» — Naivka запросит состояние сервера по SSH.'));
   }else if(tab==='overview'){
    const labels={os:'Операционная система',kernel:'Ядро Linux',arch:'Архитектура',hostname:'Имя системы',singbox:'Версия sing-box',xray:'Версия Xray',caddy:'Версия Naive Caddy'};
-   body.replaceChildren(h('div',{class:'panel'},h('h3',null,'Система и VPN'),h('table',{class:'table'},h('tbody',null,Object.entries(labels).map(([key,label])=>h('tr',null,h('td',null,label),h('td',null,report.info?.[key]||'Не определено')))))),vpsResults(report,VPS_HISTORY.get(host.id)||[],'monitor'));
+   body.replaceChildren(h('button',{class:'btn small',onclick:()=>vpsDialog(host)},'Мониторинг с автообновлением'),h('div',{class:'panel'},h('h3',null,'Система и VPN'),h('table',{class:'table'},h('tbody',null,Object.entries(labels).map(([key,label])=>h('tr',null,h('td',null,label),h('td',null,report.info?.[key]||'Не определено')))))),vpsResults(report,VPS_HISTORY.get(host.id)||[],'monitor'));
   }else if(tab==='services'){
    const cards=Object.entries(VPS_SERVICE_NAMES).map(([service,label])=>{
     const buttons=['start','restart','stop'].map(op=>h('button',{class:'btn small','data-vps-op':op,disabled:busy,onclick:()=>action(service,op)},({start:'Запустить',restart:'Перезапустить',stop:'Остановить'})[op]));
