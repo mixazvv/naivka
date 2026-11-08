@@ -55,3 +55,7 @@
 :root:not([data-skin]) .settings-workspace { border-radius:18px; }
 :root:not([data-skin]) .settings-topbar .hint { margin:6px 0 0; }
 @media(max-width:540px) { :root:not([data-skin]) dialog { padding:18px; } .connection-choice { padding:14px; } }
+
+.vps-manager .vps-service{margin:12px 0;display:grid;gap:12px}.vps-manager .vps-log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;user-select:text}.vps-manager td{overflow-wrap:anywhere}.vps-manager .vps-tabs{padding:8px 0}
+
+dialog[open].vps-manager{display:flex;flex-direction:column;overflow:hidden;max-height:90vh}.vps-manager>*{flex-shrink:0}.vps-manager>.vps-manager-body{min-height:0;overflow:auto;flex:1 1 auto;overscroll-behavior:contain}.vps-manager>.row.end:last-child{padding:12px 0 0}

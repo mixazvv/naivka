@@ -65,7 +65,7 @@ function vpsResults(report, history, tab='all') {
     h('p', { class: 'hint' }, 'Это частичная проверка, а не заключение о безопасности. Неизвестный результат обычно означает отсутствие службы, утилиты или прав.'),
     ...(report.checks || []).slice().sort((a,b)=>({warning:0,unknown:1,info:2,ok:3}[a.level]??1)-({warning:0,unknown:1,info:2,ok:3}[b.level]??1)).map(c => {
       let spec = VPS_CHECKS[c.id];
-      if (!spec && /^(service|enabled)_(sing-box|xray|naivka-caddy|x-ui|marzban|nginx|caddy|fail2ban|ssh|sshd)$/.test(c.id)) {
+      if (!spec && /^(service|enabled)_(sing-box|xray|naivka-caddy|x-ui|marzban|nginx|caddy|fail2ban|ssh|sshd|s-ui)$/.test(c.id)) {
         const i = c.id.indexOf('_'); spec = [(c.id.startsWith('service_') ? 'Состояние: ' : 'Автозапуск: ') + c.id.slice(i + 1), 'По данным systemd; другие панели и службы не проверены.'];
       }
       if(!spec&&/^(owner|access|acl)_(singbox|xray|panel|ssh)$/.test(c.id)){

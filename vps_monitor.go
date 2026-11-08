@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -41,6 +42,7 @@ type vpsListener struct {
 }
 
 type vpsReport struct {
+	Info      map[string]string  `json:"info,omitempty"`
 	BootID    string             `json:"bootId,omitempty"`
 	CheckedAt int64              `json:"checkedAt"`
 	Metrics   map[string]float64 `json:"metrics"`
@@ -106,7 +108,7 @@ func collectVPS(ctx context.Context, cl *ssh.Client) (vpsReport, error) {
 }
 
 func parseVPSReport(raw string) (vpsReport, error) {
-	r := vpsReport{CheckedAt: time.Now().Unix(), Metrics: map[string]float64{}}
+	r := vpsReport{CheckedAt: time.Now().Unix(), Metrics: map[string]float64{}, Info: map[string]string{}}
 	if len(raw) > vpsOutputLimit {
 		return r, errors.New("Слишком большой отчёт VPS")
 	}
@@ -115,6 +117,16 @@ func parseVPSReport(raw string) (vpsReport, error) {
 	listenerInvalid, listenerOverflow := false, false
 	for _, line := range strings.Split(raw, "\n") {
 		k, v, ok := strings.Cut(line, "=")
+		if ok && strings.HasPrefix(k, "info_") {
+			key := strings.TrimPrefix(k, "info_")
+			switch key {
+			case "os", "kernel", "arch", "hostname", "singbox", "xray", "caddy":
+				if len([]rune(v)) <= 120 && !strings.ContainsFunc(v, unicode.IsControl) {
+					r.Info[key] = strings.TrimSpace(v)
+				}
+			}
+			continue
+		}
 		if ok && k == "listener" && len(v) >= 80 {
 			listenerInvalid = true
 			continue
@@ -207,7 +219,7 @@ func parseVPSReport(raw string) (vpsReport, error) {
 		add("cert_"+label, map[string]string{"valid_30d": "info", "expires_30d": "warning", "expired": "warning"})
 	}
 	add("firewall", map[string]string{"active": "info", "inactive": "warning"})
-	for _, service := range []string{"sing-box", "xray", "naivka-caddy", "x-ui", "marzban", "nginx", "caddy", "fail2ban", "ssh", "sshd"} {
+	for _, service := range []string{"sing-box", "xray", "naivka-caddy", "x-ui", "marzban", "nginx", "caddy", "fail2ban", "ssh", "sshd", "s-ui"} {
 		add("service_"+service, map[string]string{"active": "ok", "inactive": "info", "failed": "warning"})
 		add("enabled_"+service, map[string]string{"enabled": "ok", "disabled": "info", "static": "info", "masked": "info"})
 	}

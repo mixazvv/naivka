@@ -160,5 +160,29 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   await page.getByRole('button',{name:'Готовый VPN · sing-box',exact:true}).click();
   assert(await page.getByLabel('Поставить протоколы Naivka',{exact:false}).isChecked());
   await page.getByRole('dialog').evaluate(d=>d.close());
+  await page.evaluate(()=>{
+   window.vpsServiceCalls=[];window.vpsAuthed=false;const previousAPI=api;
+   api=async(path,body)=>{
+    if(path==='/api/vps/report'&&!vpsAuthed){if(!body.password)return {needAuth:true};vpsAuthed=true;}
+    if(path==='/api/vps/report')return {checkedAt:1800000000,info:{os:'Debian 13',kernel:'6.12',arch:'x86_64',singbox:'sing-box version 1.14.4'},metrics:{cpu_usage:10,memory_used:200,memory_total:1000},checks:[{id:'service_sing-box',value:'active',level:'ok'},{id:'local_listeners',value:'observed',level:'info'}],listeners:[{protocol:'tcp',port:443,binding:'wildcard'}]};
+    if(path==='/api/vps/service'){vpsServiceCalls.push(body);return {service:body.service,action:body.action,state:'active',checkedAt:1800000000,log:'Example log: connection timeout'};}
+    return previousAPI(path,body);
+   };
+   vpsManagerDialog(S.ownHosts[0]);
+  });
+  await page.getByRole('button',{name:'Получить сведения',exact:true}).click();
+  await page.getByPlaceholder('Пароль SSH',{exact:true}).fill('vps-fixture-password');
+  await page.getByRole('dialog').filter({has:page.getByPlaceholder('Пароль SSH',{exact:true})}).getByRole('button',{name:'Подключиться',exact:true}).click();
+  await page.getByText('Debian 13',{exact:true}).waitFor();
+  if(process.env.CONTROL_SCREENSHOTS)await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,'vps-manager.png')});
+  await page.getByRole('button',{name:'Службы',exact:true}).click();
+  await page.getByRole('button',{name:'Перезапустить',exact:true}).first().click();
+  await page.getByRole('dialog').filter({has:page.getByText('Подтвердите действие',{exact:true})}).getByRole('button',{name:'Отмена',exact:true}).click();
+  assert.equal(await page.evaluate(()=>vpsServiceCalls.length),0,'cancelled service operation executed');
+  await page.getByRole('button',{name:'Перезапустить',exact:true}).first().click();await page.getByRole('button',{name:'Подтвердить',exact:true}).click();
+  await page.waitForFunction(()=>vpsServiceCalls.length===1);assert.equal(await page.evaluate(()=>vpsServiceCalls[0].service),'sing-box');assert.equal(await page.evaluate(()=>vpsServiceCalls[0].confirm),true);
+  await page.getByRole('button',{name:'Журнал',exact:true}).click();await page.getByRole('button',{name:'Загрузить журнал',exact:true}).click();await page.getByText('Example log: connection timeout',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Порты',exact:true}).click();await page.getByText('443',{exact:true}).waitFor();
+  await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());
