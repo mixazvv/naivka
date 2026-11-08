@@ -97,7 +97,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   await page.getByRole('button',{name:/Добавить подписку/}).click();assert(await page.getByRole('dialog').getByRole('button',{name:'Добавить',exact:true}).isDisabled());
   const popupStyles=await page.evaluate(()=>{
    document.documentElement.classList.add('mica');
-   const d=document.querySelector('dialog'),select=d.querySelector('select'),option=select.querySelector('option');
+   const d=document.querySelector('dialog[open]'),select=d.querySelector('select'),option=select.querySelector('option');
    const result=[d,select,option].map(e=>({bg:getComputedStyle(e).backgroundColor,color:getComputedStyle(e).color}));
    document.documentElement.classList.remove('mica');return result;
   });
