@@ -38,7 +38,7 @@ const SubscriptionsUI=(()=>{
    h('p',{class:sub.error?'err-text':'hint',role:'status'},sub.error||('Обновлено: '+(sub.updated?new Date(sub.updated*1000).toLocaleString():'ещё не обновлялось'))),
    h('div',{class:'row'},h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:()=>configure(sub)},'Режим подписки'),h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:()=>action(sub.id,'update')},busy.has(sub.id)?'Подождите…':'Обновить'),
     h('label',{class:'check'},h('input',{type:'checkbox',checked:sub.auto,disabled:busy.has(sub.id),onchange:e=>action(sub.id,'auto',{auto:e.target.checked})}),'Автообновление раз в 6 часов'),
-    h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:()=>{if(ask('Удалить подписку «'+sub.name+'» и её серверы?'))action(sub.id,'remove');}},'Удалить подписку')))));
+    h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:async()=>{if(await ask('Удалить подписку «'+sub.name+'» и её серверы?'))action(sub.id,'remove');}},'Удалить подписку')))));
  }
  function add(){
   let token='',working=false;
