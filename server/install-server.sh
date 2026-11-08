@@ -583,7 +583,7 @@ EOF
   code="$(curl --noproxy "" -s -o /dev/null -w '%{http_code}' --max-time 15 -x "http://127.0.0.1:${port}" "$SELFTEST_URL")" || true
   kill "$pid" 2>/dev/null || true
   rm -rf "$dir"
-  if [[ "$code" == 204 ]]; then log "Самопроверка $1: трафик проходит."; else warn "Самопроверка $1 не прошла (код $code)."; fi
+  if [[ "$code" == 204 ]]; then log "Самопроверка $1: трафик проходит."; else die "Самопроверка $1 не прошла (код $code). Служба запущена, но передача трафика не подтверждена. Проверьте журнал sing-box; установка не помечена успешной."; fi
 }
 selftest Reality "{ \"type\": \"vless\", \"server\": \"127.0.0.1\", \"server_port\": ${REALITY_PORT}, \"uuid\": \"${UUID}\", \"flow\": \"xtls-rprx-vision\",
   \"tls\": { \"enabled\": true, \"server_name\": \"${REALITY_SNI}\", \"utls\": { \"enabled\": true, \"fingerprint\": \"chrome\" },
@@ -597,7 +597,7 @@ fi
 if [[ "$NAIVE" == 1 ]]; then
   code="$(curl "${CURL_K[@]}" --noproxy "" --proxy-insecure -s -o /dev/null -w '%{http_code}' --max-time 15 --resolve "${DOMAIN}:443:127.0.0.1" \
     -x "https://${DOMAIN}:443" --proxy-user "${NAIVE_USER}:${NAIVE_PASS}" "$SELFTEST_URL")" || true
-  if [[ "$code" == 204 ]]; then log "Самопроверка NaiveProxy: трафик проходит."; else warn "Самопроверка NaiveProxy не прошла (код $code)."; fi
+  if [[ "$code" == 204 ]]; then log "Самопроверка NaiveProxy: трафик проходит."; else die "Самопроверка NaiveProxy не прошла (код $code). Передача трафика не подтверждена; установка не помечена успешной."; fi
   # Посторонний без пароля должен видеть обычный сайт, а не прокси.
   code="$(curl "${CURL_K[@]}" --noproxy "" --proxy-insecure -s -o /dev/null -w '%{http_code}' --max-time 10 --resolve "${DOMAIN}:443:127.0.0.1" \
     -x "https://${DOMAIN}:443" "$SELFTEST_URL")" || true

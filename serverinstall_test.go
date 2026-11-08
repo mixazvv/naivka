@@ -160,3 +160,22 @@ func TestInstalledRealityPhoneExport(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallSelftestMustNotReportSuccessOnBrokenTraffic(t *testing.T) {
+	start := strings.Index(installScript, "selftest() {")
+	end := strings.Index(installScript[start:], "\nselftest Reality")
+	if start < 0 || end < 0 {
+		t.Fatal("missing selftest")
+	}
+	fn := installScript[start : start+end]
+	for _, code := range []string{"000", "200", "204"} {
+		script := "log(){ :; }; warn(){ :; }; die(){ printf '%s' \"$1\"; exit 27; }; sleep(){ :; }; sing-box(){ :; }; curl(){ printf " + code + "; }; SELFTEST_URL=https://example.invalid\n" + fn + "\nselftest Reality '{}'\n"
+		out, err := exec.Command("bash", "-c", script).CombinedOutput()
+		if code == "204" && err != nil {
+			t.Fatal(string(out), err)
+		}
+		if code != "204" && (err == nil || !strings.Contains(string(out), "не помечена успешной")) {
+			t.Fatal("failed traffic was accepted", code, string(out), err)
+		}
+	}
+}
