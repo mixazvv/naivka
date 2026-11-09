@@ -270,7 +270,7 @@ func shareLinkProto(sv Server) string {
 func protoTLS(sv Server, utls bool, defaultALPN []string) M {
 	t := M{"enabled": true, "server_name": orDefault(sv.SNI, sv.Host)}
 	if utls {
-		t["utls"] = M{"enabled": true, "fingerprint": orDefault(sv.Fingerprint, "chrome")}
+		t["utls"] = M{"enabled": true, "fingerprint": singboxFingerprint(sv.Fingerprint)}
 	}
 	if sv.ALPN != "" {
 		t["alpn"] = strs(strings.Split(sv.ALPN, ","))

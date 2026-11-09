@@ -720,10 +720,10 @@ func vlessOutbound(sv Server, tag string) M {
 	switch sv.Security {
 	case "reality", "":
 		ob["tls"] = withFragment(M{"enabled": true, "server_name": sni,
-			"utls":    M{"enabled": true, "fingerprint": orDefault(sv.Fingerprint, "chrome")},
+			"utls":    M{"enabled": true, "fingerprint": singboxFingerprint(sv.Fingerprint)},
 			"reality": M{"enabled": true, "public_key": sv.PublicKey, "short_id": sv.ShortID}}, sv)
 	case "tls":
-		t := M{"enabled": true, "server_name": sni, "utls": M{"enabled": true, "fingerprint": orDefault(sv.Fingerprint, "chrome")}}
+		t := M{"enabled": true, "server_name": sni, "utls": M{"enabled": true, "fingerprint": singboxFingerprint(sv.Fingerprint)}}
 		if sv.ALPN != "" {
 			t["alpn"] = strs(strings.Split(sv.ALPN, ","))
 		}
