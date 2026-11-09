@@ -10,8 +10,8 @@ on:
   push:
     tags: ["v*"]
     branches: [main]
-    # Смена сценария тоже пересобирает текущую версию: релиз с тем же тегом обновится, файлы заменятся.
-    paths: [VERSION, .github/workflows/release.yml]
+    # Смена сценария или описания тоже пересобирает текущую версию с актуальными заметками.
+    paths: [VERSION, RELEASE_NOTES.md, .github/workflows/release.yml]
   workflow_dispatch:
     inputs:
       tag:
