@@ -762,7 +762,7 @@ type testResult struct {
 	ID    string `json:"id"`
 	Ms    int    `json:"ms"`
 	Error string `json:"error,omitempty"`
-	Kind  string `json:"kind"` // proxy — реальный запрос через сервер; tls — только рукопожатие
+	Kind  string `json:"kind"` // proxy — запрос через сервер; tls — рукопожатие; tcp — только порт; unavailable — нужен запуск ядра
 }
 
 func (a *App) apiTest(r *http.Request) (any, error) {
@@ -801,8 +801,8 @@ func (a *App) apiTest(r *http.Request) (any, error) {
 					res.Error = humanErr(err)
 				}
 			} else {
-				res.Kind = "tls"
-				ms, err := tlsProbe(sv)
+				res.Kind = offlineProbeKind(sv)
+				ms, err := offlineProbe(sv)
 				res.Ms = ms
 				if err != nil {
 					res.Error = humanErr(err)
@@ -857,8 +857,22 @@ func (b *testBoard) view() map[string]any {
 	return map[string]any{"done": done, "pending": pending}
 }
 
-// tlsProbe — проверка без подключения: сколько занимает TLS-рукопожатие с сервером.
-func tlsProbe(sv Server) (int, error) {
+// Без ядра Reality нельзя проверить обычным TLS ClientHello: это другой протокол
+// аутентификации, и сертификат ответа не говорит о работоспособности VPN.
+// Только проверка через ядро (kind=proxy) подтверждает передачу трафика.
+func offlineProbeKind(sv Server) string {
+	if sv.QUIC || sv.Type == "hysteria2" || sv.Type == "tuic" {
+		return "unavailable"
+	}
+	if sv.Type == "shadowsocks" || (sv.Type == "vless" && (sv.Security == "none" || sv.Security == "reality" || sv.Security == "")) {
+		return "tcp"
+	}
+	return "tls"
+}
+
+// offlineProbe — предварительная проверка без включения VPN. Не проверяет UUID,
+// ключ Reality, short ID или передачу трафика через сервер.
+func offlineProbe(sv Server) (int, error) {
 	if sv.QUIC {
 		return 0, errors.New("HTTP/3-сервер проверяется только при подключении")
 	}
@@ -872,7 +886,7 @@ func tlsProbe(sv Server) (int, error) {
 	d := &net.Dialer{Timeout: 5 * time.Second}
 	addr := net.JoinHostPort(sv.Host, strconv.Itoa(sv.Port))
 	start := time.Now()
-	if sv.Type == "shadowsocks" || (sv.Type == "vless" && sv.Security == "none") { // без TLS — только TCP
+	if offlineProbeKind(sv) == "tcp" {
 		conn, err := d.Dial("tcp", addr)
 		if err != nil {
 			return 0, err
