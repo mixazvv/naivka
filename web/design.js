@@ -389,7 +389,7 @@ function pingBars(d) {
   let n = 0, cls = '';
   if (d && !d.pending) {
     if (d.error) cls = 'bad';
-    else if (d.ms) { n = d.ms < 150 ? 4 : d.ms < 300 ? 3 : d.ms < 600 ? 2 : 1; cls = d.ms < 300 ? 'good' : d.ms < 800 ? 'mid' : 'bad'; }
+    else if (d.ms) { n = d.ms < 150 ? 4 : d.ms < 300 ? 3 : d.ms < 600 ? 2 : 1; if (d.kind !== 'tcp') cls = d.ms < 300 ? 'good' : d.ms < 800 ? 'mid' : 'bad'; }
   }
   return h('span', { class: 'bars4 ' + cls, 'aria-hidden': 'true' }, ...[1, 2, 3, 4].map(i => h('i', { class: i <= n ? 'on' : '' })));
 }

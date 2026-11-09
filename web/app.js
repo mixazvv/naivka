@@ -2490,6 +2490,7 @@ function delayEl(id) {
   if (!d) return null;
   if (d.pending) return h('span', { class: 'delay cell-sub' }, 'проверяю…');
   if (d.error) return h('span', { class: 'delay bad' }, d.error);
+  if (d.kind === 'tcp') return h('span', { class: 'delay cell-sub', title: 'Доступен TCP-порт. Подключение VPN и Reality проверяются после включения.' }, `${d.ms} мс`, ' TCP');
   const cls = d.ms < 300 ? 'good' : d.ms < 800 ? 'mid' : 'bad';
   return h('span', { class: 'delay ' + cls, title: d.kind === 'tls' ? 'TLS-рукопожатие без подключения' : 'Реальный запрос через сервер' }, `${d.ms} мс` + (d.kind === 'tls' ? ' TLS' : ''));
 }

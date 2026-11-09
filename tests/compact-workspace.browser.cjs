@@ -65,6 +65,14 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   await page.evaluate(()=>{S.layout={version:2,wide:[{id:'routes',span:2,row:2,col:1,height:500}],narrow:[]};window.savedLayout=JSON.stringify(S.layout);HomeLayout.apply();});assert.equal(await page.evaluate(()=>JSON.stringify(S.layout)===savedLayout),true);assert(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('home-custom')));assert.equal(await page.locator('.stage-inner').evaluate(e=>e.classList.contains('home-compact')),false);
   await page.evaluate(()=>{S.layout={};HomeLayout.apply();});const before=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length);await page.locator('#homeConnect').click();await page.waitForFunction(()=>!busy);assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/disconnect').length),before+1);
   await page.evaluate(()=>{view='servers';drawerBody.replaceChildren(viewServers());document.querySelector('#drawer').hidden=false;document.querySelector('#drawer').classList.add('open');main.setAttribute('inert','');renderServers();});
+  // Port reachability must not look like a successful VPN test; a later core failure remains visible.
+  await page.evaluate(()=>{delays.b={ms:25,kind:'tcp'};renderServers();});
+  const tcpDelay=page.locator('#srvList .delay').filter({hasText:'25 мс TCP'});
+  assert(await tcpDelay.isVisible());assert((await tcpDelay.getAttribute('title')).includes('после включения'));
+  assert.equal(await tcpDelay.evaluate(e=>e.classList.contains('good')||e.parentElement.querySelector('.bars4').classList.contains('good')),false,'TCP reachability shown as VPN success');
+  await page.evaluate(()=>{delays.b={ms:0,kind:'proxy',error:'reality verification failed'};renderServers();});
+  assert(await page.locator('#srvList .delay.bad').filter({hasText:'reality verification failed'}).isVisible());
+  await page.evaluate(()=>{delete delays.b;renderServers();});
   await page.getByLabel('Поиск серверов').fill('Германия');assert.equal(await page.locator('#srvList .scard').count(),1);const selectedBefore=await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/select').length);await page.getByRole('button',{name:'Подробнее',exact:true}).click();assert.equal(await page.evaluate(()=>apiCalls.filter(x=>x.url==='/api/select').length),selectedBefore);assert.equal(await page.locator('dialog').getByText('secret',{exact:true}).count(),0);assert((await page.locator('dialog').textContent()).includes('de.example.invalid'));await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();await page.locator('dialog').waitFor({state:'detached'});
   // Route button identity survives periodic latency/text refreshes.
   await page.evaluate(()=>{
