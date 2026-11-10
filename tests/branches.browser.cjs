@@ -72,7 +72,7 @@ const root = path.resolve(__dirname, '..');
         return { key:l.key, node:Math.min(...polygon.points.map(p=>Math.hypot(p[0]-center[0],p[1]-center[1]))), end:Math.min(...polygon.points.map(p=>Math.hypot(p[0]-net[0],p[1]-net[1]))) };
       });
     });
-    for(const j of joins) { assert(j.node<6,`${j.key} misses its circle`);assert(j.end<6,`${j.key} misses Internet`); }
+    for(const j of joins) { assert(j.node<6,`${j.key} misses its circle`);if(j.key==='tg')assert(j.end>100,'Telegram must terminate at its own node');else assert(j.end<6,`${j.key} misses Internet`); }
     const ordered = await page.evaluate(() => {
       const names=['tg','proxy','direct','zapret'];
       const ctx=document.querySelector('canvas').getContext('2d'),styles=getComputedStyle(document.querySelector('#tree'));
@@ -81,7 +81,7 @@ const root = path.resolve(__dirname, '..');
         return branchPolygons.filter(p=>p.color===color).at(-1).points;
       });
       const yAt=(points,x)=>{const ys=[];for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];if((a[0]<=x&&b[0]>x)||(b[0]<=x&&a[0]>x))ys.push(a[1]+(b[1]-a[1])*(x-a[0])/(b[0]-a[0]));}return (Math.min(...ys)+Math.max(...ys))/2;};
-      return [200,300,400,500,600,700,800].every(x=>{const y=curves.map(p=>yAt(p,x));return y.every((v,i)=>Number.isFinite(v)&&(!i||v>y[i-1]));});
+      return [200,300,400,500,600,700,800].every(x=>{const y=curves.map((p,i)=>names[i]==='tg'&&x>=Math.max(...p.map(q=>q[0]))?null:yAt(p,x)).filter(v=>v!==null);return y.every((v,i)=>Number.isFinite(v)&&(!i||v>y[i-1]));});
     });
     assert(ordered,'Telegram, proxy, direct and zapret must not cross');
     const sizes=await page.locator('.br-leaf[data-hidden="false"]').evaluateAll(els=>els.map(el=>({w:el.offsetWidth,h:el.offsetHeight})));
