@@ -44,6 +44,22 @@ const server=http.createServer((req,res)=>{
   await page.getByText('Ключ SSH отличается',{exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Сохранить новый адрес',exact:true}).isVisible(),false);
   assert.equal(await page.evaluate(()=>S.ownHosts[0].host),'203.0.113.20');
+
+  await page.getByRole('button',{name:'Отмена',exact:true}).click();
+  await page.getByPlaceholder('Новый IPv4 или IPv6').waitFor({state:'detached'});
+  await page.evaluate(()=>{rejectPreview=false;vpsAddressDialog();});
+  await page.getByPlaceholder('Прежний IPv4 или IPv6').fill('203.0.113.10');
+  await page.getByPlaceholder('Новый IPv4 или IPv6').fill('203.0.113.40');
+  await page.getByRole('button',{name:'Проверить новый адрес',exact:true}).click();
+  await page.getByText('Сверьте ключ SSH в консоли хостинга',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Сохранить новый адрес',exact:true}).isEnabled(),false);
+  await page.getByLabel('Отпечаток совпадает — это мой VPS',{exact:true}).check();
+  await page.getByRole('button',{name:'Сохранить новый адрес',exact:true}).click();
+  await page.getByText('Готово. Теперь можно подключиться и проверить интернет.',{exact:true}).waitFor();
+  const request=await page.evaluate(()=>calls.at(-1).body);
+  assert.equal(request.host,'');assert.equal(request.manual.old,'203.0.113.10');assert.equal(request.manual.port,22);
+  assert.equal(request.manual.fingerprint,'SHA256:fixture');assert.equal(request.keyConfirmed,true);
+  assert.deepEqual(request.servers,['manual'],'fingerprint checkbox must not be a server target');
   assert.deepEqual(errors,[]);
   console.log('VPS address wizard: explicit preview, selection, commit, Escape guard and SSH failure passed');
  }finally{await browser.close();}
