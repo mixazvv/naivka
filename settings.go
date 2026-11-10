@@ -29,6 +29,8 @@ type Server struct {
 	Port           int    `json:"port"`
 	SNI            string `json:"sni"` // если пусто — используется Host
 
+	Mieru *MieruOptions `json:"mieru,omitempty"`
+
 	// Naive
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -109,7 +111,7 @@ type OwnHost struct {
 // serverTypes — протоколы, которые Naivka умеет. udp — может ли передавать UDP (голос, игры).
 var serverTypes = map[string]struct{ udp bool }{
 	"naive": {false}, "vless": {true}, "hysteria2": {true}, "tuic": {true},
-	"trojan": {true}, "shadowsocks": {true}, "anytls": {false},
+	"trojan": {true}, "shadowsocks": {true}, "anytls": {false}, "mieru": {true},
 }
 
 // ssMethods — шифры Shadowsocks: ключ (байт) для 2022, 0 — пароль любой длины.
@@ -919,6 +921,8 @@ func validateServerProto(sv Server) error {
 		}
 	}
 	switch sv.Type {
+	case "mieru":
+		return validateMieru(sv)
 	case "hysteria2":
 		if sv.Password == "" {
 			return bad("не указан пароль")
@@ -994,6 +998,15 @@ func ParseShareLinks(text string) ([]Server, []string) {
 		if line == "" {
 			continue
 		}
+		if strings.HasPrefix(strings.ToLower(line), "mieru://") {
+			servers, err := parseMieruFull(line)
+			if err != nil {
+				errs = append(errs, err.Error())
+			} else {
+				out = append(out, servers...)
+			}
+			continue
+		}
 		if strings.HasPrefix(strings.ToLower(line), "ss://") {
 			sv, err := parseSS(line)
 			if err != nil {
@@ -1010,6 +1023,8 @@ func ParseShareLinks(text string) ([]Server, []string) {
 		}
 		var parse func(*url.URL) (Server, error)
 		switch strings.ToLower(u.Scheme) {
+		case "mierus":
+			parse = parseMieru
 		case "hysteria2", "hy2":
 			parse = parseHysteria2
 		case "tuic":
@@ -1042,7 +1057,7 @@ func ParseShareLinks(text string) ([]Server, []string) {
 			}
 			continue
 		default:
-			errs = append(errs, fmt.Sprintf("%s: ожидается naive+https://, naive+quic://, vless://, hysteria2://, tuic://, trojan://, ss:// или anytls://", short(line)))
+			errs = append(errs, fmt.Sprintf("%s: ожидается naive+https://, naive+quic://, vless://, hysteria2://, tuic://, trojan://, ss://, anytls://, mieru:// или mierus://", short(line)))
 			continue
 		}
 		if u.Hostname() == "" {
@@ -1156,6 +1171,9 @@ func parseVLESS(u *url.URL) (Server, error) {
 
 // ShareLink — ссылка для переноса сервера в другой клиент (QR-код для телефона).
 func ShareLink(sv Server) string {
+	if sv.Type == "mieru" {
+		return shareMieru(sv)
+	}
 	if l := shareLinkProto(sv); l != "" {
 		return l
 	}

@@ -220,6 +220,8 @@ func (a *App) routes() http.Handler {
 		}
 		return map[string]any{"ok": len(res), "delays": res}, nil
 	})
+	api("POST", "/api/naive/install", func(*http.Request) (any, error) { return nil, a.naive.Install() })
+	api("POST", "/api/mieru/install", func(*http.Request) (any, error) { return nil, a.mieru.Install() })
 	api("POST", "/api/xray/install", func(*http.Request) (any, error) { return nil, a.xray.Install() })
 	api("POST", "/api/speedtest", func(*http.Request) (any, error) { return nil, a.StartSpeedTest() })
 	api("GET", "/api/speedtest", func(*http.Request) (any, error) { return speedView(), nil })
@@ -861,6 +863,12 @@ func (b *testBoard) view() map[string]any {
 // аутентификации, и сертификат ответа не говорит о работоспособности VPN.
 // Только проверка через ядро (kind=proxy) подтверждает передачу трафика.
 func offlineProbeKind(sv Server) string {
+	if sv.Type == "mieru" {
+		if sv.Mieru != nil && len(sv.Mieru.Bindings) > 0 && sv.Mieru.Bindings[0].Protocol == "TCP" {
+			return "tcp"
+		}
+		return "unavailable"
+	}
 	if sv.QUIC || sv.Type == "hysteria2" || sv.Type == "tuic" {
 		return "unavailable"
 	}
@@ -873,6 +881,9 @@ func offlineProbeKind(sv Server) string {
 // offlineProbe — предварительная проверка без включения VPN. Не проверяет UUID,
 // ключ Reality, short ID или передачу трафика через сервер.
 func offlineProbe(sv Server) (int, error) {
+	if sv.Type == "mieru" && offlineProbeKind(sv) == "unavailable" {
+		return 0, errors.New("Mieru UDP проверяется только при подключении")
+	}
 	if sv.QUIC {
 		return 0, errors.New("HTTP/3-сервер проверяется только при подключении")
 	}

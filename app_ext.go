@@ -126,6 +126,30 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 	if env.APIPort > 0 { // превью конфига не должно считаться «применённым» списком
 		a.wl.markApplied(env.WLServers)
 	}
+	env.ExternalPorts = map[string]int{}
+	for _, component := range []*ExternalProxy{a.naive, a.mieru} {
+		if component == nil {
+			continue
+		}
+		if component.kind == "naive" {
+			env.ExternalNaive = component.Present()
+		}
+		nodes := map[string]Server{}
+		for _, sv := range s.Servers {
+			if sv.Type == component.kind && (sv.Type != "naive" || !sv.UoT) {
+				nodes[serverTag(sv)] = sv
+			}
+		}
+		if env.APIPort > 0 {
+			for tag, p := range component.Sync(nodes) {
+				env.ExternalPorts[tag] = p
+			}
+		} else if component.Present() {
+			for tag := range nodes {
+				env.ExternalPorts[tag] = 21000 + len(env.ExternalPorts)
+			}
+		}
+	}
 	// серверы xHTTP (свои и из подписки) работают через Xray
 	xs := map[string]Server{}
 	for _, sv := range s.Servers {
@@ -152,7 +176,10 @@ func (a *App) fillEnv(s *Settings, env *ConfigEnv) {
 		probes := map[string]int{}
 		tags := []string{}
 		for _, sv := range s.Servers {
-			if sv.Type == "naive" && env.NoNaive {
+			if (sv.Type == "mieru" || (sv.Type == "naive" && env.ExternalNaive && !sv.UoT)) && env.ExternalPorts[serverTag(sv)] == 0 {
+				continue
+			}
+			if sv.Type == "naive" && env.NoNaive && env.ExternalPorts[serverTag(sv)] == 0 {
 				continue
 			}
 			tags = append(tags, serverTag(sv))

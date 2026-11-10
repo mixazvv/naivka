@@ -1,5 +1,5 @@
 'use strict';
-const VPS_SERVICE_NAMES={'sing-box':'sing-box · VPN','xray':'Xray · VPN','naivka-caddy':'Caddy · NaiveProxy','x-ui':'3X-UI','s-ui':'s-ui'};
+const VPS_SERVICE_NAMES={'sing-box':'sing-box · VPN','xray':'Xray · VPN','naivka-caddy':'Caddy · NaiveProxy','naivka-mita':'Mieru · mita','x-ui':'3X-UI','s-ui':'s-ui'};
 function vpsManagerDialog(host){
  const body=h('div',{class:'vps-manager-body'}),message=h('p',{class:'hint',role:'status'});
  let report=null,busy=false,tab='overview',logService='sing-box',logResult=null;
@@ -23,7 +23,7 @@ function vpsManagerDialog(host){
     logResult?h('div',null,h('p',{class:'hint'},VPS_SERVICE_NAMES[logResult.service]+' · '+new Date(logResult.checkedAt*1000).toLocaleString()),h('pre',{class:'log vps-log',tabindex:0},logResult.log||'Журнал пуст или недоступен для чтения.'),logResult.truncated?h('p',{class:'hint'},'Вывод ограничен 16 КиБ.'):null):h('p',{class:'hint'},'Выберите службу и загрузите журнал.'));
   }else if(!report){body.replaceChildren(h('p',{class:'hint'},'Нажмите «Получить сведения» — Naivka запросит состояние сервера по SSH.'));
   }else if(tab==='overview'){
-   const labels={os:'Операционная система',kernel:'Ядро Linux',arch:'Архитектура',hostname:'Имя системы',singbox:'Версия sing-box',xray:'Версия Xray',caddy:'Версия Naive Caddy'};
+   const labels={os:'Операционная система',kernel:'Ядро Linux',arch:'Архитектура',hostname:'Имя системы',singbox:'Версия sing-box',xray:'Версия Xray',caddy:'Версия Naive Caddy',mieru:'Версия Mieru'};
    body.replaceChildren(h('button',{class:'btn small',onclick:()=>vpsDialog(host)},'Мониторинг с автообновлением'),h('div',{class:'panel'},h('h3',null,'Система и VPN'),h('table',{class:'table'},h('tbody',null,Object.entries(labels).map(([key,label])=>h('tr',null,h('td',null,label),h('td',null,report.info?.[key]||'Не определено')))))),vpsResults(report,VPS_HISTORY.get(host.id)||[],'monitor'));
   }else if(tab==='services'){
    const cards=Object.entries(VPS_SERVICE_NAMES).map(([service,label])=>{

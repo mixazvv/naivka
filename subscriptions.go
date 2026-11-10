@@ -25,7 +25,7 @@ const subscriptionInterval = 6 * time.Hour
 
 var errSubscriptionRedirect = errors.New("Сервис перенаправляет запрос на недопустимый адрес или делает слишком много перенаправлений")
 
-var errSubscriptionFormat = errors.New("Сервис не вернул список серверов. Поддерживаются списки ссылок, Base64 и Xray JSON (VLESS, Trojan, Shadowsocks); HTML, Clash YAML и sing-box JSON пока не поддерживаются")
+var errSubscriptionFormat = errors.New("Сервис не вернул список серверов. Поддерживаются списки ссылок, Base64, Mieru JSON и Xray JSON (VLESS, Trojan, Shadowsocks); HTML, Clash YAML и sing-box JSON пока не поддерживаются")
 
 type subscriptionNetworkError struct{ message string }
 
@@ -115,7 +115,11 @@ func parseSubscription(body string) ([]Server, int, error) {
 	var parsed []Server
 	skipped := 0
 	if strings.HasPrefix(strings.TrimSpace(text), "{") || strings.HasPrefix(strings.TrimSpace(text), "[") {
-		parsed, skipped = parseXraySubscription(text)
+		var recognized bool
+		parsed, skipped, recognized = parseMieruJSON(text)
+		if !recognized {
+			parsed, skipped = parseXraySubscription(text)
+		}
 	} else {
 		var lines []string
 		for _, line := range strings.Split(text, "\n") {

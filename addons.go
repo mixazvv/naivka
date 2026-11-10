@@ -214,6 +214,8 @@ type UpdatesView struct {
 	Zapret   AddonState `json:"zapret"`
 	Telegram AddonState `json:"telegram"`
 	Xray     AddonState `json:"xray"`
+	Naive    AddonState `json:"naive"`
+	Mieru    AddonState `json:"mieru"`
 	Checked  int64      `json:"checked"`
 }
 
@@ -236,6 +238,12 @@ func (a *App) checkUpdates(notify bool) {
 		{"zapret", zapretRepo, func() string { return a.zapret.snapshot().Installed }, a.zapret.setLatest},
 		{"tg-ws-proxy", tgwsRepo, func() string { return a.tgws.snapshot().Installed }, a.tgws.setLatest},
 		{"Xray", xrayRepo, func() string { return a.xray.snapshot().Installed }, a.xray.setLatest},
+	}
+	for _, x := range []*ExternalProxy{a.naive, a.mieru} {
+		if x != nil {
+			component := x
+			items = append(items, item{component.kind, component.repo, func() string { return component.snapshot().Installed }, component.setLatest})
+		}
 	}
 	for _, it := range items {
 		tag, err := latestTag(it.repo)
@@ -277,7 +285,7 @@ func (a *App) updatesView() UpdatesView {
 	if st.Download.Active {
 		core.Busy, core.Done, core.Total = "download", st.Download.Done, st.Download.Total
 	}
-	return UpdatesView{Core: core, Zapret: a.zapret.snapshot(), Telegram: a.tgws.snapshot(), Xray: a.xray.snapshot(), Checked: at}
+	return UpdatesView{Core: core, Zapret: a.zapret.snapshot(), Telegram: a.tgws.snapshot(), Xray: a.xray.snapshot(), Naive: a.naive.snapshot(), Mieru: a.mieru.snapshot(), Checked: at}
 }
 
 var errNeedAdmin = errors.New("Нужны права администратора: перезапустите Naivka с правами (кнопка на этой странице)")

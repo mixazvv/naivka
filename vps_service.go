@@ -15,7 +15,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-var vpsServices = map[string]bool{"sing-box": true, "xray": true, "naivka-caddy": true, "x-ui": true, "s-ui": true}
+var vpsServices = map[string]bool{"sing-box": true, "xray": true, "naivka-caddy": true, "naivka-mita": true, "x-ui": true, "s-ui": true}
 
 type vpsServiceReq struct {
 	friendsReq
@@ -51,7 +51,7 @@ func (r vpsServiceReq) validate() error {
 const vpsServiceScript = `export LC_ALL=C
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 service=$1; action=$2
-case "$service" in sing-box|xray|naivka-caddy|x-ui|s-ui) ;; *) exit 2;; esac
+case "$service" in sing-box|xray|naivka-caddy|naivka-mita|x-ui|s-ui) ;; *) exit 2;; esac
 [ "$(systemctl show "$service" -p LoadState --value 2>/dev/null)" = loaded ] || exit 3
 case "$action" in
  logs) exec journalctl --unit="$service" --lines=100 --no-pager --output=short-iso;;

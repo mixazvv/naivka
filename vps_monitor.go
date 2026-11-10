@@ -120,7 +120,7 @@ func parseVPSReport(raw string) (vpsReport, error) {
 		if ok && strings.HasPrefix(k, "info_") {
 			key := strings.TrimPrefix(k, "info_")
 			switch key {
-			case "os", "kernel", "arch", "hostname", "singbox", "xray", "caddy":
+			case "os", "kernel", "arch", "hostname", "singbox", "xray", "caddy", "mieru":
 				if len([]rune(v)) <= 120 && !strings.ContainsFunc(v, unicode.IsControl) {
 					r.Info[key] = strings.TrimSpace(v)
 				}
@@ -219,7 +219,7 @@ func parseVPSReport(raw string) (vpsReport, error) {
 		add("cert_"+label, map[string]string{"valid_30d": "info", "expires_30d": "warning", "expired": "warning"})
 	}
 	add("firewall", map[string]string{"active": "info", "inactive": "warning"})
-	for _, service := range []string{"sing-box", "xray", "naivka-caddy", "x-ui", "marzban", "nginx", "caddy", "fail2ban", "ssh", "sshd", "s-ui"} {
+	for _, service := range []string{"sing-box", "xray", "naivka-caddy", "naivka-mita", "x-ui", "marzban", "nginx", "caddy", "fail2ban", "ssh", "sshd", "s-ui"} {
 		add("service_"+service, map[string]string{"active": "ok", "inactive": "info", "failed": "warning"})
 		add("enabled_"+service, map[string]string{"enabled": "ok", "disabled": "info", "static": "info", "masked": "info"})
 	}

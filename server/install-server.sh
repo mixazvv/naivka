@@ -70,13 +70,21 @@ if [[ "${1:-}" == "--remove" ]]; then
   systemctl disable --now sing-box 2>/dev/null || true
   systemctl disable --now naivka-caddy 2>/dev/null || true
   rm -f "$CADDY_UNIT"
+  if [[ -f /etc/systemd/system/naivka-mita.service ]]; then
+    systemctl disable --now naivka-mita 2>/dev/null || true
+    rm -f /etc/systemd/system/naivka-mita.service
+    if command -v ufw >/dev/null; then
+      ufw delete allow 49997/tcp >/dev/null 2>&1 || true
+      ufw delete allow 49997/udp >/dev/null 2>&1 || true
+    fi
+  fi
   if command -v ufw >/dev/null; then
     [[ -n "${REALITY_PORT:-}" ]] && ufw delete allow "${REALITY_PORT}/tcp" >/dev/null 2>&1 || true
     [[ -n "${HY2_PORT:-}" ]] && ufw delete allow "${HY2_PORT}/udp" >/dev/null 2>&1 || true
   fi
   rm -rf "$DROPIN_DIR" "$SYSCTL_FILE"
   systemctl daemon-reload 2>/dev/null || true
-  log "sing-box и Caddy (NaiveProxy) остановлены и убраны из автозапуска, порты закрыты."
+  log "sing-box, Caddy (NaiveProxy) и установленный Naivka Mieru остановлены и убраны из автозапуска, порты закрыты."
   log "Пакет можно удалить полностью: apt remove sing-box. Ключи остались в $STATE_FILE."
   exit 0
 fi

@@ -59,7 +59,8 @@ fi
 if command -v iptables >/dev/null 2>&1; then
   iptables -S INPUT 2>/dev/null | awk '$1=="-P"&&$2=="INPUT" {if($3=="ACCEPT")print "iptables_input=accept";else if($3=="DROP")print "iptables_input=drop"}'
 fi
-for service in sing-box xray naivka-caddy x-ui marzban nginx caddy fail2ban ssh sshd s-ui;  do
+if [ -x /opt/naivka-mieru/current/mita ]; then /opt/naivka-mieru/current/mita version 2>/dev/null | head -n1 | cut -c1-120 | sed 's/^/info_mieru=/'; fi
+for service in sing-box xray naivka-caddy naivka-mita x-ui marzban nginx caddy fail2ban ssh sshd s-ui;  do
   [ "$(systemctl show "$service" -p LoadState --value 2>/dev/null)" = loaded ] || continue
   state=$(systemctl is-active "$service" 2>/dev/null)
   case "$state" in active|inactive|failed) printf 'service_%s=%s\n' "$service" "$state";; esac

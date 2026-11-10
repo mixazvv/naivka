@@ -92,7 +92,9 @@ type ConfigEnv struct {
 	// ServerProbes — служебные входы для теста скорости: тег сервера или группы → порт.
 	ServerProbes map[string]int
 	// XrayPorts — серверы xHTTP: тег → локальный вход Xray. Без входа сервер пропускается.
-	XrayPorts map[string]int
+	XrayPorts     map[string]int
+	ExternalPorts map[string]int
+	ExternalNaive bool
 	// InlineLists — скачанные текстовые списки по ссылке: id → домены и IP.
 	InlineLists map[string]*inlineList
 	// DNSFallback — прямой DoH/DoT перестал отвечать: вместо него обычный DNS (dnsguard.go).
@@ -141,6 +143,25 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	var serverTags []any
 	selected := tagAuto
 	for _, sv := range s.Servers {
+		if sv.Type == "mieru" || (sv.Type == "naive" && !sv.UoT && env.ExternalNaive) {
+			p := env.ExternalPorts[serverTag(sv)]
+			if p == 0 {
+				if sv.ID == s.Selected {
+					return nil, fmt.Errorf("Не удалось запустить %s для выбранного сервера. Проверьте компонент в настройках", sv.Type)
+				}
+				continue
+			}
+			ob := xrayBridge(serverTag(sv), p)
+			if sv.Type == "naive" {
+				ob["network"] = "tcp"
+			}
+			outbounds = append(outbounds, ob)
+			serverTags = append(serverTags, serverTag(sv))
+			if sv.ID == s.Selected {
+				selected = serverTag(sv)
+			}
+			continue
+		}
 		if sv.Type == "naive" && env.NoNaive {
 			continue
 		}
@@ -212,7 +233,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 		wlTags = append(wlTags, tag)
 	}
 	if len(serverTags) == 0 && len(wlTags) == 0 {
-		return nil, errors.New("Это ядро sing-box не поддерживает Naive. Добавьте сервер другого протокола, например VLESS+Reality")
+		return nil, errors.New("Нет доступных серверов. Проверьте установку компонентов NaïveProxy / Mieru / Xray в настройках и поддержку протокола ядром")
 	}
 	selOut := []any{}
 	if len(serverTags) > 0 {
@@ -252,7 +273,7 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 	if s.UDPProxy {
 		var vl []any
 		for _, sv := range s.Servers {
-			if serverTypes[sv.Type].udp && (sv.Transport != "xhttp" || env.XrayPorts[serverTag(sv)] > 0) {
+			if serverTypes[sv.Type].udp && (sv.Type != "mieru" || env.ExternalPorts[serverTag(sv)] > 0) && (sv.Transport != "xhttp" || env.XrayPorts[serverTag(sv)] > 0) {
 				vl = append(vl, serverTag(sv))
 			}
 		}
@@ -337,6 +358,9 @@ func BuildConfig(s *Settings, env ConfigEnv) (M, error) {
 			M{"inbound": []any{"probe-proxy"}, "outbound": tagProxy},
 			M{"inbound": []any{"probe-direct"}, "outbound": tagDirect},
 		)
+	}
+	if len(env.ExternalPorts) > 0 {
+		rules = append(rules, M{"process_name": []any{"naive.exe", "mieru.exe", "naive", "mieru"}, "outbound": tagDirect})
 	}
 	rules = append(rules,
 		M{"protocol": "dns", "action": "hijack-dns"},
