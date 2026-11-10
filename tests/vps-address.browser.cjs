@@ -37,6 +37,7 @@ const server=http.createServer((req,res)=>{
   assert.deepEqual(await page.evaluate(()=>calls[1].body.servers),[]);
   assert.equal(await page.evaluate(()=>calls[1].body.revision),'revision');
   await page.getByRole('button',{name:'Готово',exact:true}).click();
+  await page.getByPlaceholder('Новый IPv4 или IPv6').waitFor({state:'detached'});
   await page.evaluate(()=>{rejectPreview=true;vpsAddressDialog({id:'vps',host:'203.0.113.20'});});
   await page.getByPlaceholder('Новый IPv4 или IPv6').fill('203.0.113.30');
   await page.getByRole('button',{name:'Проверить новый адрес',exact:true}).click();
