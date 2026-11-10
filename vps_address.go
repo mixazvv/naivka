@@ -16,12 +16,20 @@ import (
 )
 
 type addressRequest struct {
-	Host     string   `json:"host"`
-	Address  string   `json:"address"`
-	Revision string   `json:"revision"`
-	Apply    bool     `json:"apply"`
-	Confirm  bool     `json:"confirm"`
-	Servers  []string `json:"servers"`
+	Host         string         `json:"host"`
+	Address      string         `json:"address"`
+	Revision     string         `json:"revision"`
+	Apply        bool           `json:"apply"`
+	Confirm      bool           `json:"confirm"`
+	Servers      []string       `json:"servers"`
+	Manual       *manualAddress `json:"manual,omitempty"`
+	KeyConfirmed bool           `json:"keyConfirmed"`
+}
+type manualAddress struct {
+	Old         string `json:"old"`
+	Port        int    `json:"port"`
+	User        string `json:"user"`
+	Fingerprint string `json:"fingerprint"`
 }
 type addressItem struct {
 	ID   string `json:"id"`
@@ -48,16 +56,47 @@ func sameAddress(a, b string) bool {
 	}
 	return strings.EqualFold(strings.TrimSuffix(a, "."), strings.TrimSuffix(b, "."))
 }
+func manualAddressRevision(s *Settings, host OwnHost, address string) string {
+	b, _ := json.Marshal([]any{addressRevision(s), host, address})
+	return fmt.Sprintf("%x", sha256.Sum256(b))
+}
 func planAddress(s *Settings, r addressRequest) (OwnHost, addressPlan, error) {
 	p := addressPlan{Revision: addressRevision(s), Servers: []addressItem{}, Panels: []addressItem{}}
 	var host OwnHost
+	if r.Manual != nil {
+		if r.Host != "" {
+			return host, p, errors.New("Выберите сохранённый VPS или ручной ввод")
+		}
+		m := r.Manual
+		ip := net.ParseIP(strings.TrimSpace(m.Old))
+		if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+			return host, p, errors.New("Укажите прежний IPv4 или IPv6 VPS, без порта и маски")
+		}
+		port := m.Port
+		if port == 0 {
+			port = 22
+		}
+		user := strings.TrimSpace(m.User)
+		if user == "" {
+			user = "root"
+		}
+		if port < 1 || port > 65535 || !sshUserRe.MatchString(user) {
+			return host, p, errors.New("Проверьте порт и пользователя SSH")
+		}
+		host = OwnHost{Host: ip.String(), SSHPort: port, SSHUser: user, HostKey: strings.TrimSpace(m.Fingerprint)}
+		for _, h := range s.OwnHosts {
+			if sameAddress(h.Host, host.Host) && h.SSHPort == port {
+				return host, p, errors.New("Этот VPS уже сохранён. Откройте «Сменить IP» в его карточке")
+			}
+		}
+	}
 	for _, h := range s.OwnHosts {
-		if h.ID == r.Host {
+		if r.Manual == nil && h.ID == r.Host {
 			host = h
 			break
 		}
 	}
-	if host.ID == "" {
+	if host.ID == "" && r.Manual == nil {
 		return host, p, errors.New("Свой сервер не найден")
 	}
 	ip := net.ParseIP(strings.TrimSpace(r.Address))
@@ -68,8 +107,11 @@ func planAddress(s *Settings, r addressRequest) (OwnHost, addressPlan, error) {
 	if sameAddress(host.Host, p.Address) {
 		return host, p, errors.New("Этот адрес уже используется")
 	}
-	if !strings.HasPrefix(host.HostKey, "SHA256:") {
+	if !strings.HasPrefix(host.HostKey, "SHA256:") && (r.Manual == nil || r.Apply) {
 		return host, p, errors.New("У сервера нет подтверждённого ключа SSH. Сначала добавьте его заново с проверкой ключа")
+	}
+	if r.Manual != nil {
+		p.Revision = manualAddressRevision(s, host, p.Address)
 	}
 	for _, h := range s.OwnHosts {
 		if h.ID != host.ID && sameAddress(h.Host, p.Address) && h.SSHPort == host.SSHPort {
@@ -97,6 +139,12 @@ func rewriteAddress(s *Settings, r addressRequest, p addressPlan) (*Settings, er
 	if !r.Confirm {
 		return nil, errors.New("Подтвердите обновление адресов")
 	}
+	if r.Manual != nil && !r.KeyConfirmed {
+		return nil, errors.New("Сверьте ключ SSH с консолью хостинга и подтвердите совпадение")
+	}
+	if r.Manual != nil && len(r.Servers) == 0 && len(p.Panels) == 0 {
+		return nil, errors.New("Выберите хотя бы одно подключение для обновления")
+	}
 	allowed, chosen := map[string]bool{}, map[string]bool{}
 	for _, item := range p.Servers {
 		allowed[item.ID] = true
@@ -109,7 +157,7 @@ func rewriteAddress(s *Settings, r addressRequest, p addressPlan) (*Settings, er
 	}
 	ns := s.clone()
 	for i := range ns.OwnHosts {
-		if ns.OwnHosts[i].ID == r.Host {
+		if r.Manual == nil && ns.OwnHosts[i].ID == r.Host {
 			ns.OwnHosts[i].Host = p.Address
 		}
 	}
@@ -159,7 +207,20 @@ func (a *App) changeVPSAddress(r addressRequest, probe func(string, int) (string
 	if err != nil {
 		return p, errors.New("SSH по новому адресу недоступен. Восстановите сеть через консоль Fornex и проверьте порт SSH; настройки не изменены")
 	}
-	if key != host.HostKey {
+	if r.Manual != nil && !r.Apply {
+		host.HostKey = key
+		p.Fingerprint = key
+		p.Revision = manualAddressRevision(s, host, p.Address)
+		// Matching panels require the freshly obtained identity as well.
+		copyReq := r
+		manual := *r.Manual
+		manual.Fingerprint = key
+		copyReq.Manual = &manual
+		_, p, err = planAddress(s, copyReq)
+		if err != nil {
+			return p, err
+		}
+	} else if key != host.HostKey {
 		return p, errors.New("Ключ SSH по новому адресу отличается. Сверьте его в консоли хостинга; автоматическая замена отменена")
 	}
 	if !r.Apply {
@@ -206,7 +267,9 @@ func (a *App) changeVPSAddress(r addressRequest, probe func(string, int) (string
 	a.selectionRev++
 	a.scores.reset()
 	a.fo.clear()
-	a.friends.drop(host.ID, nil)
+	if host.ID != "" {
+		a.friends.drop(host.ID, nil)
+	}
 	if a.installer != nil {
 		a.installer.tunMu.Lock()
 		for _, panel := range p.Panels {

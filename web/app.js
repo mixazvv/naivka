@@ -3088,6 +3088,7 @@ function viewOwn() {
         proto('Панель 3X-UI или s-ui', 'пользователи, лимиты, подписки — по желанию')),
       h('div', { class: 'row mt' },
         h('button', { class: 'btn primary', disabled: !can, onclick: () => installServerDialog() }, 'Начать установку'),
+        h('button', { class: 'btn', disabled: !can, onclick: () => vpsAddressDialog() }, 'Сменить IP вручную'),
         h('span', { class: 'hint' }, can ? 'Перед началом Naivka покажет, что именно сделает на сервере, и попросит подтвердить.' : 'Недоступно в этой сборке (Windows 7).'))),
     h('h2', null, 'Друзья'),
     h('p', { class: 'sub' }, 'Отдельный вход на ваш сервер для каждого: друга можно приостановить, продлить или убрать, не трогая остальных и себя.'),
