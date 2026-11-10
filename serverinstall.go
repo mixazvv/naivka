@@ -41,6 +41,9 @@ var installScript string
 //go:embed server/install-panel.sh
 var panelScript string
 
+//go:embed server/install-mieru.sh
+var mieruInstallScript string
+
 const serverInstallSupported = true
 
 type serverInstallReq struct {
@@ -57,6 +60,7 @@ type serverInstallReq struct {
 	SNI       string `json:"sni"`
 	Hy2       bool   `json:"hy2"`
 	Naive     bool   `json:"naive"`
+	Mieru     bool   `json:"mieru"`
 	Domain    string `json:"domain"` // для NaiveProxy
 	BBR       bool   `json:"bbr"`
 	Name      string `json:"name"`
@@ -472,6 +476,22 @@ func (a *App) runServerInstall(req serverInstallReq) ([]string, string, error) {
 		}
 	}
 
+	if req.Protocols && req.Mieru {
+		si.logf("Ставлю Mieru отдельной службой; уже установленные протоколы сохраняются…")
+		res, err := a.runScript(cl, req.User, mieruInstallScript, map[string]string{"SERVER_ADDR": req.Host, "NAME": req.Name}, []string{"SERVER_ADDR", "NAME"})
+		if err != nil {
+			return added, "", fmt.Errorf("Mieru: %w; остальные установленные протоколы сохранены", err)
+		}
+		servers, errs := ParseShareLinks(strings.Join(res.links, "\n"))
+		if len(errs) != 0 || len(servers) == 0 {
+			return added, "", errors.New("Mieru не выдал корректную ссылку")
+		}
+		names, err := a.addInstalledServers(servers)
+		if err != nil {
+			return added, "", err
+		}
+		added = append(added, names...)
+	}
 	panelID := ""
 	if req.Panel != "" {
 		si.logf("")

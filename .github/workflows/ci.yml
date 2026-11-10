@@ -28,6 +28,7 @@ jobs:
           node tests/branch-geometry.cjs
           python3 scripts/sign-historical-releases.py --check-only
           python3 tests/historical-signatures.py
+          python3 tests/mieru-installer.py
       - name: go vet
         run: |
           go vet -mod=vendor ./...

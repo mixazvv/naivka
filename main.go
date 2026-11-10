@@ -36,17 +36,18 @@ type App struct {
 	applied  string      // fingerprint настроек, с которыми запущено ядро
 	applyT   *time.Timer // отложенное переподключение после изменения настроек (AutoApply)
 
-	geo       serverGeoCache
-	mon       *Monitor
-	zapret    *Zapret
-	tgws      *TgWs
-	wl        *WL
-	xray      *Xray
-	lists     *listCache
-	traffic   *trafficStore
-	ipcc      *ipCountry // страна сайта по IP для глобуса (ipcountry.go)
-	installer *serverInstaller
-	friends   friendsSessions // SSH к своим серверам для «Друзей» (friends.go)
+	geo          serverGeoCache
+	mon          *Monitor
+	zapret       *Zapret
+	tgws         *TgWs
+	wl           *WL
+	xray         *Xray
+	naive, mieru *ExternalProxy
+	lists        *listCache
+	traffic      *trafficStore
+	ipcc         *ipCountry // страна сайта по IP для глобуса (ipcountry.go)
+	installer    *serverInstaller
+	friends      friendsSessions // SSH к своим серверам для «Друзей» (friends.go)
 
 	restarter    serialRunner  // перезапуски ядра — по одному
 	life         lifeState     // включение и выключение — по одному, и чего хочет пользователь
@@ -183,11 +184,13 @@ func main() {
 	a.wl = newWL(a)
 	a.smart = newSmart(a)
 	a.xray = newXray(a)
+	a.naive = newExternalProxy(a, "naive", "klzgrad/naiveproxy")
+	a.mieru = newExternalProxy(a, "mieru", "enfein/mieru")
 	a.lists = newListCache(a.dir)
 	a.traffic = newTrafficStore(a.dir)
 	a.ipcc = newIPCountry(a.dir)
 	a.installer = &serverInstaller{}
-	a.core.OnStop = a.xray.Stop
+	a.core.OnStop = func() { a.xray.Stop(); a.naive.Stop(); a.mieru.Stop() }
 	a.core.ExtraEnv = a.fillEnv
 	if serr != nil {
 		a.core.logs.Add("[naivka] " + serr.Error())
@@ -342,6 +345,8 @@ func (a *App) quit(forUpdate bool) {
 		a.zapret.Stop()
 		a.tgws.Stop()
 		a.xray.Stop()
+		a.naive.Stop()
+		a.mieru.Stop()
 		if a.ui != nil {
 			a.ui.Close()
 		}

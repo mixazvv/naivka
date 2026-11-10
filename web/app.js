@@ -138,11 +138,12 @@ const serverByTag = tag => {
 };
 async function refreshWL() { try { WL = await api('/api/wl'); } catch (_) { /* не важно */ } }
 const TR_NAME = { ws: 'WS', grpc: 'gRPC', httpupgrade: 'HTTPUpgrade', xhttp: 'xHTTP' };
-const PROTO_TITLE = { hysteria2: 'Hysteria2', tuic: 'TUIC', trojan: 'Trojan', shadowsocks: 'Shadowsocks', anytls: 'AnyTLS' };
+const PROTO_TITLE = { mieru: 'Mieru', hysteria2: 'Hysteria2', tuic: 'TUIC', trojan: 'Trojan', shadowsocks: 'Shadowsocks', anytls: 'AnyTLS' };
 const protoName = sv => sv.type === 'vless'
   ? [sv.security === 'tls' ? 'TLS' : sv.security === 'none' ? 'VLESS' : 'Reality', TR_NAME[sv.transport]].filter(Boolean).join(' ')
   : PROTO_TITLE[sv.type] ? [PROTO_TITLE[sv.type], sv.type === 'trojan' ? TR_NAME[sv.transport] : ''].filter(Boolean).join(' ')
   : (sv.quic ? 'Naive H3' : 'Naive');
+const externalReady = key => !!(AD && AD.updates && AD.updates[key] && AD.updates[key].installed);
 const xrayReady = () => !!(AD && AD.updates && AD.updates.xray && AD.updates.xray.installed);
 
 function patch(id, sig, build) {
@@ -731,7 +732,7 @@ function buildNotices() {
   if (up) out.push(up);
   if (!S.servers.length && !zapretOnly()) out.push(notice('info', 'Сначала добавьте сервер.', h('button', { class: 'btn small', onclick: () => go('servers') }, 'Добавить сервер')));
   if (!ST.core.present) out.push(notice('warn', 'Ядро sing-box ещё не скачано.', h('button', { class: 'btn small', onclick: () => go('settings') }, 'Перейти к загрузке')));
-  if (ST.core.present && !ST.core.naive && S.servers.some(x => x.type === 'naive')) {
+  if (ST.core.present && !ST.core.naive && S.servers.some(x => x.type === 'naive' && (x.uot || !externalReady('naive')))) {
     out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать серверы остальных протоколов (Reality, Hysteria2 и другие).'));
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
@@ -1674,7 +1675,7 @@ async function siteClear(key) {
 }
 
 // Программы с трафиком — полка под схемой. Программа отправляется целиком (правило по процессу).
-const PROC_SKIP = /^(svchost|msedgewebview2|naivka.*|sing-box|system|lsass|services|winws|tg-ws-proxy|xray)\.exe$/i;
+const PROC_SKIP = /^(svchost|msedgewebview2|naivka.*|sing-box|system|lsass|services|winws|tg-ws-proxy|xray|naive|mieru)\.exe$/i;
 function procRule(exe) { return S.rules.find(r => r.kind === 'process' && r.value.toLowerCase() === exe.toLowerCase()); }
 function procList() {
   const m = new Map();
@@ -2590,7 +2591,7 @@ function renderServers(force) {
   // Перерисовываем, только если что-то видимое изменилось: иначе сбивались бы наведение и фокус.
   const query=($('#serverSearch')?.value||'').trim().toLowerCase();
   const sig = JSON.stringify([query,S.servers, S.selected, S.wl.enabled, nowTag, delays, PX && PX.delays, PX && PX.wlNow, srvGeo,
-    STATS && STATS.delays, S.smartSelect, noNaive, xr, WL && [WL.used, WL.active]]);
+    STATS && STATS.delays, S.smartSelect, noNaive, xr, externalReady('naive'), externalReady('mieru'), WL && [WL.used, WL.active]]);
   patch('srvList', sig, () => {
     const cards = [];
     if ((!query||'автовыбор automatic auto'.includes(query))&&(S.servers.length > 1 || S.selected === 'auto')) {
@@ -2610,10 +2611,10 @@ function renderServers(force) {
       const cc = (geo && geo.countryCode) || nameCountry(sv.name);
       const where = geo ? [geo.city || geo.country, geo.isp].filter(Boolean).join(', ') : '';
       const hist = STATS && STATS.delays && STATS.delays[sv.id];
-      const off = noNaive && sv.type === 'naive';
+      const off = noNaive && sv.type === 'naive' && (sv.uot || !externalReady('naive'));
       const d = delayFor(sv.id);
       const note = off ? 'Naive не поддерживается этим ядром'
-        : sv.transport === 'xhttp' && !xr ? 'нужен Xray — установите его в «Настройках» → «О программе»' : where;
+        : sv.type === 'mieru' && !externalReady('mieru') ? 'нужен Mieru — установите его в настройках' : sv.transport === 'xhttp' && !xr ? 'нужен Xray — установите его в «Настройках» → «О программе»' : where;
       const star = h('button', {
         class: 'star' + (sv.fav ? ' on' : ''), type: 'button', title: sv.fav ? 'Убрать из избранного' : 'В избранное',
         'aria-label': sv.fav ? 'Убрать из избранного' : 'В избранное', 'aria-pressed': sv.fav ? 'true' : 'false',
@@ -2675,6 +2676,7 @@ async function testServers(id) {
 }
 
 function mobileLinkHelp(type) {
+  if (type === 'mieru') return 'Для телефона нужен клиент с поддержкой Mieru, например актуальный Karing. Поддержка зависит от версии приложения.';
   if (type === 'naive') return 'NaiveProxy поддерживается не всеми клиентами телефона. Для первой проверки используйте ссылку VLESS Reality этого же VPS в приложении с поддержкой Reality. Установка Naive на ПК не означает поддержку Naive на телефоне.';
   if (type === 'hysteria2') return 'Hysteria2 использует UDP. Установленный Naivka сервер использует закрепление сертификата pubkey-sha256: клиент телефона должен поддерживать этот параметр. Для сравнения проверьте VLESS Reality; проверку сертификата отключать не нужно.';
   if (type === 'vless') return 'На телефоне нужен клиент с поддержкой VLESS Reality. Импортируйте ссылку целиком: UUID, public key, short ID, SNI и flow. Если на ПК этот же сервер работает, сравните Wi-Fi и мобильную сеть. При Naive на VPS порт Reality обычно 8443 — он должен быть открыт в панели хостинга.';
@@ -2742,6 +2744,9 @@ function editServer(srv) {
           h('p', { class: 'hint' }, 'Скорость указывайте, только если знаете свой канал: завышенная хуже, чем автоматическая.'),
           insecureBox()),
         h('p', { class: 'hint mt' }, 'Где-то провайдеры режут UDP — держите рядом сервер Reality.'));
+    } else if (d.type === 'mieru') {
+      fields.replaceChildren(h('div', { class: 'grid2' }, inp('name', 'Название'), inp('host', 'Домен или IP сервера'), inp('username', 'Имя пользователя'), inp('password', 'Пароль', { type: 'password' })),
+        h('p', { class: 'hint' }, 'Порты и транспорт сохранены из ссылки Mieru. Для изменения этих параметров импортируйте новую ссылку. Компонент Mieru устанавливается в настройках.'));
     } else if (d.type === 'tuic') {
       fields.replaceChildren(
         h('div', { class: 'grid2' },
@@ -2946,6 +2951,7 @@ function installServerDialog(prev) {
       h('p', { class: 'hint' }, 'VLESS + Reality ставится всегда — это основной протокол.'),
       h('div', { class: 'grid2' }, sniField, domainField, inp('name', 'Название', { placeholder: 'как адрес', resets: false })),
       box('naive', 'Ещё и NaiveProxy (нужен домен)', 'Настоящий Chromium внутри: трафик неотличим от браузера. Caddy займёт порты 80 и 443, Reality переедет на 8443.', renderProto),
+      box('mieru', 'Ещё и Mieru', 'Отдельная служба mita, TCP и UDP на порту 49997. Домен не нужен. На телефоне потребуется клиент с поддержкой Mieru.'),
       box('hy2', 'Ещё и Hysteria2 (UDP)', 'Запасной протокол: быстрый на плохом мобильном интернете, но где-то UDP за границу режут. Свой сертификат, Naivka проверяет его по отпечатку.'),
       box('bbr', 'Включить BBR', 'Обычно ускоряет загрузку через далёкий сервер. Меняет настройку ядра сервера.'));
 
@@ -3033,7 +3039,7 @@ function installServerDialog(prev) {
     body.replaceChildren(status, log, actions);
     try {
       await api('/api/server/install', { host: f.host, port: parseInt(f.port, 10) || 22, user: f.user, password: f.password, key: f.key || '', passphrase: f.passphrase,
-        fingerprint: fp, confirm: true, protocols: f.protocols, sni: f.sni, hy2: f.hy2, naive: f.naive, domain: f.domain, bbr: f.bbr, name: f.name,
+        fingerprint: fp, confirm: true, protocols: f.protocols, sni: f.sni, hy2: f.hy2, naive: f.naive, mieru: !!f.mieru, domain: f.domain, bbr: f.bbr, name: f.name,
         panel: f.panel, panelAccess: f.panelAccess, panelConfirm: !!f.panelConfirm });
     } catch (e) {
       status.className = 'err-text'; status.textContent = e.message; close.disabled = false;
@@ -3077,6 +3083,7 @@ function viewOwn() {
       h('div', { class: 'own-protos' },
         proto('VLESS Reality', 'основной: маскируется под чужой сайт, ставится всегда'),
         proto('Hysteria2', 'быстрый запасной по UDP'),
+        proto('Mieru', 'TCP и UDP без домена, отдельная служба'),
         proto('NaiveProxy', 'HTTPS как у браузера, нужен свой домен'),
         proto('Панель 3X-UI или s-ui', 'пользователи, лимиты, подписки — по желанию')),
       h('div', { class: 'row mt' },
@@ -3352,7 +3359,7 @@ function importLinksDialog() {
   const err = h('div', { class: 'err-text' });
   const dlg = openDialog(
     h('h2', null, 'Вставить ссылки'),
-    h('p', { class: 'hint' }, 'По одной в строке: vless://, hysteria2://, naive+https:// и другие.'),
+    h('p', { class: 'hint' }, 'По одной в строке: vless://, hysteria2://, naive+https://, mieru://, mierus:// и другие.'),
     ta, err,
     h('div', { class: 'row end mt' },
       h('button', { class: 'btn', onclick: () => dlg.close() }, 'Отмена'),
@@ -4524,9 +4531,9 @@ async function refreshAddons() {
     try { S.zapret = (await api('/api/settings')).zapret; } catch (_) { /* не важно */ }
   }
   const u = AD.updates;
-  const newer = x => x.installed && x.latest && x.installed !== x.latest;
+  const newer = (x = {}) => x.installed && x.latest && x.installed !== x.latest;
   const badge = $('#navBadge');
-  if (badge) badge.hidden = !(newer(u.zapret) || newer(u.telegram) || newer(u.core) || (AD.zapret.degraded));
+  if (badge) badge.hidden = !(newer(u.zapret) || newer(u.telegram) || newer(u.core) || newer(u.naive) || newer(u.mieru) || (AD.zapret.degraded));
   if (view === 'bypass') renderBypass();
   if (view === 'settings') renderVersions();
 }
@@ -4673,7 +4680,7 @@ function telegramCard(t) {
 }
 
 function versionsCard(u) {
-  const row = (name, st) => h('tr', null, h('td', null, name), h('td', { class: 'num' }, st.installed || '—'),
+  const row = (name, st = {}) => h('tr', null, h('td', null, name), h('td', { class: 'num' }, st.installed || '—'),
     h('td', { class: 'num ' + (st.latest && st.installed && st.latest !== st.installed ? 'delay mid' : 'cell-sub') }, st.latest || '—'));
   return h('div', { class: 'versions-box mt' },
     h('div', { class: 'addon-head' }, h('div', null, h('h3', null, 'Версии компонентов'),
@@ -4681,7 +4688,12 @@ function versionsCard(u) {
       h('button', { class: 'btn', onclick: async () => { toast('Проверяю…'); try { await api('/api/addons/check', {}); } catch (e) { toast(e.message, true); } refreshAddons(); } }, 'Проверить сейчас')),
     h('table', { class: 'table versions mt' },
       h('thead', null, h('tr', null, h('th', null, 'Компонент'), h('th', null, 'Установлено'), h('th', null, 'Последняя'))),
-      h('tbody', null, row('Ядро sing-box', u.core), row('zapret', u.zapret), row('tg-ws-proxy', u.telegram), row('Xray (для xHTTP)', u.xray || {}))),
+      h('tbody', null, row('Ядро sing-box', u.core), row('zapret', u.zapret), row('tg-ws-proxy', u.telegram), row('Xray (для xHTTP)', u.xray || {}), row('NaïveProxy', u.naive || {}), row('Mieru', u.mieru || {}))),
+    ...[['naive', 'NaïveProxy'], ['mieru', 'Mieru']].map(([key, title]) => {
+      const st = u[key] || {};
+      return h('div', { class: 'row mt' }, h('button', { class: 'btn small', disabled: !!st.busy, onclick: () => act('/api/' + key + '/install') }, st.busy ? 'Загрузка…' : (st.installed ? 'Обновить ' : 'Установить ') + title),
+        h('span', { class: 'hint' }, key === 'naive' ? 'Официальный клиент. После установки используется для Naive; UDP-over-TCP остаётся на sing-box.' : 'Официальный клиент для ссылок mieru://, mierus:// и JSON-профилей.'));
+    }),
     u.xray && !u.xray.installed ? h('div', { class: 'row mt' }, h('button', { class: 'btn small', onclick: () => act('/api/xray/install') }, 'Установить Xray'),
       h('span', { class: 'hint' }, 'Нужен только для серверов на транспорте xHTTP.')) : null,
     u.xray && u.xray.installed && u.xray.latest && u.xray.latest !== u.xray.installed ? h('div', { class: 'row mt' }, h('button', { class: 'btn small', onclick: () => act('/api/xray/install') }, `Обновить Xray до ${u.xray.latest}`)) : null);

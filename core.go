@@ -316,6 +316,9 @@ func (c *Core) StartContext(opCtx context.Context, s *Settings) (err error) {
 	c.lastErr = ""
 	c.mu.Unlock()
 	defer func() {
+		if err != nil && c.OnStop != nil {
+			c.OnStop()
+		}
 		if opCtx.Err() != nil {
 			c.Stop()
 			err = opCtx.Err()
