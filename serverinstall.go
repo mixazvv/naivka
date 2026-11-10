@@ -626,20 +626,19 @@ func (a *App) addInstalledServers(servers []Server) ([]string, error) {
 
 // panelTunnel — локальный порт на 127.0.0.1, проброшенный по SSH к панели на сервере.
 type panelTunnel struct {
-	ln     net.Listener
-	cl     *ssh.Client
-	url    string
-	closed chan struct{}
+	closeOnce sync.Once
+	ln        net.Listener
+	cl        *ssh.Client
+	url       string
+	closed    chan struct{}
 }
 
 func (t *panelTunnel) close() {
-	select {
-	case <-t.closed:
-	default:
+	t.closeOnce.Do(func() {
 		close(t.closed)
 		t.ln.Close()
 		t.cl.Close()
-	}
+	})
 }
 
 const tunnelTTL = 3 * time.Hour

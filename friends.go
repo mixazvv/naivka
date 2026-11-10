@@ -291,6 +291,7 @@ func parseFriendsLine(b64 string) ([]Friend, error) {
 func (a *App) friendsRoutes(api func(method, path string, f apiFunc)) {
 	a.vpsRoutes(api)
 	a.vpsServiceRoutes(api)
+	a.addressRoutes(api)
 	api("POST", "/api/friends", func(r *http.Request) (any, error) {
 		var req friendsReq
 		if err := decode(r, &req); err != nil {

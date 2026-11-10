@@ -5,9 +5,10 @@ function vpsManagerDialog(host){
  let report=null,busy=false,tab='overview',logService='sing-box',logResult=null;
  const refresh=h('button',{class:'btn primary',type:'button',onclick:()=>load()},'Получить сведения');
  const copy=h('button',{class:'btn small',onclick:async()=>{try{await navigator.clipboard.writeText(host.host);toast('Адрес скопирован');}catch(_){toast('Не удалось скопировать',true);}}},'Скопировать адрес');
+ const changeAddress=h('button',{class:'btn small',onclick:()=>{dialog.close();vpsAddressDialog(host);}},'Сменить IP');
  const exportReport=h('button',{class:'btn small',disabled:true,onclick:()=>download('naivka-vps-info.json',JSON.stringify({host:host.host,sshPort:host.sshPort,report},null,2),'application/json')},'Сохранить отчёт');
  const tabs=h('div',{class:'vps-tabs',role:'group','aria-label':'Управление VPS'},[['overview','Обзор'],['services','Службы'],['ports','Порты'],['logs','Журнал'],['audit','Аудит']].map(([key,label])=>h('button',{class:'btn small','data-tab':key,'aria-pressed':String(tab===key),onclick:()=>{tab=key;paint();}},label)));
- const dialog=openDialog(h('h2',null,'Управление VPS: '+(host.name||host.host)),h('div',{class:'row'},h('code',null,host.host),h('small',{class:'hint'},'SSH '+(host.sshUser||'root')+' · порт '+(host.sshPort||22)),copy),
+ const dialog=openDialog(h('h2',null,'Управление VPS: '+(host.name||host.host)),h('div',{class:'row'},h('code',null,host.host),h('small',{class:'hint'},'SSH '+(host.sshUser||'root')+' · порт '+(host.sshPort||22)),copy,changeAddress),
   h('p',{class:'hint'},'Вход по SSH с проверкой ключа сервера. Пароль не сохраняется. Получение сведений не меняет настройки VPS; действия со службами подтверждаются отдельно.'),tabs,body,message,
   h('div',{class:'row end mt'},h('button',{class:'btn',onclick:()=>dialog.close()},'Закрыть'),exportReport,refresh));
  dialog.classList.add('wide','vps-manager');
