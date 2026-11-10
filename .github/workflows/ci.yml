@@ -93,6 +93,7 @@ jobs:
           ui_exit_status=0
           node tests/pet-offline.browser.cjs || ui_exit_status=1
           node tests/layout-diagrams.browser.cjs || ui_exit_status=1
+          node tests/branches.browser.cjs || ui_exit_status=1
           node tests/repair-transaction.browser.cjs || ui_exit_status=1
           node tests/version-picker.browser.cjs || ui_exit_status=1
           node tests/check-cards.browser.cjs || ui_exit_status=1
