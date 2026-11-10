@@ -97,6 +97,7 @@ jobs:
           node tests/version-picker.browser.cjs || ui_exit_status=1
           node tests/check-cards.browser.cjs || ui_exit_status=1
           node tests/settings.browser.cjs || ui_exit_status=1
+          node tests/vps-address.browser.cjs || ui_exit_status=1
           node tests/compact-workspace.browser.cjs || ui_exit_status=1
           exit "$ui_exit_status"
 

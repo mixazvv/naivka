@@ -41,13 +41,14 @@ trap 'die "Ошибка на строке $LINENO. Подробности выш
 [[ "${EUID}" -eq 0 || "$TEST" == 1 ]] || die "Нужны права root."
 [[ -r "$STATE_FILE" && -r "$CONFIG" ]] || die "Сервер ставился не через Naivka: нет $STATE_FILE. Сначала установите протоколы во вкладке «Свой сервер»."
 # shellcheck disable=SC1090
+LINK_ADDR="${SERVER_ADDR:-}"
 . "$STATE_FILE"
 
 ACTION="${ACTION:-list}"
 NAME="${NAME:-}"
 DAYS="${DAYS:-0}"
 FID="${FID:-}"
-SERVER_ADDR="${SERVER_ADDR:-}"
+SERVER_ADDR="${LINK_ADDR:-${SERVER_ADDR:-}}"
 
 if ! command -v jq >/dev/null; then
   [[ "$TEST" == 1 ]] && die "Нужен jq."

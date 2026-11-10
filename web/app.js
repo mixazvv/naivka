@@ -3134,6 +3134,7 @@ function hostCard(o) {
     h('div', { class: 'grow' }, h('div', { class: 'cell-main' }, o.name || o.host), h('div', { class: 'cell-sub' }, `${o.host} · SSH ${o.sshUser}@${o.sshPort}`)),
     st && st.list ? h('button', { class: 'btn small primary', onclick: () => inviteDialog(o) }, 'Пригласить друга') : null,
     h('button', { class: 'btn small', onclick: () => vpsManagerDialog(o) }, 'Управление VPS'),
+    h('button', { class: 'btn small', onclick: () => vpsAddressDialog(o) }, 'Сменить IP'),
     h('button', { class: 'btn small', disabled: st && st.busy, onclick: () => friendsCall(o, { action: 'list' }) }, st && st.list ? 'Обновить' : 'Открыть список'),
     h('button', { class: 'tool', title: 'Убрать сервер из списка', 'aria-label': 'Убрать сервер из списка', onclick: async () => {
       if (!await ask(`Убрать ${o.name || o.host} из списка? Друзья на сервере останутся и продолжат работать.`)) return;
