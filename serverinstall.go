@@ -193,7 +193,7 @@ func hostKey(host string, port int) (fingerprint, keyType string, err error) {
 		if err == nil {
 			err = errors.New("сервер не прислал ключ")
 		}
-		return "", "", fmt.Errorf("не удалось подключиться по SSH: %s", humanErr(err))
+		return "", "", fmt.Errorf("не удалось подключиться по SSH: %s", sshDiagnostic(err))
 	}
 	return ssh.FingerprintSHA256(got), got.Type(), nil
 }
@@ -270,7 +270,7 @@ func sshDial(host string, port int, user, password, key, passphrase, fingerprint
 		if strings.Contains(err.Error(), "unable to authenticate") {
 			return nil, errors.New("Сервер не принял пароль или ключ")
 		}
-		return nil, fmt.Errorf("SSH: %s", humanErr(err))
+		return nil, fmt.Errorf("SSH: %s", sshDiagnostic(err, password, key, passphrase))
 	}
 	return cl, nil
 }
