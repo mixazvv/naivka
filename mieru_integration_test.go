@@ -51,7 +51,8 @@ func TestMieruRealTransport(t *testing.T) {
 			for i := 0; i < 50; i++ {
 				status := exec.Command(mita, "status")
 				status.Env = cmd.Env
-				if status.Run() == nil {
+				output, statusErr := status.CombinedOutput()
+				if statusErr == nil && strings.Contains(string(output), `mita server status is "RUNNING"`) {
 					ready = true
 					break
 				}
