@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 [[ $EUID == 0 ]] || { echo 'Нужны права root.' >&2; exit 1; }
-for command in curl python3 tar sha256sum systemctl flock; do
+for command in curl python3 tar sha256sum systemctl flock timeout; do
   command -v "$command" >/dev/null || { echo "Не найдена команда $command" >&2; exit 1; }
 done
 exec 9>/run/naivka-mieru-install.lock
@@ -17,13 +17,14 @@ ASSET="mita_${TAG#v}_linux_${ARCH}.tar.gz"
 mkdir -p "$BASE"
 STAGE=$(mktemp -d "$BASE/stage.XXXXXXXX")
 BACKUP=$(mktemp -d "$BASE/backup.XXXXXXXX")
-ACTIVE=0; ENABLED=0; APPLIED=0; SUCCESS=0; FIREWALL_ADDED=0
+ACTIVE=0; ENABLED=0; APPLIED=0; SUCCESS=0; VALIDATOR_PID=
 systemctl is-active --quiet naivka-mita && ACTIVE=1 || true
 systemctl is-enabled --quiet naivka-mita && ENABLED=1 || true
 [[ ! -d "$BASE/current" ]] || cp -a "$BASE/current" "$BACKUP/current"
 [[ ! -f "$UNIT" ]] || cp -a "$UNIT" "$BACKUP/unit"
 cleanup() {
   status=$?; trap - EXIT; set +e
+  if [[ -n "$VALIDATOR_PID" ]]; then kill "$VALIDATOR_PID" 2>/dev/null; wait "$VALIDATOR_PID" 2>/dev/null; fi
   if [[ $APPLIED == 1 && $SUCCESS != 1 ]]; then
     echo 'Mieru не запустился; восстанавливаю прежнюю конфигурацию.' >&2
     systemctl stop naivka-mita
@@ -83,8 +84,30 @@ for b in cfg['portBindings']:
 url='mierus://'+urllib.parse.quote(user['name'],safe='')+':'+urllib.parse.quote(user['password'],safe='')+'@'+host+'?'+urllib.parse.urlencode(q)
 (stage/'link').write_text(url)
 PY
-# Validate before touching the running service. The temporary configuration stays private.
-MITA_CONFIG_JSON_FILE="$STAGE/validated.json" "$STAGE/mita" apply config "$STAGE/config.json" >/dev/null
+# apply config is an RPC command, not an offline validator. Run an isolated,
+# idle daemon: its empty configuration opens no public listeners. Neither the
+# default mita socket nor the installed Naivka service may receive this request.
+# STAGE is root-only (0700); the relaxed UDS ownership is confined to this probe.
+printf '{}\n' > "$STAGE/validated.json"
+VALIDATOR_SOCKET="$STAGE/validate.sock"
+env -u MITA_CONFIG_FILE MITA_CONFIG_JSON_FILE="$STAGE/validated.json" \
+  MITA_UDS_PATH="$VALIDATOR_SOCKET" MITA_INSECURE_UDS=1 \
+  "$STAGE/mita" run >"$STAGE/validation.log" 2>&1 &
+VALIDATOR_PID=$!
+READY=0
+for _ in {1..30}; do
+  if MITA_UDS_PATH="$VALIDATOR_SOCKET" timeout 2 "$STAGE/mita" status >/dev/null 2>&1; then READY=1; break; fi
+  kill -0 "$VALIDATOR_PID" 2>/dev/null || break
+  sleep 1
+done
+[[ $READY == 1 ]] || { echo 'Не удалось запустить изолированную проверку Mieru.' >&2; exit 1; }
+if ! MITA_UDS_PATH="$VALIDATOR_SOCKET" timeout 10 "$STAGE/mita" apply config "$STAGE/config.json" >"$STAGE/validation-result.log" 2>&1; then
+  echo 'Конфигурация Mieru не прошла проверку; установленная служба не изменена.' >&2
+  exit 1
+fi
+kill "$VALIDATOR_PID"
+wait "$VALIDATOR_PID" 2>/dev/null || true
+VALIDATOR_PID=
 getent group mita >/dev/null || groupadd --system mita
 id mita >/dev/null 2>&1 || useradd --system --gid mita --no-create-home --shell /usr/sbin/nologin mita
 cat > "$STAGE/unit" <<'UNIT'
@@ -123,7 +146,8 @@ systemctl daemon-reload
 systemctl enable --now naivka-mita >/dev/null
 READY=0
 for _ in {1..30}; do
-  if MITA_UDS_PATH=/run/naivka-mita/mita.sock "$BASE/current/mita" status >/dev/null 2>&1; then READY=1; break; fi
+  # status also exits successfully for IDLE. Only RUNNING confirms proxy startup.
+  if STATUS=$(MITA_UDS_PATH=/run/naivka-mita/mita.sock timeout 2 "$BASE/current/mita" status 2>&1) && [[ "$STATUS" == *'mita server status is "RUNNING"'* ]]; then READY=1; break; fi
   sleep 1
 done
 [[ $READY == 1 ]] || { echo 'Mieru не прошёл проверку запуска.' >&2; exit 1; }
