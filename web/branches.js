@@ -33,17 +33,11 @@ const Branches = (() => {
   const rootPoint = () => [cx0(), H * .5];
   function geom(key) {
     const telegram = !!(br.tg?.active && br.tg.target > 0);
-    const matte = typeof document !== 'undefined' && !document.documentElement.dataset.skin;
-    const signature = W + '|' + H + '|' + telegram + '|' + matte;
+    const signature = W + '|' + H + '|' + telegram;
     if (signature !== geometryKey) { geometryKey = signature; geometries.clear(); samples.clear(); }
     if (geometries.has(key)) return geometries.get(key);
     const c = rootPoint(), end = netPoint();
-    // Keep the server route level where cards fit beside the two endpoints.
-    // In a very narrow pane, move cards above/below them instead of overlapping.
-    const y = matte ? H * (W < 360
-      ? { proxy: .3, direct: .7, zapret: .9, tg: .1 }[key]
-      : { proxy: .5, direct: .68, zapret: .86, tg: .14 }[key])
-      : { proxy: H * (telegram ? .32 : .24), direct: H * .54, zapret: H * .83, tg: H * .1 }[key];
+    const y = { proxy: H * (telegram ? .32 : .24), direct: H * .54, zapret: H * .83, tg: H * .1 }[key];
     // Одинаковые X узлов и управляющих точек сохраняют порядок маршрутов на всём пути.
     const x = W * .5;
     const reach = Math.min(W * .16, (x - c[0]) * .55, (end[0] - x) * .5);
@@ -453,7 +447,7 @@ const Branches = (() => {
     for (const q of L) ctx.lineTo(q[0], q[1]);
     for (let i = R.length - 1; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
     ctx.closePath(); ctx.fillStyle = col;
-    if (!dead) { ctx.shadowColor = col; ctx.shadowBlur = document.documentElement.dataset.skin === 'gold' ? (dragOver === k ? 18 : 12) : 0; }
+    if (!dead) { ctx.shadowColor = col; ctx.shadowBlur = dragOver === k ? 18 : document.documentElement.dataset.skin === 'gold' ? 12 : 0; }
     // «Всё через сервер»: прямая ветка остаётся целой, но тонкой и бледной — по ней идёт только локальная сеть и ваши правила.
     ctx.globalAlpha = dead ? .55 : b.thin ? .35 : (dragOver && dragOver !== k ? .4 : 1);
     ctx.fill(); ctx.restore();
