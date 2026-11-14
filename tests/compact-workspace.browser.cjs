@@ -33,7 +33,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
    assert((await page.locator('#lanesBox').boundingBox()).height>=240,'diagram collapsed to zero height');
    assert((await page.locator('#liveCol .live-row').count())<=5);assert(await page.locator('#liveCol').isVisible());
    if(width>1000){const fill=await page.evaluate(()=>{const main=document.querySelector('#main').getBoundingClientRect(),card=document.querySelector('#lanesCard').getBoundingClientRect(),box=document.querySelector('#lanesBox').getBoundingClientRect();return {gap:main.bottom-card.bottom,inside:card.bottom-box.bottom};});assert(fill.gap<=65,`${theme}/${width}: unused height below diagram: ${fill.gap}`);assert(fill.inside<=85,`${theme}/${width}: unused height inside diagram card: ${fill.inside}`);}
-   if(process.env.CONTROL_SCREENSHOTS&&[1920,1280,320].includes(width))await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,`home-${theme}-${width}.png`)});
+   if(process.env.CONTROL_SCREENSHOTS&&[1920,1280,320].includes(width)){await page.waitForTimeout(1800);await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,`home-${theme}-${width}.png`)});}
   }
   // Visible site/process labels and the computer button remain functional
   // in compact mode. Hidden labels must still never leave stray canvas stems.
@@ -44,6 +44,7 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   });
   await page.waitForFunction(()=>stemCalls>0);assert(await page.locator('.br-leaves').isVisible());
   await page.waitForFunction(()=>[...document.querySelectorAll('.br-leaf[data-kind="process"]')].some(e=>e.dataset.hidden==='false'&&e.getBoundingClientRect().width>0));
+  if(process.env.CONTROL_SCREENSHOTS){await page.waitForTimeout(1800);await page.screenshot({path:path.join(process.env.CONTROL_SCREENSHOTS,'home-all-routes.png')});}
   assert(await page.locator('.br-leaf[data-kind="site"][data-hidden="false"]').count()>0,'no site labels in compact view');
   await page.evaluate(()=>{document.querySelector('.br-leaves').style.display='none';stemCalls=0;});await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>stemCalls),0,'hidden labels must not leave canvas stems');
   await page.evaluate(()=>{document.querySelector('.br-leaves').style.removeProperty('display');renderLanes();});await page.waitForFunction(()=>stemCalls>0);
