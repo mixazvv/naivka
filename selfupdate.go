@@ -325,6 +325,11 @@ func (u *selfUpdater) run(a *App, tag string) error {
 		return fmt.Errorf("Не удалось сохранить резервную копию: %w", backupErr)
 	}
 	t.backup = backup
+	if err = preservePreviousUpdate(exe, a.dir, t.path); err != nil {
+		a.life.mu.Unlock()
+		a.abortUpdateTransfer(t)
+		return err
+	}
 	if err = writeExe(exe, body); err != nil {
 		a.life.mu.Unlock()
 		a.abortUpdateTransfer(t)
@@ -348,6 +353,47 @@ func (u *selfUpdater) run(a *App, tag string) error {
 	a.life.mu.Unlock()
 	log.Println("обновление Naivka до", tag, "— передача помощнику")
 	a.quit(true)
+	return nil
+}
+
+// Preserve an orphaned backup instead of overwriting it. A different intent may
+// still need this exact path for rollback, so never move it in that case.
+func preservePreviousUpdate(exe, dir, currentIntent string) error {
+	if !fileExists(exe + ".old") {
+		return nil
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "update-intent-*.json"))
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if !sameUpdateFile(file, currentIntent) {
+			return errors.New("Предыдущее обновление ещё не завершено. Полностью закройте Naivka через трей и запустите снова; резервная копия сохранена")
+		}
+	}
+	archive := filepath.Join(dir, "version-backups")
+	if err = os.MkdirAll(archive, 0700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(archive, "previous-executable-*.backup")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	if err = f.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	// Remove only our empty reservation; Windows cannot rename over it.
+	if err = os.Remove(name); err != nil {
+		return err
+	}
+	if err = os.Rename(exe+".old", name); err != nil {
+		if !fileExists(exe + ".old") {
+			return nil
+		} // startup cleanup won the race
+		return fmt.Errorf("Windows удерживает резервную копию обновления. Полностью закройте Naivka и запустите снова: %w", err)
+	}
 	return nil
 }
 

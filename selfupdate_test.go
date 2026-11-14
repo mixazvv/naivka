@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -153,5 +154,53 @@ func TestSelfUpdateFetch(t *testing.T) {
 	sig = ""
 	if _, _, err := u.fetch("v9.9.9", "Naivka.exe"); err == nil {
 		t.Fatal("update without signature accepted")
+	}
+}
+
+func TestPreservePreviousUpdate(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		t.Run(fmt.Sprint(pending), func(t *testing.T) {
+			dir := t.TempDir()
+			exe := filepath.Join(dir, "Naivka.exe")
+			intent := filepath.Join(dir, "update-intent-current.json")
+			os.WriteFile(exe, []byte("current"), 0700)
+			os.WriteFile(exe+".old", []byte("previous"), 0700)
+			os.WriteFile(intent, []byte("{}"), 0600)
+			if pending {
+				os.WriteFile(filepath.Join(dir, "update-intent-other.json"), []byte("{}"), 0600)
+			}
+			err := preservePreviousUpdate(exe, dir, intent)
+			if pending {
+				if err == nil || !fileExists(exe+".old") {
+					t.Fatal("pending rollback backup moved")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, _ := filepath.Glob(filepath.Join(dir, "version-backups", "previous-executable-*.backup"))
+			if len(files) != 1 {
+				t.Fatal(files)
+			}
+			b, _ := os.ReadFile(files[0])
+			if string(b) != "previous" {
+				t.Fatal("backup lost")
+			}
+			if err := writeExe(exe, []byte("next")); err != nil {
+				t.Fatal(err)
+			}
+			b, _ = os.ReadFile(exe + ".old")
+			if string(b) != "current" {
+				t.Fatal("new rollback backup incorrect")
+			}
+			if err := rollbackUpdateExe(exe); err != nil {
+				t.Fatal(err)
+			}
+			b, _ = os.ReadFile(exe)
+			if string(b) != "current" {
+				t.Fatal("rollback failed")
+			}
+		})
 	}
 }
