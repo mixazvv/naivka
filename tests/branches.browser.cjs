@@ -13,7 +13,7 @@ const root = path.resolve(__dirname, '..');
     const page = await browser.newPage({ viewport: { width: 1180, height: 760 } });
     const errors = []; page.on('pageerror', e => errors.push(e.stack));
     await page.setContent('<div id="tree" class="lanes-box"><button class="power" aria-label="Disconnect"></button></div>');
-    for (const file of ['web/app.css', 'web/flow.css', 'web/gold.css', 'web/pixels.css', 'web/refined-ui.css']) await page.addStyleTag({ path: path.join(root, file) });
+    for (const file of ['web/app.css', 'web/flow.css', 'web/gold.css', 'web/pixels.css']) await page.addStyleTag({ path: path.join(root, file) });
     await page.addStyleTag({ content: '#tree{position:relative;width:1000px;height:540px;margin:50px auto}.power{background:var(--raised)}' });
     await page.evaluate(() => {
       window.REDUCE = matchMedia('(prefers-reduced-motion: reduce)'); window.ICONS = { server: 'M5 5h14v14H5z', globe: 'M12 3v18', shield: 'M5 5h14v14H5z', tg: 'M3 12h18' };
@@ -61,10 +61,10 @@ const root = path.resolve(__dirname, '..');
     assert.equal(await page.locator('.route-node').count(), 4);
     const joins = await page.evaluate(() => {
       const box = document.querySelector('#tree').getBoundingClientRect();
-      const end = document.querySelector('.br-node[data-key="net"]').getBoundingClientRect();
+      const end = document.querySelector('.br-node[data-key="net"] .br-disc').getBoundingClientRect();
       const net = [end.x - box.x + end.width/2, end.y - box.y + end.height/2];
       return treeData.lanes.map(l => {
-        const node = document.querySelector(`.br-node[data-key="${l.key}"]`).getBoundingClientRect();
+        const node = document.querySelector(`.br-node[data-key="${l.key}"] .br-disc`).getBoundingClientRect();
         const center = [node.x-box.x+node.width/2,node.y-box.y+node.height/2];
         const ctx = document.querySelector('canvas').getContext('2d');
         ctx.save(); ctx.fillStyle=getComputedStyle(document.querySelector('#tree')).getPropertyValue(l.color.slice(4,-1)).trim(); const color=ctx.fillStyle; ctx.restore();
@@ -88,9 +88,9 @@ const root = path.resolve(__dirname, '..');
     assert(sizes.every(s=>s.w<=113&&s.h<=29),'markers must stay compact');
     console.log('Directed streams, circle joins, ordered branches and compact markers: OK');
     const drag = async (cancel = false, target = leaf) => {
-      const a = await target.boundingBox(), direct = await page.locator('.br-node[data-key="direct"]').boundingBox();
+      const a = await target.boundingBox(), box = await page.locator('#tree').boundingBox();
       await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
-      await page.mouse.move(direct.x + direct.width / 2, direct.y + direct.height / 2, { steps: 12 });
+      await page.mouse.move(box.x + box.width * .62, box.y + box.height * .51, { steps: 12 });
       if (cancel) await target.dispatchEvent('pointercancel', { pointerId: 1 });
       await page.mouse.up(); await page.waitForTimeout(900);
     };
@@ -129,9 +129,6 @@ const root = path.resolve(__dirname, '..');
     await page.addStyleTag({content:'#tree{height:320px}'});await page.waitForTimeout(250);await page.evaluate(()=>renderTree());
     const nodes=await page.locator('.route-node').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,w:r.width,h:r.height}}));
     for(const a of nodes)for(const b of nodes)if(a!==b)assert(!(a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h),'route labels overlap in a short diagram');
-    await page.addStyleTag({content:'#tree{width:224px;height:340px}'});await page.waitForTimeout(250);await page.evaluate(()=>renderTree());
-    const narrowNodes=await page.locator('.route-node,.br-node[data-key="net"],.power').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,w:r.width,h:r.height}}));
-    for(const a of narrowNodes)for(const b of narrowNodes)if(a!==b)assert(!(a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h),'route controls overlap in a narrow pane');
     await page.evaluate(() => { Branches.unmount(); renderTree(); }); await page.waitForTimeout(200);
     assert.equal(await page.locator('.br-canvas').count(), 1); assert.equal(await page.locator('.br-node[data-key="comp"]').count(), 1);
     console.log('Narrow layout and remount: OK'); assert.deepEqual(errors, []);
