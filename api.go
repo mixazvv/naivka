@@ -135,6 +135,7 @@ func (a *App) routes() http.Handler {
 		return nil, a.repair.stop(req.OperationID)
 	})
 	api("GET", "/api/state", a.apiState)
+	api("GET", "/api/performance", func(*http.Request) (any, error) { return reliabilityStats(), nil })
 	api("GET", "/api/settings", func(*http.Request) (any, error) {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -143,6 +144,7 @@ func (a *App) routes() http.Handler {
 	api("POST", "/api/settings", a.apiSaveSettings)
 	api("POST", "/api/import", a.apiImport)
 	api("POST", "/api/subscriptions/preview", a.apiSubscriptionPreview)
+	api("POST", "/api/subscriptions/preview-update", a.apiSubscriptionPreviewUpdate)
 	api("POST", "/api/subscriptions/add", a.apiSubscriptionAdd)
 	api("POST", "/api/subscriptions/update", a.apiSubscriptionUpdate)
 	api("POST", "/api/subscriptions/remove", a.apiSubscriptionRemove)
@@ -181,7 +183,8 @@ func (a *App) routes() http.Handler {
 		return a.wl.View(), nil
 	})
 	api("GET", "/api/self", func(*http.Request) (any, error) { return map[string]string{"version": appVersion}, nil })
-	api("GET", "/api/app/update", func(*http.Request) (any, error) { return a.self.view(), nil })
+	api("GET", "/api/app/update", func(*http.Request) (any, error) { return a.updateView(), nil })
+	a.updateRecoveryRoutes(api)
 	api("POST", "/api/app/update/check", func(*http.Request) (any, error) {
 		if err := a.self.check(a, false); err != nil {
 			return nil, fmt.Errorf("Не удалось проверить: %v", err)

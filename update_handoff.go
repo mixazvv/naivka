@@ -106,6 +106,15 @@ func (a *App) beginUpdateTransfer() (*updateTransfer, error) {
 		a.life.intentMu.Unlock()
 		return nil, err
 	}
+	exe, err := os.Executable()
+	if err == nil {
+		err = writeUpdateRecovery(path, updateRecoveryRecord{Exe: exe, Parent: os.Getpid()})
+	}
+	if err != nil {
+		os.Remove(path)
+		a.life.intentMu.Unlock()
+		return nil, err
+	}
 	a.transfer = t
 	a.life.updating = true
 	a.life.want.Store(false)
@@ -199,6 +208,7 @@ func (a *App) abortUpdateTransfer(t *updateTransfer) {
 		t.pipe.Close()
 	}
 	os.Remove(t.path)
+	os.Remove(t.path + ".recovery")
 	if resume {
 		go a.resume(t.gen)
 	}
@@ -251,6 +261,10 @@ func (a *App) launchUpdateSupervisor(exe, tag string, debug bool, t *updateTrans
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	abort := func() { _ = cmd.Process.Kill(); <-done; input.Close() }
+	if err = writeUpdateRecovery(t.path, updateRecoveryRecord{Exe: exe, Parent: os.Getpid(), Supervisor: cmd.Process.Pid}); err != nil {
+		abort()
+		return err
+	}
 	cfg := updateSupervisorConfig{Exe: exe, Dir: a.dir, Intent: t.path, Version: tag, Token: randHex(24), Debug: debug, Backup: t.backup, Downgrade: versionNewer(appVersion, tag), Historical: versionNewer("v2.25.0", tag)}
 	if err = json.NewEncoder(input).Encode(cfg); err != nil {
 		abort()
@@ -316,6 +330,7 @@ func runUpdateSupervisor(input io.Reader, output io.Writer) error {
 	defer func() {
 		if removeIntent {
 			os.Remove(cfg.Intent)
+			os.Remove(cfg.Intent + ".recovery")
 		}
 	}()
 	var intent updateIntent

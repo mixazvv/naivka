@@ -81,6 +81,7 @@ type Subscription struct {
 	Error   string `json:"error,omitempty"`
 }
 type subscriptionPreview struct {
+	base    string
 	sub     Subscription
 	servers []Server
 	expires time.Time
@@ -442,7 +443,7 @@ func (a *App) apiSubscriptionPreview(r *http.Request) (any, error) {
 		a.subscriptions.previews = map[string]subscriptionPreview{}
 	}
 	token := randHex(24)
-	a.subscriptions.previews[token] = subscriptionPreview{Subscription{ID: randHex(8), Name: name, URL: u, Auto: req.Auto, Client: req.Client}, servers, now.Add(10 * time.Minute)}
+	a.subscriptions.previews[token] = subscriptionPreview{sub: Subscription{ID: randHex(8), Name: name, URL: u, Auto: req.Auto, Client: req.Client}, servers: servers, expires: now.Add(10 * time.Minute)}
 	names := []string{}
 	for _, sv := range servers {
 		names = append(names, sv.Name)
@@ -466,7 +467,7 @@ func (a *App) apiSubscriptionAdd(r *http.Request) (any, error) {
 	a.subscriptions.mu.Lock()
 	defer a.subscriptions.mu.Unlock()
 	p, ok := a.subscriptions.previews[req.Token]
-	if !ok || time.Now().After(p.expires) {
+	if !ok || p.base != "" || time.Now().After(p.expires) {
 		return nil, errors.New("Предпросмотр устарел. Загрузите подписку заново")
 	}
 	result, e := a.commitSubscriptions(func(s *Settings) error {
@@ -533,13 +534,20 @@ func (a *App) updateSubscription(ctx context.Context, id string) (*Settings, err
 	return result, fetchErr
 }
 func (a *App) apiSubscriptionUpdate(r *http.Request) (any, error) {
-	id, e := subscriptionRequestID(r)
+	var req struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	e := decode(r, &req)
 	if e != nil {
 		return nil, e
 	}
 	a.subscriptions.mu.Lock()
 	defer a.subscriptions.mu.Unlock()
-	s, e := a.updateSubscription(r.Context(), id)
+	if req.Token != "" {
+		return a.commitSubscriptionPreview(req.ID, req.Token)
+	}
+	s, e := a.updateSubscription(r.Context(), req.ID)
 	if e != nil {
 		return nil, e
 	}

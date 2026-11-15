@@ -760,7 +760,7 @@ function buildNotices() {
         h('button', { class: 'btn small', onclick: toggleConnect }, 'Повторить'))));
   }
   if (ST.blocked) out.push(notice('error', 'Защита от утечек держит трафик, пока ядро не поднимется. Чтобы вернуть обычный интернет без сервера, отключитесь.', h('button', { class: 'btn small', onclick: toggleConnect }, 'Отключить')));
-  else if (ST.error && !ST.running && !pi) out.push(h('div', { class: 'notice error' }, h('div', { class: 'grow' }, h('b', null, 'Ошибка'), h('pre', null, ST.error))));
+  if (ST.error && !ST.running && !pi) out.push(window.NaivkaReliability?.errorNotice(ST.error) || h('div', { class: 'notice error' }, h('div', { class: 'grow' }, h('b', null, 'Ошибка'), h('pre', null, ST.error))));
   return out;
 }
 
@@ -2327,7 +2327,7 @@ function viewDiag() {
   const mark = () => { logBtn.setAttribute('aria-pressed', String(diagTab === 'logs')); title.textContent = diagTab === 'achv' ? 'Достижения' : 'Сводка'; };
   render(); mark();
   return h('div', { class: 'view', style: 'max-width:none' }, h('div', { class: 'title-row' }, title,
-    h('div', { class: 'row' }, tabs, logBtn)), body);
+    h('div', { class: 'row' }, tabs, logBtn,h('button',{class:'btn small',onclick:()=>window.NaivkaReliability?.measure()},'Проверить плавность'),h('button',{class:'btn small',onclick:()=>window.NaivkaReliability?.last()},'Последний замер'))), body);
 }
 
 function viewCheck() {
@@ -5154,6 +5154,7 @@ function selfBox() {
   return h('div', null,
     h('p', null, h('b', null, `Naivka ${SELF.version}`), '. ', state),
     u && u.error ? h('p', { class: 'err-text' }, u.error) : null,
+    u?.recoveryPending ? h('p',{class:'hint'},'Обнаружена прерванная операция. Откройте «Восстановление обновления», прежде чем устанавливать новую версию.') : null,
     h('div', { class: 'row' },
       u && u.newer
         ? h('button', { class: 'btn primary', disabled: !!u.busy, onclick: installAppUpdate }, `Обновить до ${u.latest}`)
@@ -5164,6 +5165,7 @@ function selfBox() {
           finally { e.target.disabled = false; refreshAppUpdate(); }
         } }, 'Проверить обновления'),
       h('button',{class:'btn',disabled:!!u?.busy,onclick:versionDialog},'Выбрать версию / откат'),
+      h('button',{class:'btn',disabled:!!u?.busy,onclick:()=>window.NaivkaReliability?.recovery()},'Восстановление обновления'),
       h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')));
 }
 
@@ -5196,6 +5198,7 @@ async function versionDialog(){
 
 function appUpdateNotice() {
   const u = APPUP;
+  if(u?.recoveryPending&&!u.busy)return notice('warn','Обнаружено прерванное обновление. Можно проверить восстановление, сохранив резервные файлы.',h('button',{class:'btn small',onclick:()=>window.NaivkaReliability?.recovery()},'Проверить восстановление'));
   if (!u || !(u.newer || u.busy)) return null;
   if (u.busy) {
     const pct = u.total > 0 ? ` ${Math.round(u.done / u.total * 100)}%` : '';
