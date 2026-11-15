@@ -175,8 +175,11 @@ func (a *App) addOwnHost(h OwnHost) (string, error) {
 	if !replaced {
 		ns.OwnHosts = append(ns.OwnHosts, h)
 	}
+	if err := SaveSettings(a.dir, ns); err != nil {
+		return "", err
+	}
 	a.settings = ns
-	return h.ID, SaveSettings(a.dir, ns)
+	return h.ID, nil
 }
 
 // friendsPath — куда скрипт кладёт себя на сервере (для часовой проверки сроков).
