@@ -60,7 +60,7 @@ window.NaivkaReliability=(()=>{
    let backend=null;try{backend=await api('/api/performance');}catch(_){}
    const dt=backend&&before?backend.at-before.at:0;const cpu=dt>0&&backend.cpuAvailable&&before.cpuAvailable?Math.max(0,(backend.cpuSeconds-before.cpuSeconds)*100000/dt):null;
    const report={version:SELF?.version||'unknown',createdAt:new Date().toISOString(),durationMs:elapsed,cancelled,frames:metrics(intervals,elapsed),cpuPercent:cpu,backend,jsHeapBytes:performance.memory?.usedJSHeapSize??null,longTasks:observer?longTasks:null,longTaskMs:observer?longTaskMs:null,effects:S.experience?.effects||'balanced',reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches};measuring=false;
-   if(document.hidden){lastReport=report;toast('Замер прерван: окно скрыто. Результат доступен в «Последний замер».');return;}showReport(report);
+   if(document.hidden||view!=='overview'||document.querySelector('dialog[open]')){lastReport=report;toast('Замер прерван. Результат доступен в «Последний замер».');return;}showReport(report);
   }
   raf=requestAnimationFrame(step);timer=setTimeout(()=>finish('истёк предельный срок ожидания кадров'),20000);
  }
