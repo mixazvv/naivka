@@ -41,8 +41,9 @@ type selfUpdater struct {
 // AppUpdateView — состояние для интерфейса.
 type AppUpdateView struct {
 	AddonState
-	Newer   bool  `json:"newer"`
-	Checked int64 `json:"checked"`
+	RecoveryPending int   `json:"recoveryPending,omitempty"`
+	Newer           bool  `json:"newer"`
+	Checked         int64 `json:"checked"`
 }
 
 // parseVer: "v2.3.4" → [2 3 4]; не номер версии (сборка "dev") — nil.

@@ -14,10 +14,10 @@ const SubscriptionsUI=(()=>{
   if(syncing||savePending||document.hidden||document.querySelector('dialog[open]'))return;
   syncing=true;try{const settings=await api('/api/settings');if(!savePending&&!document.querySelector('dialog[open]')){adopt(settings);if(view==='servers')renderServers();}}catch(_){}finally{syncing=false;}
  }
- async function action(id,kind,extra={}){
+ async function action(id,kind,extra={},onError=null){
   if(busy.has(id))return;busy.add(id);render();
   try{if(await saveNow()===false)throw new Error('Сначала сохраните изменения настроек');const r=await api('/api/subscriptions/'+kind,{id,...extra});adopt(r.settings);renderServers(true);updateStatus();if(kind==='update')toast('Подписка обновлена');return true;}
-  catch(e){toast(e.message,true);await sync();return false;}
+  catch(e){onError?.(e);toast(e.message,true);await sync();return false;}
   finally{busy.delete(id);render();}
  }
  function clientSelect(value=''){
@@ -25,6 +25,19 @@ const SubscriptionsUI=(()=>{
   select.value=value;return select;
  }
  function clientHelp(){return h('p',{class:'hint'},'Режимы с идентификатором отправляют сервису постоянный ID этой установки и могут занять место в лимите устройств.');}
+ async function previewUpdate(sub){
+  if(busy.has(sub.id))return;busy.add(sub.id);render();
+  const status=h('p',{class:'hint',role:'status'},'Проверяю изменения…'),body=h('div');let token='';
+  const apply=h('button',{class:'btn primary',disabled:true,onclick:async()=>{if(!token)return;apply.disabled=true;let failure='';if(await action(sub.id,'update',{token},e=>{failure=e.message;}))dialog.close();else{token='';status.textContent=failure||'Проверьте изменения заново: данные могли измениться.';}}},'Применить изменения');
+  const dialog=openDialog(h('h2',null,'Изменения подписки «'+sub.name+'»'),status,body,h('p',{class:'hint'},'Автообновление раз в 6 часов, если включено, применяет изменения без этого подтверждения.'),h('div',{class:'row end'},h('button',{class:'btn',onclick:()=>dialog.close()},'Отмена'),apply));
+  try{
+   if(await saveNow()===false)throw new Error('Сначала сохраните изменения настроек');
+   const r=await api('/api/subscriptions/preview-update',{id:sub.id});if(!dialog.isConnected)return;
+   token=r.token;status.textContent='После обновления: '+r.count+' серверов. Без изменений: '+r.changes.unchanged+'.';
+   body.replaceChildren(...[['added','Добавятся'],['removed','Удалятся'],['changed','Изменятся']].map(([key,label])=>h('details',{open:!!r.changes[key].length},h('summary',null,label+': '+r.changes[key].length),h('ul',null,...r.changes[key].map(n=>h('li',null,n))))));apply.disabled=false;
+  }catch(e){status.textContent=e.message;status.className='err-text';}
+  finally{busy.delete(sub.id);render();}
+ }
  function configure(sub){
   const client=clientSelect(sub.client||'');
   const dialog=openDialog(h('h2',null,'Режим подписки'),client,clientHelp(),h('div',{class:'row end'},h('button',{class:'btn',onclick:()=>dialog.close()},'Отмена'),h('button',{class:'btn primary',onclick:async e=>{e.target.disabled=true;try{if(await action(sub.id,'client',{client:client.value}))dialog.close();}finally{e.target.disabled=false;}}},'Сохранить')));
@@ -36,7 +49,7 @@ const SubscriptionsUI=(()=>{
   box.replaceChildren(...subs.map(sub=>h('details',{class:'panel subscription-row','data-subscription':sub.id,open:opened.has(sub.id)},
    h('summary',null,sub.name,h('span',{class:'hint'},' · '+count(S.servers.filter(x=>x.subscriptionId===sub.id).length,'сервер','сервера','серверов'))),
    h('p',{class:sub.error?'err-text':'hint',role:'status'},sub.error||('Обновлено: '+(sub.updated?new Date(sub.updated*1000).toLocaleString():'ещё не обновлялось'))),
-   h('div',{class:'row'},h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:()=>configure(sub)},'Режим подписки'),h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:()=>action(sub.id,'update')},busy.has(sub.id)?'Подождите…':'Обновить'),
+   h('div',{class:'row'},h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:()=>configure(sub)},'Режим подписки'),h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:()=>previewUpdate(sub)},busy.has(sub.id)?'Подождите…':'Обновить'),
     h('label',{class:'check'},h('input',{type:'checkbox',checked:sub.auto,disabled:busy.has(sub.id),onchange:e=>action(sub.id,'auto',{auto:e.target.checked})}),'Автообновление раз в 6 часов'),
     h('button',{class:'btn small',disabled:busy.has(sub.id),onclick:async()=>{if(await ask('Удалить подписку «'+sub.name+'» и её серверы?'))action(sub.id,'remove');}},'Удалить подписку')))));
  }
