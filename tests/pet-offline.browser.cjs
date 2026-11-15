@@ -6,7 +6,11 @@ const {chromium}=require('playwright');const root=path.resolve(__dirname,'../web
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||(fs.existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox']});
  try{
   const page=await browser.newPage({viewport:{width:1000,height:720}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.clock.install({time:new Date('2026-11-01T12:00:00Z')});await page.setContent('<!doctype html><div id="home"></div><input id="typing"><div class="card" id="tileSpeed">Карточка</div>');
+  await page.clock.install({time:new Date('2026-11-01T12:00:00Z')});
+  // Advance games explicitly: slow CI workers must not consume their timeout
+  // while Playwright is awaiting an unrelated browser command.
+  await page.clock.pauseAt(new Date('2026-11-01T12:00:01Z'));
+  await page.setContent('<!doctype html><div id="home"></div><input id="typing"><div class="card" id="tileSpeed">Карточка</div>');
   await page.addStyleTag({path:path.join(root,'app.css')});await page.addStyleTag({content:'#home{position:absolute;left:30px;bottom:20px;width:250px;height:110px}.pet{margin:0}#typing{position:absolute;top:30px;left:30px}.card{position:absolute;top:200px;left:400px;width:200px;height:100px}'});
   for(const name of ['pet-atlas.js','experience.js','pet-mind.js','pet.js'])await page.addScriptTag({path:path.join(root,name)});
   await page.evaluate(()=>{window.saves=[];NaivkaExperience.configure({effects:'balanced',sound:'off',atmosphere:'off'});Math.random=()=>.5;Pet.mount(document.querySelector('#home'),{onMemory:v=>saves.push(v)});Pet.update('on',0);});

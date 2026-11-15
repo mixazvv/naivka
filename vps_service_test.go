@@ -155,3 +155,65 @@ func TestVPSServiceDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestVPSOwnHostSaveFailureIsAtomic(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		name := "add"
+		if replace {
+			name = "replace"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			old := OwnHost{ID: "saved", Name: "Original", Host: "original.example.invalid", SSHPort: 22, SSHUser: "root", HostKey: "SHA256:original", Added: 123}
+			a := &App{dir: dir, settings: DefaultSettings()}
+			a.settings.OwnHosts = []OwnHost{old}
+			if err := SaveSettings(dir, a.settings); err != nil {
+				t.Fatal(err)
+			}
+			blocker := settingsPath(dir) + ".tmp"
+			if err := os.Mkdir(blocker, 0700); err != nil {
+				t.Fatal(err)
+			}
+			next := OwnHost{Name: "Changed", Host: "new.example.invalid", SSHPort: 22, SSHUser: "root", HostKey: "SHA256:new"}
+			if replace {
+				next.Host = old.Host
+			}
+			id, err := a.addOwnHost(next)
+			if err == nil {
+				t.Fatal("save error ignored")
+			}
+			if id != "" {
+				t.Error("failed save returned a successful host ID")
+			}
+			current := a.settingsCopy().OwnHosts
+			if len(current) != 1 || current[0] != old {
+				t.Errorf("failed save changed memory: %+v", current)
+			}
+			saved, err := LoadSettings(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(saved.OwnHosts) != 1 || saved.OwnHosts[0] != old {
+				t.Fatal("failed save changed disk")
+			}
+			if err := os.Remove(blocker); err != nil {
+				t.Fatal(err)
+			}
+			id, err = a.addOwnHost(next)
+			if err != nil || id == "" {
+				t.Fatal(id, err)
+			}
+			saved, err = LoadSettings(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := saved.OwnHosts[len(saved.OwnHosts)-1]
+			if got.ID != id || got.Name != next.Name || got.Host != next.Host {
+				t.Fatal("successful retry was not persisted", got)
+			}
+			if replace && (got.ID != old.ID || got.Added != old.Added) {
+				t.Fatal("replacement lost identity", got)
+			}
+		})
+	}
+}

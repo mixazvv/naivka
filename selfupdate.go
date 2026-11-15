@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,6 +28,10 @@ import (
 // так что подменить проверенный файл до установки нельзя.
 
 const appRepo = "mixazvv/naivka"
+
+// Startup cleanup and a new installation share the same .old path. Serialize
+// their file operations so a delayed cleanup cannot delete the new rollback EXE.
+var updateFilesMu sync.Mutex
 
 type selfUpdater struct {
 	addonBase
@@ -325,12 +330,7 @@ func (u *selfUpdater) run(a *App, tag string) error {
 		return fmt.Errorf("Не удалось сохранить резервную копию: %w", backupErr)
 	}
 	t.backup = backup
-	if err = preservePreviousUpdate(exe, a.dir, t.path); err != nil {
-		a.life.mu.Unlock()
-		a.abortUpdateTransfer(t)
-		return err
-	}
-	if err = writeExe(exe, body); err != nil {
+	if err = prepareUpdateFiles(exe, a.dir, t.path, body); err != nil {
 		a.life.mu.Unlock()
 		a.abortUpdateTransfer(t)
 		return err
@@ -354,6 +354,15 @@ func (u *selfUpdater) run(a *App, tag string) error {
 	log.Println("обновление Naivka до", tag, "— передача помощнику")
 	a.quit(true)
 	return nil
+}
+
+func prepareUpdateFiles(exe, dir, currentIntent string, body []byte) error {
+	updateFilesMu.Lock()
+	defer updateFilesMu.Unlock()
+	if err := preservePreviousUpdate(exe, dir, currentIntent); err != nil {
+		return err
+	}
+	return writeExe(exe, body)
 }
 
 // Preserve an orphaned backup instead of overwriting it. A different intent may
@@ -409,11 +418,6 @@ func cleanupCommittedUpdate(dir string) {
 	}
 }
 func cleanupUpdate(dir string) {
-	pending, _ := filepath.Glob(filepath.Join(dir, "update-intent-*.json"))
-	if len(pending) > 0 {
-		return
-	}
-	os.RemoveAll(filepath.Join(dir, "update"))
 	exe, err := os.Executable()
 	if err != nil {
 		return
@@ -421,6 +425,16 @@ func cleanupUpdate(dir string) {
 	if p, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = p
 	}
+	cleanupUpdateFiles(dir, exe)
+}
+func cleanupUpdateFiles(dir, exe string) {
+	updateFilesMu.Lock()
+	defer updateFilesMu.Unlock()
+	pending, err := filepath.Glob(filepath.Join(dir, "update-intent-*.json"))
+	if err != nil || len(pending) > 0 {
+		return
+	}
+	os.RemoveAll(filepath.Join(dir, "update"))
 	old := exe + ".old"
 	if !fileExists(old) {
 		return

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVersionNewer(t *testing.T) {
@@ -202,5 +203,138 @@ func TestPreservePreviousUpdate(t *testing.T) {
 				t.Fatal("rollback failed")
 			}
 		})
+	}
+}
+
+// Reproduce startup cleanup arriving while the updater is replacing .old.
+// Windows may keep the previous executable locked until its process exits.
+func TestUpdateCleanupWaitsForInstallation(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "Naivka.exe")
+	intent := filepath.Join(dir, "update-intent-current.json")
+	for file, body := range map[string]string{exe: "current", exe + ".old": "previous"} {
+		if err := os.WriteFile(file, []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	updateFilesMu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			updateFilesMu.Unlock()
+		}
+	}()
+	started, done := make(chan struct{}), make(chan struct{})
+	go func() { close(started); cleanupUpdateFiles(dir, exe); close(done) }()
+	<-started
+	select {
+	case <-done:
+		t.Fatal("cleanup entered an installation in progress")
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := os.WriteFile(intent, []byte(`{"commit":false}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := preservePreviousUpdate(exe, dir, intent); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeExe(exe, []byte("next")); err != nil {
+		t.Fatal(err)
+	}
+	updateFilesMu.Unlock()
+	locked = false
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cleanup stuck after installation")
+	}
+	old, err := os.ReadFile(exe + ".old")
+	if err != nil || string(old) != "current" {
+		t.Fatalf("new rollback backup was removed: %q, %v", old, err)
+	}
+	if err := rollbackUpdateExe(exe); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(exe)
+	if string(body) != "current" {
+		t.Fatal("rollback did not restore current executable")
+	}
+	archive, _ := filepath.Glob(filepath.Join(dir, "version-backups", "previous-executable-*.backup"))
+	if len(archive) != 1 {
+		t.Fatal("previous backup was lost", archive)
+	}
+	body, _ = os.ReadFile(archive[0])
+	if string(body) != "previous" {
+		t.Fatal("previous backup changed")
+	}
+}
+
+func TestUpdateCleanupRemovesOnlyCommittedFiles(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "Naivka.exe")
+	if err := os.WriteFile(exe, []byte("current"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exe+".old", []byte("previous"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "update"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cleanupUpdateFiles(dir, exe)
+	if fileExists(exe+".old") || fileExists(filepath.Join(dir, "update")) {
+		t.Fatal("committed temporary files survived cleanup")
+	}
+	body, _ := os.ReadFile(exe)
+	if string(body) != "current" {
+		t.Fatal("current executable changed")
+	}
+}
+
+func TestUpdatePrepareWaitsForCleanup(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "Naivka.exe")
+	intent := filepath.Join(dir, "update-intent-current.json")
+	for file, body := range map[string]string{exe: "current", exe + ".old": "previous", intent: `{"commit":false}`} {
+		if err := os.WriteFile(file, []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	updateFilesMu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			updateFilesMu.Unlock()
+		}
+	}()
+	started, done := make(chan struct{}), make(chan error, 1)
+	go func() { close(started); done <- prepareUpdateFiles(exe, dir, intent, []byte("next")) }()
+	<-started
+	select {
+	case err := <-done:
+		t.Fatalf("installation overlapped cleanup: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	body, _ := os.ReadFile(exe)
+	if string(body) != "current" {
+		t.Fatal("executable changed during cleanup")
+	}
+	updateFilesMu.Unlock()
+	locked = false
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("installation stuck after cleanup")
+	}
+	body, _ = os.ReadFile(exe)
+	if string(body) != "next" {
+		t.Fatal("installation did not finish")
+	}
+	body, _ = os.ReadFile(exe + ".old")
+	if string(body) != "current" {
+		t.Fatal("rollback backup was not retained")
 	}
 }
