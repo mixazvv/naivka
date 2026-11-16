@@ -153,7 +153,9 @@ func TestSubscriptionMetadataDoesNotRestartCore(t *testing.T) {
 func TestSubscriptionCommitAtomicAndPreviewOneUse(t *testing.T) {
 	s := DefaultSettings()
 	s.AutoApply = false
-	a := &App{dir: t.TempDir(), settings: s, core: &Core{}}
+	a := &App{dir: t.TempDir(), settings: s}
+	a.core = NewCore(a.dir)
+	a.mon = newMonitor(a)
 	servers, _, _ := parseSubscription(subscriptionFixture)
 	p := subscriptionPreview{sub: Subscription{ID: "a", Name: "A", URL: "https://private/token"}, servers: servers, expires: time.Now().Add(time.Minute)}
 	a.subscriptions.previews = map[string]subscriptionPreview{"preview": p}
@@ -162,6 +164,9 @@ func TestSubscriptionCommitAtomicAndPreviewOneUse(t *testing.T) {
 	}
 	if _, e := a.apiSubscriptionAdd(request()); e != nil {
 		t.Fatal(e)
+	}
+	if len(a.mon.events) != 1 || a.mon.events[0].Kind != "ok" {
+		t.Fatal("missing committed event", a.mon.events)
 	}
 	if len(a.settings.Servers) != 2 || len(a.settings.Subscriptions) != 1 {
 		t.Fatal(a.settings)
@@ -187,6 +192,9 @@ func TestSubscriptionCommitAtomicAndPreviewOneUse(t *testing.T) {
 	_, e = a.commitSubscriptions(func(s *Settings) error { s.Subscriptions = nil; return nil })
 	if e == nil || len(a.settings.Subscriptions) != len(before.Subscriptions) {
 		t.Fatal("failed save committed")
+	}
+	if len(a.mon.events) != 1 {
+		t.Fatal("failed transaction emitted event", a.mon.events)
 	}
 }
 
