@@ -392,6 +392,7 @@ func (a *App) commitSubscriptions(change func(*Settings) error) (*Settings, erro
 	}
 	changed := a.settings.fingerprint() != next.fingerprint()
 	result := next.clone()
+	events := subscriptionEvents(a.settings, next)
 	a.settings = next
 	a.mu.Unlock()
 	if changed {
@@ -399,6 +400,11 @@ func (a *App) commitSubscriptions(change func(*Settings) error) (*Settings, erro
 		a.scores.reset()
 		_ = a.repair.stop("")
 		a.scheduleAutoApply()
+	}
+	if a.mon != nil {
+		for _, event := range events {
+			a.mon.EventDetail(event.Kind, event.Text, event.Detail, false)
+		}
 	}
 	return result, nil
 }

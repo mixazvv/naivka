@@ -103,6 +103,7 @@ jobs:
           node tests/compact-workspace.browser.cjs || ui_exit_status=1
           node tests/reliability.browser.cjs || ui_exit_status=1
           node tests/server-list.browser.cjs || ui_exit_status=1
+          node tests/quick-actions.browser.cjs || ui_exit_status=1
           exit "$ui_exit_status"
 
       - name: Checkbox card previews

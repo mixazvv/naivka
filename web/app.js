@@ -1613,6 +1613,7 @@ function renderBranches(lanes) {
     flag: code => flag(code), displayDomain, why: (key, route, item) => item?.kind === 'process' ? ['Вся программа целиком', item.exe] : branchWhy(key, route),
     onDrop: (key, route, item) => item?.kind === 'process' ? setProcRoute(item.exe, route) : branchDrop(key, route),
     onPick: (item, el) => {
+      if(window.QuickActions){QuickActions.branch(item,el);return;}
       if (item.kind !== 'process') { sitePick(item, el); return; }
       routePicker(el, { title: item.label, sub: 'Вся программа целиком', current: item.current, onPick: async k => {
         if (await setProcRoute(item.exe, k)) {
@@ -1651,6 +1652,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && routePop) 
 
 // Сайт (лист на схеме): меню вместо обязательного перетаскивания.
 function sitePick(item, el) {
+  if(window.QuickActions){QuickActions.branch(item,el);return;}
   const label = branchLeaves[item.key] ? branchLeaves[item.key].label : item.label;
   routePicker(el, { title: label, sub: item.reason || 'Этот сервис — все его адреса', current: item.current, onPick: async k => {
     if (k === 'auto') { await siteClear(item.key); return; }
@@ -1730,7 +1732,7 @@ function procChip(x) {
     'aria-label': `${name}: ${rule ? ROUTE_SAY[rule.action] : 'как решит Naivka'}. Нажмите, чтобы выбрать путь` },
     h('span', { class: 'svc' }, s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, s('path', { d: ic }))), name);
   ghostDrag(el, () => { const g = el.cloneNode(true); g.classList.add('proc-ghost'); return g; },
-    () => routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
+    () => window.QuickActions?QuickActions.branch({kind:'process',exe:x.exe,label:name,key:'proc:'+x.exe.toLowerCase()},el):routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
     k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); });
   return el;
 }
@@ -1825,7 +1827,7 @@ function renderLive() {
         const actual=groupRoute(x);
         return liveRow({
           key: 'proc:' + x.exe, label: name, icon: SVC_ICONS[PROC_ICON[name] || PROC_ICON[name.toLowerCase()] || 'app'], route: rule ? rule.action : actual, rule,
-          pick: el => routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
+          pick: el => window.QuickActions?QuickActions.branch({kind:'process',exe:x.exe,label:name,key:'proc:'+x.exe.toLowerCase()},el):routePicker(el, { title: name, sub: rule?'Ваше правило для программы: '+rule.value:'Отдельного правила для программы нет; соединения следуют правилам сайтов.', current: rule ? rule.action : 'auto', onPick: k => setProcRoute(x.exe, k) }),
           drop: k => { if (k !== (rule && rule.action)) setProcRoute(x.exe, k); },
         });
       }),
@@ -2141,6 +2143,7 @@ function renderFacts() {
 }
 
 function renderEvents() {
+  window.QuickActions?.refreshEvents();
   const box = $('#events');
   if (!box) return;
   const ev = ((STATS && STATS.events) || []).slice().reverse();
@@ -2304,7 +2307,8 @@ function viewDiag() {
       refreshAchvTraffic();
     } else {
       const box = h('pre', { class: 'log', id: 'logBox' }, logBuf.map(logLine));
-      body.replaceChildren(
+      const technical=h('div');
+      technical.append(
         h('div', { class: 'row', style: 'margin:0 0 12px' },
           h('label', { class: 'check', style: 'padding:0' }, h('input', { type: 'checkbox', id: 'logFollow', checked: true }), h('span', null, 'Прокручивать к новым')),
           h('span', { class: 'spacer' }),
@@ -2314,6 +2318,7 @@ function viewDiag() {
             try { const r = await api('/api/report'); download(r.name, r.text, 'text/plain'); toast('Отчёт сохранён в «Загрузки»'); } catch (e) { toast(e.message, true); }
           } }, 'Собрать отчёт')),
         box);
+      body.replaceChildren(window.QuickActions?QuickActions.journal(technical):technical);
       setTimeout(() => { box.scrollTop = box.scrollHeight; });
       refreshLogs();
     }
@@ -2578,6 +2583,7 @@ function srvCardBase(id, cls, kids, opts = {}) {
       if (dragId) moveServer(dragId, id, after);
     });
   }
+  if(S.servers.some(s=>s.id===id))window.QuickActions?.bindServer(card,id);
   return card;
 }
 
@@ -2634,7 +2640,7 @@ function renderServers(force) {
             h('small', { title: `${sv.host}:${sv.port}` }, h('span', { class: 'proto' }, protoName(sv),sv.subscriptionId?' · '+((S.subscriptions||[]).find(x=>x.id===sv.subscriptionId)?.name||'Подписка'):''))),
           // Действия — значками, появляются при наведении: карточка компактнее, адрес — во всплывающей подсказке.
           h('div', { class: 'scard-tools' },
-            window.ServerListUI?.comparisonButton(sv),h('button', { class: 'btn small', type:'button','data-server-action':'details',onclick:()=>WorkspaceUI.server(sv) }, 'Подробнее')),
+            window.QuickActions?.serverButton(sv),window.ServerListUI?.comparisonButton(sv),h('button', { class: 'btn small', type:'button','data-server-action':'details',onclick:()=>WorkspaceUI.server(sv) }, 'Подробнее')),
           star),
         h('div', { class: 'scard-mid' },
           h('div', { class: 'scard-delay' }, pingBars(d), delayEl(sv.id) || h('span', { class: 'delay cell-sub' }, 'не проверен')),

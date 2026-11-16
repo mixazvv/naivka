@@ -14,9 +14,10 @@ import (
 )
 
 type Event struct {
-	T    int64  `json:"t"`
-	Kind string `json:"kind"` // ok | info | warn | error
-	Text string `json:"text"`
+	T      int64  `json:"t"`
+	Kind   string `json:"kind"` // ok | info | warn | error
+	Text   string `json:"text"`
+	Detail string `json:"detail,omitempty"`
 }
 
 type Sample struct {
@@ -83,13 +84,21 @@ func newMonitor(a *App) *Monitor {
 
 // Event добавляет запись в ленту; notify — показать уведомление Windows.
 func (m *Monitor) Event(kind, text string, notify bool) {
+	m.EventDetail(kind, text, "", notify)
+}
+
+func (m *Monitor) EventDetail(kind, text, detail string, notify bool) {
 	m.mu.Lock()
-	m.events = append(m.events, Event{T: time.Now().Unix(), Kind: kind, Text: text})
+	m.events = append(m.events, Event{T: time.Now().Unix(), Kind: kind, Text: text, Detail: detail})
 	if len(m.events) > 200 {
 		m.events = m.events[len(m.events)-200:]
 	}
 	m.mu.Unlock()
-	m.a.core.logs.Add("[naivka] " + text)
+	line := "[naivka] " + text
+	if detail != "" {
+		line += " · " + detail
+	}
+	m.a.core.logs.Add(line)
 	if notify {
 		m.a.notify(text, kind == "error" || kind == "warn")
 	}
