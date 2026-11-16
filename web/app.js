@@ -2509,15 +2509,15 @@ function addConnectionDialog() {
 }
 
 function viewServers() {
-  return h('div', { class: 'view' },
+  return h('div', { class: 'view', onkeydown:e=>{if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest('input,textarea,select,[contenteditable="true"]')){e.preventDefault();$('#serverSearch')?.focus();}} },
     h('div', { class: 'title-row' }, h('h1', null, 'Серверы'),
       h('div', { class: 'row' },
         h('button', { class: 'btn', id: 'testAll', onclick: () => testServers(''), title: 'Проверить пинг всех серверов' }, 'Проверить все'),
         h('button', { class: 'btn primary', onclick: addConnectionDialog }, 'Добавить'))),
-    h('input',{type:'search',id:'serverSearch',placeholder:'Найти сервер по имени, адресу или протоколу','aria-label':'Поиск серверов',oninput:()=>renderServers(true)}),
+    h('input',{type:'search',id:'serverSearch',value:window.ServerListUI?.state.query||'',placeholder:'Найти сервер по имени, адресу или протоколу','aria-label':'Поиск серверов','aria-keyshortcuts':'/',title:'Нажмите / для поиска; Esc очищает введённый запрос.',oninput:e=>{if(window.ServerListUI)ServerListUI.state.query=e.target.value;renderServers(true);},onkeydown:e=>{if(e.key==='Escape'&&e.target.value){e.preventDefault();e.stopPropagation();e.target.value='';if(window.ServerListUI)ServerListUI.state.query='';renderServers(true);}}}),
+    window.ServerListUI?.tools(),
     h('div',{class:'subscription-list',id:'subscriptionList'}),
     h('div', { class: 'scards server-list', id: 'srvList', role: 'radiogroup', 'aria-label': 'Сервер' }),
-    h('p', { class: 'hint mt' }, 'Строки можно перетаскивать вверх и вниз; звёздочка поднимает сервер в избранное.'),
     h('div', { id: 'wlBox' }));
 }
 
@@ -2525,6 +2525,7 @@ function viewServers() {
 let dragId = null;
 
 function serverOrder() {
+  if(window.ServerListUI)return ServerListUI.order(S.servers,ServerListUI.sortMode(),delayFor);
   return [...S.servers.filter(x => x.fav), ...S.servers.filter(x => !x.fav)];
 }
 
@@ -2536,6 +2537,7 @@ async function selectServer(id) {
 
 // moveServer ставит сервер from перед to или после него (в том порядке, который видно на экране).
 function moveServer(from, to, after) {
+  if(window.ServerListUI&&ServerListUI.sortMode()!=='manual')return;
   const order = serverOrder();
   const item = order.find(x => x.id === from);
   const target = order.find(x => x.id === to);
@@ -2590,11 +2592,13 @@ function renderServers(force) {
   const xr = xrayReady();
   // Перерисовываем, только если что-то видимое изменилось: иначе сбивались бы наведение и фокус.
   const query=($('#serverSearch')?.value||'').trim().toLowerCase();
-  const sig = JSON.stringify([query,S.servers, S.selected, S.wl.enabled, nowTag, delays, PX && PX.delays, PX && PX.wlNow, srvGeo,
+  if(window.ServerListUI){ServerListUI.state.query=$('#serverSearch')?.value||'';ServerListUI.refresh();}
+  const restoreFocus=window.ServerListUI?.captureFocus(list)||(()=>{});
+  const sig = JSON.stringify([query,window.ServerListUI&&[S.serverSort,ServerListUI.state.favorites,ServerListUI.state.replies,ServerListUI.state.protocol,[...ServerListUI.state.compare]],S.servers, S.selected, S.wl.enabled, nowTag, delays, PX && PX.delays, PX && PX.wlNow, srvGeo,
     STATS && STATS.delays, S.smartSelect, noNaive, xr, externalReady('naive'), externalReady('mieru'), WL && [WL.used, WL.active]]);
   patch('srvList', sig, () => {
     const cards = [];
-    if ((!query||'автовыбор automatic auto'.includes(query))&&(S.servers.length > 1 || S.selected === 'auto')) {
+    if ((!query||'автовыбор automatic auto'.includes(query))&&!window.ServerListUI?.filtered()&&(S.servers.length > 1 || S.selected === 'auto')) {
       const smartAuto = S.smartSelect && S.selected === 'auto' && PX && (PX.selected || '').startsWith('s-');
       const now = PX ? serverByTag(smartAuto ? PX.selected : PX.autoNow) : null;
       cards.push(srvCardBase('auto', 'wide', [
@@ -2606,6 +2610,7 @@ function renderServers(force) {
       { live: running && PX && (PX.selected === 'auto' || smartAuto) }));
     }
     for (const sv of serverOrder()) {
+      if(window.ServerListUI&&!ServerListUI.accept(sv,query))continue;
       if(query&&![sv.name,sv.host,protoName(sv)].join(' ').toLowerCase().includes(query))continue;
       const geo = srvGeo[sv.id] && srvGeo[sv.id].info;
       const cc = (geo && geo.countryCode) || nameCountry(sv.name);
@@ -2618,26 +2623,27 @@ function renderServers(force) {
       const star = h('button', {
         class: 'star' + (sv.fav ? ' on' : ''), type: 'button', title: sv.fav ? 'Убрать из избранного' : 'В избранное',
         'aria-label': sv.fav ? 'Убрать из избранного' : 'В избранное', 'aria-pressed': sv.fav ? 'true' : 'false',
+        'data-server-action':'favorite',
         onclick: () => { sv.fav = !sv.fav; save(); renderServers(true); },
       }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z' })));
       cards.push(srvCardBase(sv.id, '', [
-        h('span', { class: 'scard-grip', title: 'Перетащите, чтобы поменять порядок', 'aria-hidden': 'true' }, '⋮⋮'),
+        (!window.ServerListUI||ServerListUI.sortMode()==='manual')?h('span', { class: 'scard-grip', title: 'Перетащите, чтобы поменять порядок', 'aria-hidden': 'true' }, '⋮⋮'):null,
         h('div', { class: 'scard-top' },
           h('span', { class: 'scard-flag' }, cc ? flag(cc, true) : h('span', { class: 'scard-ico' }, s('svg', { viewBox: '0 0 24 24' }, s('path', { d: ICONS.globe })))),
           h('div', { class: 'scard-title' }, h('b', { title: sv.name }, sv.name),
             h('small', { title: `${sv.host}:${sv.port}` }, h('span', { class: 'proto' }, protoName(sv),sv.subscriptionId?' · '+((S.subscriptions||[]).find(x=>x.id===sv.subscriptionId)?.name||'Подписка'):''))),
           // Действия — значками, появляются при наведении: карточка компактнее, адрес — во всплывающей подсказке.
           h('div', { class: 'scard-tools' },
-            h('button', { class: 'btn small', type:'button',onclick:()=>WorkspaceUI.server(sv) }, 'Подробнее')),
+            window.ServerListUI?.comparisonButton(sv),h('button', { class: 'btn small', type:'button','data-server-action':'details',onclick:()=>WorkspaceUI.server(sv) }, 'Подробнее')),
           star),
         h('div', { class: 'scard-mid' },
           h('div', { class: 'scard-delay' }, pingBars(d), delayEl(sv.id) || h('span', { class: 'delay cell-sub' }, 'не проверен')),
           nowTag === 's-' + sv.id ? h('span', { class: 'live-tag' }, 'сейчас') : null,
           h('div', { class: 'scard-spark' }, spark(hist, 130, 26))),
         note ? h('div', { class: 'scard-sub trunc', title: note }, note) : null],
-      { drag: true, off, live: nowTag === 's-' + sv.id }));
+      { drag: !window.ServerListUI||ServerListUI.sortMode()==='manual', off, live: nowTag === 's-' + sv.id }));
     }
-    if (S.wl.enabled) {
+    if (S.wl.enabled&&!window.ServerListUI?.filtered()&&!query) {
       cards.push(srvCardBase('wl', 'wide', [
         h('div', { class: 'scard-top' },
           h('span', { class: 'cc', style: 'background:var(--warn-soft);color:var(--warn)' }, 'WL'),
@@ -2647,6 +2653,7 @@ function renderServers(force) {
     if (!S.servers.length && !S.wl.enabled) cards.push(h('div', { class: 'empty wide' }, 'Серверов пока нет. Добавьте вручную или вставьте ссылки naive+https://… или vless://…'));
     return cards.length?cards:h('p',{class:'empty'},'Серверы не найдены');
   });
+  restoreFocus();
   patch('wlBox', JSON.stringify([WL, S.wl, S.selected, PX && PX.delays, PX && PX.wlNow, AD && AD.updates && AD.updates.xray]), wlCard);
 }
 
