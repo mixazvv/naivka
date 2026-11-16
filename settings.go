@@ -221,7 +221,8 @@ type Settings struct {
 	Layout        HomeLayout         `json:"layout"`
 	Experience    ExperienceSettings `json:"experience"`
 	Servers       []Server           `json:"servers"`
-	Selected      string             `json:"selected"` // "auto" или ID сервера
+	ServerSort    string             `json:"serverSort,omitempty"` // presentation only
+	Selected      string             `json:"selected"`             // "auto" или ID сервера
 
 	Mode string `json:"mode"` // proxy | tun
 	// ProxyPAC — системный прокси через PAC-скрипт: без Naivka (сбой, выключение) интернет идёт напрямую.
@@ -500,6 +501,7 @@ func (s *Settings) fingerprint() string {
 	c.PetMemory = PetMemory{}
 	c.Layout = HomeLayout{}
 	c.Experience = ExperienceSettings{}
+	c.ServerSort = ""
 	c.Wall = WallSettings{}
 	c.Custom = CustomTheme{}
 	c.Mascot, c.PetTaskbar, c.PetHopOff, c.Achievements, c.Achv, c.PetSpot = false, false, false, false, nil, nil
@@ -642,6 +644,11 @@ func (s *Settings) normalize() {
 	}
 	if s.Nav != "wheel" {
 		s.Nav = "list"
+	}
+	switch s.ServerSort {
+	case "ping", "ping-desc", "name", "manual":
+	default:
+		s.ServerSort = "manual"
 	}
 	for i := range s.Servers {
 		sv := &s.Servers[i]
