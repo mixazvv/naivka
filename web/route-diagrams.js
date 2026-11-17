@@ -66,7 +66,7 @@ const RouteDiagrams = (() => {
       r.paths.forEach((line,n)=>{
         const rx=x*10+(n===2?4:0),ry=y*6;
         const path=tree?`M500 492 C500 350 ${rx} 300 ${rx} ${ry+40}`:`M500 258 Q${rx} 258 ${rx} ${ry+40}`;
-        line.setAttribute('d',path);line.style.d=`path("${path}")`;line.setAttribute('stroke',lane.color);
+        line.dataset.route=lane.key;line.setAttribute('d',path);line.style.d=`path("${path}")`;line.setAttribute('stroke',lane.color);
         line.setAttribute('stroke-width',String(n?2:lane.active?2+Math.min(5,Math.log2(1+(lane.speed||0)/1024)):1));
         line.style.opacity=n?((lane.active&&d.phase==='on'&&(n===1?lane.down:lane.up)>0)?'.8':'0'):(lane.active&&d.phase==='on'?'.35':'.15');
         if(n)line.style.animationDuration=Math.max(.6,4-Math.log2(1+(n===1?lane.down:lane.up)/1024)*.25)+'s';
@@ -79,6 +79,7 @@ const RouteDiagrams = (() => {
       const r=routes.get(route);if(!r)continue;if((counts[route]||0)>=(compact?1:3)){over[route]=(over[route]||0)+1;continue;}counts[route]=(counts[route]||0)+1;seen.add(key);
       let button=leaves.get(key);
       if(!button){button=document.createElement('button');button.type='button';button.className='route-service';button.draggable=true;leaves.set(key,button);
+        button.addEventListener('pointerenter',()=>{surface.dataset.highlight=button.dataset.route;});button.addEventListener('pointerleave',()=>{delete surface.dataset.highlight;});button.addEventListener('focus',()=>{surface.dataset.highlight=button.dataset.route;});button.addEventListener('blur',()=>{delete surface.dataset.highlight;});
         button.addEventListener('click',()=>data.onPick?.({...button._item,current:button.dataset.route},button));
         button.addEventListener('dragstart',e=>{dragged=button._item;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',button._item.key);});
         button.addEventListener('dragend',()=>{dragged=null;endHover();});}

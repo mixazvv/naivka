@@ -170,17 +170,36 @@ type WindowGeom struct {
 }
 
 type ExperienceSettings struct {
-	Home       string `json:"home"`
-	Activity   string `json:"activity"`
-	Expanded   bool   `json:"expanded"`
-	Diagram    string `json:"diagram"`
-	Effects    string `json:"effects"`
-	Sound      string `json:"sound"`
-	Volume     int    `json:"volume"`
-	Atmosphere string `json:"atmosphere"`
+	Density        string   `json:"density"`
+	PinnedPrograms []string `json:"pinnedPrograms,omitempty"`
+	Home           string   `json:"home"`
+	Activity       string   `json:"activity"`
+	Expanded       bool     `json:"expanded"`
+	Diagram        string   `json:"diagram"`
+	Effects        string   `json:"effects"`
+	Sound          string   `json:"sound"`
+	Volume         int      `json:"volume"`
+	Atmosphere     string   `json:"atmosphere"`
 }
 
 func (e *ExperienceSettings) normalize() {
+	if e.Density != "compact" {
+		e.Density = "comfortable"
+	}
+	pins := []string{}
+	seen := map[string]bool{}
+	for _, raw := range e.PinnedPrograms {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		if len(pins) >= 12 {
+			break
+		}
+		if name == "" || len(name) > 128 || strings.ContainsAny(name, "\\/:\x00\r\n") || !strings.HasSuffix(name, ".exe") || seen[name] {
+			continue
+		}
+		seen[name] = true
+		pins = append(pins, name)
+	}
+	e.PinnedPrograms = pins
 	if e.Home != "full" {
 		e.Home = "compact"
 	}

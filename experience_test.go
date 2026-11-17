@@ -1,11 +1,14 @@
 package main
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestExperienceDoesNotRestartCore(t *testing.T) {
 	s := DefaultSettings()
 	original := s.fingerprint()
-	s.Experience = ExperienceSettings{Home: "compact", Activity: "services", Expanded: true, Diagram: "tree", Effects: "off", Sound: "retro", Volume: 87, Atmosphere: "night"}
+	s.Experience = ExperienceSettings{Home: "compact", Activity: "services", Expanded: true, Diagram: "tree", Effects: "off", Sound: "retro", Volume: 87, Atmosphere: "night", Density: "compact", PinnedPrograms: []string{"firefox.exe"}}
 	if s.fingerprint() != original {
 		t.Fatal("presentation settings restart core")
 	}
@@ -17,7 +20,7 @@ func TestExperienceDoesNotRestartCore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Experience != s.Experience {
+	if !reflect.DeepEqual(got.Experience, s.Experience) {
 		t.Fatal("experience settings not preserved", got.Experience)
 	}
 }

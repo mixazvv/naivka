@@ -266,6 +266,7 @@ function mapEnds() {
 // ---------- мини-окно из трея ----------
 let miniTimer = 0;
 let miniBusy = false;
+let miniFavoritesOnly=true,miniSelecting=false;
 
 async function miniBoot() {
   document.body.classList.add('mini-mode');
@@ -317,21 +318,21 @@ function renderMini() {
   const on = p === 'on';
   const d = cs.id ? delayFor(cs.id) : null;
   const zapInstalled = !!(AD && AD.zapret && AD.zapret.installed);
-  const sig = JSON.stringify([p, S.selected, S.servers.map(x => [x.id, x.name, x.fav, x.type]), PX && PX.delays, PX && PX.autoNow, PX && PX.selected, Object.keys(srvGeo).length,
+  const sig = JSON.stringify([miniFavoritesOnly,miniSelecting,p, S.selected, S.servers.map(x => [x.id, x.name, x.fav, x.type]), PX && PX.delays, PX && PX.autoNow, PX && PX.selected, Object.keys(srvGeo).length,
     S.routing, S.zapret && S.zapret.enabled, zapInstalled]);
   patch('miniBody', sig, () => {
     const sel = id => async () => {
-      S.selected = id;
-      try { await api('/api/select', { id }); } catch (e) { toast(e.message, true); }
-      miniRefresh(false);
+      if(miniSelecting)return;const previous=S.selected;miniSelecting=true;S.selected=id;renderMini();
+      try { await api('/api/select', { id }); } catch (e) { if(S.selected===id)S.selected=previous;toast(e.message,true); }
+      finally {miniSelecting=false;renderMini();miniRefresh(false);}
     };
-    const row = (id, title, sub, cc, ms) => h('button', { class: 'mrow' + (S.selected === id ? ' sel' : ''), type: 'button', onclick: sel(id), 'aria-pressed': S.selected === id ? 'true' : 'false' },
+    const row = (id, title, sub, cc, ms) => h('button', { disabled:miniSelecting||p==='wait','data-server-id':id,class: 'mrow' + (S.selected === id ? ' sel' : ''), type: 'button', onclick: sel(id), 'aria-pressed': S.selected === id ? 'true' : 'false' },
       h('span', { class: 'mflag' }, cc ? flag(cc) : id === 'auto' ? h('span', { class: 'mauto' }, 'A') : null),
       h('span', { class: 'mrow-main' }, h('b', null, title), sub ? h('small', null, sub) : null),
       ms !== undefined ? h('span', { class: 'mping' }, pingBars(ms)) : null);
     const list = [];
     if (S.servers.length > 1) list.push(row('auto', 'Автовыбор', PX && PX.autoNow && serverByTag(PX.autoNow) ? 'сейчас: ' + serverByTag(PX.autoNow).name : 'самый быстрый', '', undefined));
-    for (const sv of miniServerList().slice(0, 6)) {
+    for (const sv of miniServerList().filter(sv=>!miniFavoritesOnly||sv.fav).slice(0,12)) {
       const g = srvGeo[sv.id] && srvGeo[sv.id].info;
       list.push(row(sv.id, (sv.fav ? '★ ' : '') + sv.name, protoName(sv), g && g.countryCode, delayFor(sv.id)));
     }
@@ -350,11 +351,13 @@ function renderMini() {
             S.zapret.enabled = e.target.checked; save(0);
             if (e.target.checked && typeof needElevation === 'function' && needElevation()) elevateFor('zapret');
           } }), h('span', null, 'zapret')) : null),
+      h('div',{class:'row mini-filter'},h('button',{class:'btn small','aria-pressed':String(miniFavoritesOnly),onclick:()=>{miniFavoritesOnly=true;renderMini();}},'Избранные'),h('button',{class:'btn small','aria-pressed':String(!miniFavoritesOnly),onclick:()=>{miniFavoritesOnly=false;renderMini();}},'Все серверы')),
+      miniFavoritesOnly&&!S.servers.some(sv=>sv.fav)?h('p',{class:'hint',style:'padding:0 14px'},'Пометьте сервер звёздочкой в основном окне или выберите «Все серверы».'):null,
       list.length ? h('div', { class: 'mini-list', role: 'group', 'aria-label': 'Сервер' }, ...list)
         : h('div', { class: 'empty' }, 'Серверов пока нет.'),
       h('div', { class: 'mini-foot' },
         h('button', { class: 'btn small', type: 'button', onclick: () => hostCmd('open') }, 'Открыть Naivka'),
-        S.servers.length > 6 ? h('span', { class: 'hint' }, `ещё ${S.servers.length - 6} в окне`) : null)];
+        (!miniFavoritesOnly&&S.servers.length>12) ? h('span', { class: 'hint' }, `ещё ${S.servers.length - 12} в окне`) : null)];
   });
   $('#miniTitle').textContent = TITLES[p];
   $('#miniSub').replaceChildren(on || S.selected !== 'auto' ? (cs.cc || (cs.id && srvGeo[cs.id] && srvGeo[cs.id].info) ? flag(cs.cc || srvGeo[cs.id].info.countryCode) : '') : '',

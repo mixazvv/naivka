@@ -17,6 +17,8 @@ window.QuickActions=(()=>{
    action(ServerListUI.state.compare.has(id)?'Убрать из сравнения':'Добавить в сравнение',current=>ServerListUI.comparisonButton(current).click()),
    action('Скопировать ссылку',async()=>{if(!await saveNow())return;const r=await api('/api/link?id='+encodeURIComponent(id));await navigator.clipboard.writeText(r.link);toast('Ссылка скопирована. Она содержит ключ подключения.');}),
    action('Подробнее',current=>WorkspaceUI.server(current)));
+  if(busy||ST?.starting||ST?.reviving||ST?.blocked)pop.append(h('small',null,ST?.blocked?'Переключение недоступно, пока действует защита от утечек.':'Дождитесь завершения подключения, чтобы выбрать другой сервер.'));
+  if(delayFor(id)?.pending)pop.append(h('small',null,'Проверка пинга уже выполняется.'));
   if(sv.subscriptionId)pop.append(h('small',null,'Название задаётся подпиской.'));
   document.body.append(pop);routePop=pop;routeAnchor=anchor;
   const r=anchor.getBoundingClientRect(),x=point?.x??r.left,y=point?.y??r.bottom+6;
@@ -64,7 +66,7 @@ window.QuickActions=(()=>{
     }catch(e){error.textContent=e.message;}finally{working=false;buttons.forEach(b=>b.disabled=false);}
    }},label);buttons.push(button);
   }
-  const dlg=openDialog(h('h2',null,item.label||item.exe||item.key),h('p',{class:'hint'},process?'Правило действует на всю программу.':'Правило действует на все адреса этого сервиса.'),facts,h('h3',null,'Куда направлять'),h('div',{class:'row'},...buttons),h('p',{class:'hint'},'Кнопка с отметкой показывает сохранённое правило. Список соединений — снимок на момент обновления; существующие соединения могут сохранять прежний путь.'),error,h('details',null,h('summary',null,'Соединения'),connections),h('div',{class:'row end mt'},refresh,h('button',{class:'btn',onclick:()=>dlg.close()},'Закрыть')));
+  const dlg=openDialog(h('h2',null,item.label||item.exe||item.key),h('p',{class:'hint'},process?'Правило действует на всю программу.':'Правило действует на все адреса этого сервиса.'),facts,process?window.InterfacePolish?.pinButton(item.exe):null,h('h3',null,'Куда направлять'),h('div',{class:'row'},...buttons),h('p',{class:'hint'},'Кнопка с отметкой показывает сохранённое правило. Список соединений — снимок на момент обновления; существующие соединения могут сохранять прежний путь.'),error,h('details',null,h('summary',null,'Соединения'),connections),h('div',{class:'row end mt'},refresh,h('button',{class:'btn',onclick:()=>dlg.close()},'Закрыть')));
   dlg.classList.add('quick-route-dialog');dlg.addEventListener('close',()=>{if(anchor?.isConnected)anchor.focus({preventScroll:true});},{once:true});load();
  }
  let eventFilter='all',eventQuery='';

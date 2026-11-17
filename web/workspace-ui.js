@@ -28,9 +28,11 @@ const WorkspaceUI=(()=>{
       if([1,2].includes(S.layout?.version)){prefs().home='compact';save();toast('Сохранённая сетка остаётся активной. Выберите «Стандартный» в настройке главного экрана для компактного вида.');return;}
       prefs().home='compact';save();apply();renderLanes();
     }},'Компактный вид'));
+    window.InterfacePolish?.mount(root);
     apply(root);
   }
   function status(p){
+    window.InterfacePolish?.status(p);
     apply();const summary=document.querySelector('.home-parameters>summary');if(summary)summary.textContent='Параметры подключения: '+(zapretOnly()?'только zapret':(S.mode==='tun'?'TUN':'Прокси')+' · '+(ROUTING[S.routing]||''));const b=document.querySelector('#homeConnect');if(b){b.textContent=powerLabel(p);b.disabled=busy||p==='wait';b.title=powerLabel(p)+' (Ctrl+Enter)';}
   }
   function pulse(on,sp,t){

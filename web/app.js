@@ -196,6 +196,7 @@ document.addEventListener('contextmenu', e => {
 let themeSent = '';
 function applyTheme() {
   window.NaivkaExperience?.configure(S?.experience);
+  window.InterfacePolish?.configure();
   // «Никогда не проси об этом» и «Пиксели» — стили поверх тёмной темы со своей палитрой.
   const gold = !!S && S.theme === 'gold';
   const blocks = !!S && S.theme === 'blocks';
@@ -1547,6 +1548,7 @@ async function branchDrop(key, b) {
     if (S.rules === changed) S.rules = before;
     return false;
   }
+  window.InterfacePolish?.routeChanged(before,changed,r=>r.kind==='domain'&&doms.includes(r.value.toLowerCase()),e.label,key);
   toast(`${e.label} — ${{ proxy: 'через сервер', direct: 'напрямую', zapret: 'через zapret' }[b]}. ${ruleNote(b)}`);
   unlockAchv('route');
   return true;
@@ -1671,6 +1673,7 @@ async function siteClear(key) {
   let saved;
   try { saved = await saveNow(); } finally { branchSaving = false; }
   if (!saved) { if (S.rules === changed) S.rules = before; return false; }
+  window.InterfacePolish?.routeChanged(before,changed,r=>r.kind==='domain'&&doms.includes(r.value.toLowerCase()),e.label,key);
   diagramClearLeaf(key);
   toast(before.length === S.rules.length ? `${e.label} — и так решает Naivka` : `${e.label} — снова как решит Naivka. ${ruleNote('')}`);
   return true;
@@ -1705,6 +1708,7 @@ async function setProcRoute(exe, k) {
   let saved;
   try { saved = await saveNow(); } finally { branchSaving = false; }
   if (!saved) { if (S.rules === changed) S.rules = before; return false; }
+  window.InterfacePolish?.routeChanged(before,changed,r=>r.kind==='process'&&r.value.toLowerCase()===exe.toLowerCase(),name,'proc:'+exe.toLowerCase());
   toast(k === 'auto' ? `${name} — снова как решит Naivka. ${ruleNote('')}` : `Вся программа ${name} — ${ROUTE_SAY[k]}. ${ruleNote(k)}`);
   if (k !== 'auto') unlockAchv('route');
   renderProcShelf(true);
@@ -4120,6 +4124,7 @@ function experienceSettings() {
     h('select', { 'aria-label': title, onchange: e => { S.experience[key] = e.target.value; window.NaivkaExperience.configure(S.experience); if(typeof WorkspaceUI!=='undefined')WorkspaceUI.apply(); save(); } },
       values.map(([value, text]) => h('option', { value, selected: S.experience[key] === value }, text))));
   return h('div', null,
+    window.InterfacePolish?.settings(),
     choose('home', 'Главная страница', [['compact','Компактная'],['full','Полная']]),
     choose('diagram', 'Схема маршрутов', [['branches','Ветви'],['orbit','Орбита'],['tree','Дерево']]),
     choose('effects', 'Интенсивность эффектов', [['off','Выкл.'],['low','Минимум'],['balanced','Баланс'],['full','Полный']]),
