@@ -11,6 +11,8 @@ const Branches = (() => {
   let geometryKey = "";
   const geometries = new Map(), samples = new Map();
   let data = null;             // последнее состояние из app.js
+  let focusRoute = null;
+  function highlight(key){focusRoute=key;if(box){if(key)box.dataset.highlight=key;else delete box.dataset.highlight;if(!raf)raf=requestAnimationFrame(frame);}}
   let dragOver = null;
   let dragging = false;        // что-то тащат (лист или программу с полки) — ветки показываются широкими дорожками
   const br = {};               // ветки: key → { grow, speed, color, active }
@@ -78,7 +80,7 @@ const Branches = (() => {
     cv.remove(); nodesEl.remove(); leavesEl.remove();
     box.querySelectorAll('.br-more').forEach(el => el.remove());
     box.classList.remove('branches');
-    box = null; leaves.clear(); dragging = false; dragOver = null;
+    delete box.dataset.highlight;box = null; leaves.clear(); dragging = false; dragOver = null;focusRoute=null;
     geometries.clear(); samples.clear(); geometryKey = '';
     for (const k in parts) delete parts[k];
   }
@@ -347,6 +349,7 @@ const Branches = (() => {
   function bindDrag(lf) {
     let sx, sy, ox, oy, moved = false, id = null;
     const el = lf.el;
+    el.addEventListener('pointerenter',()=>highlight(lf.b));el.addEventListener('pointerleave',()=>highlight(null));el.addEventListener('focus',()=>highlight(lf.b));el.addEventListener('blur',()=>highlight(null));
     el.addEventListener('pointerdown', e => {
       if (e.button !== 0 || !lf.pos || lf.saving) return;
       id = e.pointerId; el.setPointerCapture(id); moved = false;
@@ -359,7 +362,7 @@ const Branches = (() => {
       moved = true; el.classList.add('drag'); dragging = true;
       const sr = box.getBoundingClientRect(), x = e.clientX - sr.left - ox, y = e.clientY - sr.top - oy;
       el.style.transform = `translate(${x - el.offsetWidth / 2}px, ${y - el.offsetHeight / 2}px)`;
-      const nb = nearestBranch(x, y); dragOver = nb && nb.k;
+      const nb = nearestBranch(x, y); dragOver = nb && nb.k;if(!raf)raf=requestAnimationFrame(frame);
     });
     const end = e => {
       if (e.pointerId !== id) return;
@@ -447,9 +450,9 @@ const Branches = (() => {
     for (const q of L) ctx.lineTo(q[0], q[1]);
     for (let i = R.length - 1; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
     ctx.closePath(); ctx.fillStyle = col;
-    if (!dead) { ctx.shadowColor = col; ctx.shadowBlur = dragOver === k ? 18 : document.documentElement.dataset.skin === 'gold' ? 12 : 0; }
+    if (!dead) { ctx.shadowColor = col; ctx.shadowBlur = 0; }
     // «Всё через сервер»: прямая ветка остаётся целой, но тонкой и бледной — по ней идёт только локальная сеть и ваши правила.
-    ctx.globalAlpha = dead ? .55 : b.thin ? .35 : (dragOver && dragOver !== k ? .4 : 1);
+    ctx.globalAlpha = dead ? .55 : b.thin ? .35 : (dragOver && dragOver !== k ? .4 : focusRoute && focusRoute!==k ? .22 : 1);
     ctx.fill(); ctx.restore();
     if (!dead && w0 > 4) {
       ctx.beginPath();
@@ -509,7 +512,7 @@ const Branches = (() => {
   function drawBands(time) {
     for (const k of ['proxy', 'direct', 'zapret']) {
       const b = br[k];
-      if (!b || b.grow < .6 || !b.active) continue;
+      if (!b || b.grow < .6 || !b.active || b.wilt || data.offline || data.phase!=='on') continue;
       const p = geom(k), col = css(b.color, time);
       ctx.save();
       ctx.beginPath();
@@ -589,10 +592,10 @@ const Branches = (() => {
     const r = box.getBoundingClientRect();
     dragging = true;
     const nb = nearestBranch(cx - r.left, cy - r.top);
-    dragOver = nb && nb.k;
+    dragOver = nb && nb.k;if(!raf)raf=requestAnimationFrame(frame);
     return dragOver;
   }
-  function endHover() { dragging = false; const k = dragOver; dragOver = null; return k; }
+  function endHover() { dragging = false; const k = dragOver; dragOver = null;if(box&&!raf)raf=requestAnimationFrame(frame); return k; }
   // Путь выбран в меню — лист переезжает на новую ветку (правило уже сохранено в app.js).
   function moveLeaf(host, k) {
     const lf = leaves.get(host);
