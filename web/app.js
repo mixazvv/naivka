@@ -5216,7 +5216,6 @@ async function versionDialog(){
 
 function appUpdateNotice() {
   const u = APPUP;
-  if(u?.recoveryPending&&!u.busy)return notice('warn','Обнаружено прерванное обновление. Можно проверить восстановление, сохранив резервные файлы.',h('button',{class:'btn small',onclick:()=>window.NaivkaReliability?.recovery()},'Проверить восстановление'));
   if (!u || !(u.newer || u.busy)) return null;
   if (u.busy) {
     const pct = u.total > 0 ? ` ${Math.round(u.done / u.total * 100)}%` : '';

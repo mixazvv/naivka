@@ -179,6 +179,31 @@ func archiveInterruptedUpdate(dir, exe, revision string, alive func(int) bool) e
 	}
 	return nil
 }
+
+// Called after ordinary startup, or before staging another signed update.
+func (a *App) settlePreviousUpdate(exe string) error {
+	a.life.mu.Lock()
+	defer a.life.mu.Unlock()
+	a.life.intentMu.Lock()
+	defer a.life.intentMu.Unlock()
+	if a.life.closing || a.life.updating || a.transfer != nil {
+		return errors.New("Дождитесь завершения текущей операции обновления")
+	}
+	updateFilesMu.Lock()
+	defer updateFilesMu.Unlock()
+	p, err := inspectUpdateRecovery(a.dir, exe, recoveryProcessAlive)
+	if err != nil || p.Pending == 0 {
+		return err
+	}
+	if !p.Ready {
+		return errors.New(p.Reason)
+	}
+	if !a.startupReady() {
+		return errors.New("Дождитесь готовности текущей версии Naivka")
+	}
+	return archiveInterruptedUpdate(a.dir, exe, p.Revision, recoveryProcessAlive)
+}
+
 func (a *App) updateRecoveryRoutes(api func(string, string, apiFunc)) {
 	api("GET", "/api/app/recovery", func(*http.Request) (any, error) {
 		exe, err := os.Executable()

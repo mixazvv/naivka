@@ -311,6 +311,9 @@ func (u *selfUpdater) run(a *App, tag string) error {
 	if err != nil {
 		return err
 	}
+	if err = a.settlePreviousUpdate(exe); err != nil {
+		return err
+	}
 	t, err := a.beginUpdateTransfer()
 	if err != nil {
 		return err
