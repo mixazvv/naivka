@@ -221,6 +221,12 @@ func main() {
 	if !candidate {
 		go func() {
 			if a.startupReady() {
+				if exe, err := os.Executable(); err == nil {
+					if err := a.settlePreviousUpdate(exe); err != nil {
+						log.Println("Восстановление обновления:", err)
+						return
+					}
+				}
 				cleanupUpdate(dir)
 			}
 		}()

@@ -177,7 +177,7 @@ func TestUpdateRecoveryRoutes(t *testing.T) {
 	_, portText, _ := net.SplitHostPort(u.Host)
 	port, _ := strconv.Atoi(portText)
 	exe, _ := os.Executable()
-	for _, kind := range []string{"confirm", "busy", "active", "stale", "success"} {
+	for _, kind := range []string{"confirm", "busy", "active", "stale", "success", "automatic"} {
 		t.Run(kind, func(t *testing.T) {
 			a := &App{dir: t.TempDir(), port: port, token: "test-token", settings: DefaultSettings(), ui: recoveryTestUI{}}
 			a.core = NewCore(a.dir)
@@ -190,6 +190,18 @@ func TestUpdateRecoveryRoutes(t *testing.T) {
 			p, err := inspectUpdateRecovery(a.dir, exe, recoveryProcessAlive)
 			if err != nil || !p.Ready {
 				t.Fatal(p, err)
+			}
+			if kind == "automatic" {
+				if err := a.settlePreviousUpdate(exe); err != nil {
+					t.Fatal(err)
+				}
+				if fileExists(intent) {
+					t.Fatal("stale operation still blocks update")
+				}
+				if err := a.settlePreviousUpdate(exe); err != nil {
+					t.Fatal("not idempotent", err)
+				}
+				return
 			}
 			body := map[string]any{"confirm": true, "revision": p.Revision}
 			if kind == "confirm" {
