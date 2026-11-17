@@ -36,6 +36,20 @@ const {chromium}=require('playwright');const web=path.resolve(__dirname,'../web'
   await page.evaluate(()=>{acceptDrop=false;});await service.dragTo(page.locator('.route-group[data-route="proxy"]'));await page.waitForTimeout(100);assert.equal(await service.getAttribute('data-route'),'direct','rejected save changed visual route');
   await page.evaluate(()=>RouteDiagrams.update(document.querySelector('#lanesBox'),d,'tree'));
   assert.equal(await page.locator('.route-server').count(),2);assert.equal(await page.locator('.route-scene').count(),1);
+  await page.evaluate(()=>{
+    d.lanes.push(...['tg','zapret'].map(key=>({key,active:true,color:'#dbac65',speed:0})));
+    d.top=d.lanes.flatMap(l=>Array.from({length:5},(_,i)=>({key:l.key+i,label:'Программа с длинным названием '+i,route:l.key})));
+  });
+  for(const width of [320,600,1000])for(const mode of ['orbit','tree']){
+    await page.evaluate(({width,mode})=>{const box=document.querySelector('#lanesBox');box.style.width=width+'px';RouteDiagrams.update(box,d,mode);},{width,mode});
+    const problems=await page.evaluate(()=>{
+      const box=document.querySelector('#lanesBox'),bounds=box.getBoundingClientRect();
+      const rects=[...box.querySelectorAll('.power,.route-group,.diagram-servers')].map(e=>e.getBoundingClientRect());
+      return rects.some((a,i)=>a.left<bounds.left-1||a.right>bounds.right+1||a.bottom>bounds.bottom+1||rects.slice(i+1).some(b=>Math.min(a.right,b.right)>Math.max(a.left,b.left)+1&&Math.min(a.bottom,b.bottom)>Math.max(a.top,b.top)+1));
+    });
+    assert(!problems,mode+' overlaps or leaves the diagram at '+width);
+    if(process.env.DIAGRAM_PREVIEWS)await page.locator('#lanesBox').screenshot({path:path.join(process.env.DIAGRAM_PREVIEWS,mode+'-'+width+'.png')});
+  }
   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(50);
   assert.equal(await page.locator('.route-lines [data-direction="down"]').first().evaluate(e=>getComputedStyle(e).animationName),'none');
   await page.evaluate(()=>{d.phase='off';RouteDiagrams.update(document.querySelector('#lanesBox'),d,'tree');});assert.equal(await page.locator('.route-service').count(),0);

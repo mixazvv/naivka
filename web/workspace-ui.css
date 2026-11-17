@@ -103,3 +103,11 @@ dialog[open].vps-manager{display:flex;flex-direction:column;overflow:hidden;max-
 @media(prefers-reduced-motion:reduce){.btn,.br-leaf{transition:none!important}}
 :root[data-effects="off"] .btn,:root[data-effects="off"] .br-leaf{transition:none!important}
 .home-pins[hidden]{display:none!important}
+
+/* Shared section headers and local navigation. */
+.drawer .view:not(.settings-view)>.title-row{align-items:baseline;column-gap:20px;row-gap:12px;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:18px}
+.drawer .view:not(.settings-view)>.title-row>.row{min-width:0;max-width:100%;flex-wrap:wrap;gap:6px}
+.drawer .settings-tabs,.vps-manager .vps-tabs,.drawer .title-row .seg{max-width:100%;min-width:0;box-sizing:border-box;align-items:stretch;flex-wrap:wrap;gap:3px;padding:4px;border:1px solid var(--line);border-radius:var(--control-radius);background:var(--surface)}
+.drawer .settings-tabs button,.vps-manager .vps-tabs button,.drawer .title-row .seg button{min-width:0;min-height:32px;white-space:normal;overflow-wrap:anywhere;border-radius:var(--control-radius);padding:5px 10px}
+.drawer .settings-tabs button[aria-pressed="true"],.vps-manager .vps-tabs button[aria-pressed="true"],.drawer .title-row .seg button[aria-pressed="true"]{background:var(--raised);color:var(--ink);box-shadow:inset 0 -2px var(--tunnel)}
+@media(max-width:680px){.drawer .view:not(.settings-view)>.title-row{display:grid;padding-right:0}.drawer .view:not(.settings-view)>.title-row>h1{padding-right:44px}.drawer .title-row .seg{flex-basis:100%}.drawer .settings-tabs button,.drawer .title-row .seg button{flex:1 1 auto}}
