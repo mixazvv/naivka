@@ -2,7 +2,7 @@
 // One presentation model and the same rule callbacks for all route diagrams.
 const RouteDiagrams = (() => {
   let box=null,surface=null,data=null,mode='',dragged=null,epoch=0,hover=null,resize=null,resizeFrame=0,motion=null;
-  const routes=new Map(),leaves=new Map(),servers=new Map(),serverLinks=new Map(),pending=new Map();
+  const routes=new Map(),leaves=new Map(),servers=new Map(),pending=new Map();
   const ns='http://www.w3.org/2000/svg';
   const titles={proxy:'Через сервер',direct:'Напрямую',zapret:'zapret',tg:'Telegram'};
   const routeOf=r=>r==='telegram'?'tg':Object.hasOwn(titles,r)?r:'proxy';
@@ -12,8 +12,8 @@ const RouteDiagrams = (() => {
   function unmount(){
     epoch++;resize?.disconnect();resize=null;cancelAnimationFrame(resizeFrame);motion?.removeEventListener('change',motionChanged);motion=null;
     surface?.remove();box?.classList.remove('routes-alt');
-    if(box){delete box.dataset.diagram;box.style.removeProperty('--pcx');box.style.removeProperty('--pcy');}
-    box=surface=data=null;mode='';dragged=hover=null;routes.clear();leaves.clear();servers.clear();serverLinks.clear();pending.clear();
+    if(box){delete box.dataset.diagram;box.style.removeProperty('--diagram-min');box.style.removeProperty('--pcx');box.style.removeProperty('--pcy');}
+    box=surface=data=null;mode='';dragged=hover=null;routes.clear();leaves.clear();servers.clear();pending.clear();
   }
   function hoverAt(x,y){
     hover=null;
@@ -24,6 +24,40 @@ const RouteDiagrams = (() => {
   function moveLeaf(key,route){if(!box||!Object.hasOwn(titles,route))return;pending.set(normalizeKey(key),{route,at:Date.now()});update(box,data,mode);}
   function clearLeaf(key){pending.delete(normalizeKey(key));if(box)update(box,data,mode);}
   function makePath(svg,color,kind){const p=document.createElementNS(ns,'path');p.setAttribute('fill','none');p.setAttribute('stroke',color);p.dataset.direction=kind;svg.append(p);return p;}
+  // Size the scene from its rendered labels, including translated text and zoom.
+  function layoutRoutes(lanes,tree,svg,hasServers){
+    const width=box.clientWidth;
+    if(!width)return;
+    const margin=12, gap=14, shelf=hasServers?50:0;
+    const paired=!tree&&lanes.length===2;
+    const cardWidth=paired?Math.min((width-100)/2,210):tree?Math.min(width*.65,480):Math.min((width-3*margin)/2,210);
+    for(const {group} of routes.values())group.style.width=cardWidth+'px';
+    const heights=lanes.map(l=>routes.get(l.key).group.offsetHeight);
+    const rows=tree?heights:heights.filter((_,i)=>i%2===0).map((h,i)=>Math.max(h,heights[i*2+1]||0));
+    const middle=tree?gap:90;
+    const minHeight=rows.reduce((a,b)=>a+b,0)+Math.max(0,rows.length-1)*middle+2*margin+shelf+(tree||paired||rows.length===2?0:90);
+    box.style.setProperty('--diagram-min',Math.ceil(minHeight)+'px');
+    const height=surface.clientHeight,area=height-shelf;
+    const rootX=tree?Math.max(32,(width-cardWidth)*.32):width/2;
+    const firstY=margin;
+    const rootY=tree||paired?area/2:rows.length===2?(area+rows[0]-rows[1])/2:area-45;
+    box.style.setProperty('--pcx',rootX+'px');box.style.setProperty('--pcy',rootY+'px');
+    svg.setAttribute('viewBox','0 0 '+width+' '+height);
+    const spacing=rows.length>1?(area-2*margin-rows.reduce((a,b)=>a+b,0))/(rows.length-1):0;
+    let top=firstY;
+    lanes.forEach((lane,i)=>{
+      const r=routes.get(lane.key),row=tree?i:Math.floor(i/2);
+      if(i&&(tree||i%2===0))top+=rows[row-1]+spacing;
+      const x=tree?width-margin-cardWidth/2:paired?(i===0?margin+cardWidth/2:width-margin-cardWidth/2):lanes.length===1?width/2:(i%2===0?width*.25:width*.75);
+      const y=paired||tree&&rows.length===1?(area-heights[i])/2:top;
+      r.group.style.left=x+'px';r.group.style.top=y+'px';
+      const endX=tree?x-cardWidth/2:paired?x+(i===0?1:-1)*cardWidth/2:x,endY=tree||paired?y+heights[i]/2:y+(y<rootY?heights[i]:0);
+      const trunk=(rootX+endX)/2;
+      const curve=tree?'H'+trunk+' V'+endY+' H'+endX:'Q'+endX+' '+rootY+' '+endX+' '+endY;
+      const path='M'+rootX+' '+rootY+' '+curve;
+      for(const line of r.paths)line.setAttribute('d',path);
+    });
+  }
   function update(container,d,selected='branches'){
     if(selected==='branches'){unmount();return Branches.update(container,d);}
     Branches.unmount();
@@ -31,12 +65,12 @@ const RouteDiagrams = (() => {
       unmount();box=container;mode=selected;box.classList.add('routes-alt');box.dataset.diagram=mode;
       surface=document.createElement('div');surface.className='route-scene';box.prepend(surface);
       const svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 1000 600');svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('aria-hidden','true');svg.classList.add('route-lines');surface.append(svg);
+      const shelf=document.createElement('div');shelf.className='diagram-servers';shelf.setAttribute('role','group');shelf.setAttribute('aria-label','Выбор сервера');surface.append(shelf);
       motion=window.NaivkaExperience?.motion||matchMedia('(prefers-reduced-motion: reduce)');motion.addEventListener('change',motionChanged);
       resize=new ResizeObserver(()=>{cancelAnimationFrame(resizeFrame);const owner=epoch;resizeFrame=requestAnimationFrame(()=>{if(box&&owner===epoch)update(box,data,mode);});});resize.observe(box);
     }
     data=d;motionChanged();
     const compact=box.clientWidth<620,tree=mode==='tree',svg=surface.querySelector('.route-lines');
-    box.style.setProperty('--pcx','50%');box.style.setProperty('--pcy',tree?'82%':'43%');
     const lanes=d.lanes.filter(l=>Object.hasOwn(titles,l.key)),keys=new Set(lanes.map(l=>l.key));
     for(const [key,r]of routes)if(!keys.has(key)){r.group.remove();r.paths.forEach(p=>p.remove());routes.delete(key);}
     lanes.forEach((lane,i)=>{
@@ -57,16 +91,14 @@ const RouteDiagrams = (() => {
           finally{if(run===epoch&&node)node.disabled=false;}
         });
       }
-      const x=tree?(i+1)*100/(lanes.length+1):i%2===0?20:80;
-      const y=tree?10:lanes.length>2?(i<2?6:48):20;
-      r.group.style.left=x+'%';r.group.style.top=y+'%';r.group.style.setProperty('--route-color',lane.color);
+      r.group.style.setProperty('--route-color',lane.color);
       r.group.classList.toggle('inactive',!lane.active||d.phase!=='on');
       const label=[lane.node?.title||titles[lane.key],lane.node?.sub||'',!lane.active?'неактивен':''].filter(Boolean).join(' · ');
-      if(r.button.textContent!==label)r.button.textContent=label;r.button.title=label;
+      const title=titles[lane.key];
+      if(r.button.textContent!==title)r.button.textContent=title;
+      r.button.title=label;r.button.setAttribute('aria-label',title+' · '+label);
       r.paths.forEach((line,n)=>{
-        const rx=x*10+(n===2?4:0),ry=y*6;
-        const path=tree?`M500 492 C500 350 ${rx} 300 ${rx} ${ry+40}`:`M500 258 Q${rx} 258 ${rx} ${ry+40}`;
-        line.dataset.route=lane.key;line.setAttribute('d',path);line.style.d=`path("${path}")`;line.setAttribute('stroke',lane.color);
+        line.dataset.route=lane.key;line.setAttribute('stroke',lane.color);
         line.setAttribute('stroke-width',String(n?2:lane.active?2+Math.min(5,Math.log2(1+(lane.speed||0)/1024)):1));
         line.style.opacity=n?((lane.active&&d.phase==='on'&&(n===1?lane.down:lane.up)>0)?'.8':'0'):(lane.active&&d.phase==='on'?'.35':'.15');
         if(n)line.style.animationDuration=Math.max(.6,4-Math.log2(1+(n===1?lane.down:lane.up)/1024)*.25)+'s';
@@ -92,17 +124,15 @@ const RouteDiagrams = (() => {
     for(const [key,r]of routes){r.more?.remove();if(over[key]){r.more=document.createElement('button');r.more.type='button';r.more.className='route-more';r.more.textContent='Ещё '+over[key];r.more.onclick=()=>data.onMore();r.list.append(r.more);}}
     const allServers=d.lanes.some(l=>l.key==='proxy')?(d.servers||[]):[],activeServer=allServers.find(s=>s.active);
     const nodes=(activeServer?[activeServer,...allServers.filter(s=>s!==activeServer)]:allServers).slice(0,compact?3:6),ids=new Set(nodes.map(s=>s.id));
-    for(const [id,b]of servers)if(!ids.has(id)){b.remove();servers.delete(id);serverLinks.get(id)?.remove();serverLinks.delete(id);}
+    for(const [id,b]of servers)if(!ids.has(id)){b.remove();servers.delete(id);}
     nodes.forEach((server,i)=>{
-      let b=servers.get(server.id);if(!b){b=document.createElement('button');b.type='button';b.className='route-server';b.dataset.server=server.id;servers.set(server.id,b);surface.append(b);
+      let b=servers.get(server.id);if(!b){b=document.createElement('button');b.type='button';b.className='route-server';b.dataset.server=server.id;servers.set(server.id,b);surface.querySelector('.diagram-servers').append(b);
         b.addEventListener('click',async()=>{if(b.disabled)return;b.disabled=true;try{await data.onServer?.(server.id);}finally{if(b.isConnected)b.disabled=false;}});}
       b.textContent=server.name||server.id;b.title=(server.name||server.id)+(server.active?' · текущий сервер':' · выбрать для трафика через сервер');b.setAttribute('aria-pressed',String(!!server.active));
-      const sx=(i+1)*100/(nodes.length+1),sy=tree?60:91;
-      b.style.left=sx+'%';b.style.top=sy+'%';
-      let link=serverLinks.get(server.id);if(!link){link=makePath(svg,'var(--tunnel)','base');serverLinks.set(server.id,link);}
-      const proxy=routes.get('proxy');if(proxy){const rx=parseFloat(proxy.group.style.left)*10,ry=parseFloat(proxy.group.style.top)*6+35;const path=`M${rx} ${ry} Q${sx*10} ${ry} ${sx*10} ${sy*6}`;link.setAttribute('d',path);link.style.d=`path("${path}")`;}
-      link.style.opacity=server.active&&d.phase==='on'?'.55':'.12';link.setAttribute('stroke-width',server.active?'2':'1');
+      const shelf=surface.querySelector('.diagram-servers');
+      if(shelf.children[i]!==b)shelf.insertBefore(b,shelf.children[i]||null);
     });
+    layoutRoutes(lanes,tree,svg,nodes.length>0);
     return over;
   }
   return {update,unmount,hoverAt,endHover,moveLeaf,clearLeaf};
