@@ -12,7 +12,7 @@ const WorkspaceUI=(()=>{
   }
   function home(root){
     const head=root.querySelector('.stage-head'),controls=root.querySelector('.stage-controls');
-    const button=h('button',{id:'homeConnect',class:'btn primary home-connect',type:'button',onclick:toggleConnect},'Подключить');
+    const button=h('button',{id:'homeConnect',class:'btn primary home-connect',type:'button'},'Подключить');
     const sys=root.querySelector('#sysLine');head.append(h('div',{class:'home-actions'},button,sys));
     const parameters=h('details',{class:'home-parameters'},h('summary',null,'Параметры подключения'),h('div',{class:'row'},[...controls.children].filter(e=>!e.classList.contains('stage-help'))));
     const help=controls.querySelector('.stage-help');if(help)help.textContent='Проверить соединение';
@@ -33,7 +33,7 @@ const WorkspaceUI=(()=>{
   }
   function status(p){
     window.InterfacePolish?.status(p);
-    apply();const summary=document.querySelector('.home-parameters>summary');if(summary)summary.textContent='Параметры подключения: '+(zapretOnly()?'только zapret':(S.mode==='tun'?'TUN':'Прокси')+' · '+(ROUTING[S.routing]||''));const b=document.querySelector('#homeConnect');if(b){b.textContent=powerLabel(p);b.disabled=busy||p==='wait';b.title=powerLabel(p)+' (Ctrl+Enter)';}
+    apply();const summary=document.querySelector('.home-parameters>summary');if(summary)summary.textContent='Параметры подключения: '+(zapretOnly()?'только zapret':(S.mode==='tun'?'TUN':'Прокси')+' · '+(ROUTING[S.routing]||''));const b=document.querySelector('#homeConnect');if(b){const add=p==='off'&&!zapretOnly()&&!S.servers.length&&!S.wl.enabled;b.textContent=add?'Добавить сервер':powerLabel(p);b.onclick=add?()=>go('servers'):toggleConnect;b.disabled=busy||p==='wait';b.title=add?b.textContent:b.textContent+' (Ctrl+Enter)';}
   }
   function pulse(on,sp,t){
     const metrics=document.querySelector('#homeMetrics'),a=document.querySelector('#homeAddress');

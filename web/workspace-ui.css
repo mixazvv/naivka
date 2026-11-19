@@ -90,7 +90,7 @@ dialog[open].vps-manager{display:flex;flex-direction:column;overflow:hidden;max-
 .btn{transition:background-color .14s ease,border-color .14s ease,color .14s ease}
 .home-connect,#idleConnect{min-width:150px;min-height:44px;white-space:nowrap}
 .home-idle-card{display:none;grid-column:1/-1;grid-row:5;padding:28px;border:1px solid var(--line);border-radius:18px;align-items:center;gap:20px;background:var(--surface)}
-.home-idle .home-idle-card{display:flex}.home-idle #lanesCard,.home-idle #liveCol,.home-idle #stageReady,.home-idle #homePulse,.home-idle .stage-tiles,.home-idle #homeConnect{display:none!important}
+.home-idle .home-idle-card{display:flex}.home-idle #lanesCard,.home-idle #liveCol,.home-idle #stageReady,.home-idle #diagramExpand,.home-idle .stage-tiles{display:none!important}
 .home-idle-card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.idle-computer svg{width:48px;height:48px}.idle-computer{flex:none;color:var(--muted)}
 .home-pins{grid-column:1/-1;grid-row:8;min-width:0;margin-top:16px}.home-pins>.row{margin-bottom:10px}.pin-program{display:grid;text-align:left;gap:4px;max-width:100%}.pin-program small{color:var(--muted);font-weight:400}.pinned-manager{display:grid;gap:8px;max-height:300px;overflow:auto}.pinned-manager>.row{justify-content:space-between}.help-inline{border-radius:50%;min-width:28px;width:28px;height:28px;padding:0;flex:none}
 .route-undo{position:fixed;z-index:100;left:50%;bottom:75px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px);padding:12px 16px;background:var(--raised);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.route-undo>span{overflow-wrap:anywhere;min-width:0}.route-undo .btn{flex:none}
@@ -111,3 +111,16 @@ dialog[open].vps-manager{display:flex;flex-direction:column;overflow:hidden;max-
 .drawer .settings-tabs button,.vps-manager .vps-tabs button,.drawer .title-row .seg button{min-width:0;min-height:32px;white-space:normal;overflow-wrap:anywhere;border-radius:var(--control-radius);padding:5px 10px}
 .drawer .settings-tabs button[aria-pressed="true"],.vps-manager .vps-tabs button[aria-pressed="true"],.drawer .title-row .seg button[aria-pressed="true"]{background:var(--raised);color:var(--ink);box-shadow:inset 0 -2px var(--tunnel)}
 @media(max-width:680px){.drawer .view:not(.settings-view)>.title-row{display:grid;padding-right:0}.drawer .view:not(.settings-view)>.title-row>h1{padding-right:44px}.drawer .title-row .seg{flex-basis:100%}.drawer .settings-tabs button,.drawer .title-row .seg button{flex:1 1 auto}}
+
+
+/* A stopped connection has no diagram or activity column to allocate space for. */
+.stage-inner.home-idle:not(.home-custom){
+  display:flex!important;
+  flex-direction:column;
+  justify-content:flex-start;
+  align-items:stretch;
+  height:auto;
+  min-height:0;
+  gap:12px;
+}
+.stage-inner.home-idle:not(.home-custom)>*{flex:none}
