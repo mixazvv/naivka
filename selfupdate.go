@@ -307,11 +307,11 @@ func (u *selfUpdater) run(a *App, tag string) error {
 	if p, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = p
 	}
-	body, debug, err := u.fetch(tag, filepath.Base(exe))
-	if err != nil {
+	if err = a.settlePreviousUpdate(exe); err != nil {
 		return err
 	}
-	if err = a.settlePreviousUpdate(exe); err != nil {
+	body, debug, err := u.fetch(tag, filepath.Base(exe))
+	if err != nil {
 		return err
 	}
 	t, err := a.beginUpdateTransfer()
