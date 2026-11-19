@@ -162,7 +162,10 @@ func lastRune(s string) rune {
 
 // tr — текст на языке интерфейса, выбранном в настройках.
 func (a *App) tr(s string) string {
-	if a.settingsCopy().Lang != "en" {
+	a.mu.Lock()
+	lang := a.settings.Lang
+	a.mu.Unlock()
+	if lang != "en" {
 		return s
 	}
 	trOnce.Do(func() { trEN = loadTranslator() })

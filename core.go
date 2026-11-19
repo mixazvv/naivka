@@ -84,10 +84,11 @@ func (r *LogRing) Tail(n int) string {
 // ---------- ядро ----------
 
 type CoreInfo struct {
-	Present bool   `json:"present"`
-	Version string `json:"version"`
-	Naive   bool   `json:"naive"`  // собран с with_naive_outbound
-	Cronet  bool   `json:"cronet"` // рядом лежит libcronet
+	Checking bool   `json:"checking,omitempty"`
+	Present  bool   `json:"present"`
+	Version  string `json:"version"`
+	Naive    bool   `json:"naive"`  // собран с with_naive_outbound
+	Cronet   bool   `json:"cronet"` // рядом лежит libcronet
 }
 
 type DownloadState struct {
@@ -113,6 +114,8 @@ type CoreStatus struct {
 type Core struct {
 	dir  string
 	logs *LogRing
+
+	initialInfo chan struct{} // closed when the startup version probe has published its result
 
 	mu        sync.Mutex
 	cmd       *exec.Cmd
@@ -148,7 +151,15 @@ func NewCore(dir string) *Core {
 	c := &Core{dir: dir, logs: &LogRing{max: 2000}}
 	_ = os.MkdirAll(c.coreDir(), 0o755)
 	_ = os.MkdirAll(c.runDir(), 0o700)
-	c.refreshInfo()
+	c.info = c.installedInfo()
+	if c.info.Present {
+		c.info.Checking = true
+		c.initialInfo = make(chan struct{})
+		go func() {
+			defer close(c.initialInfo)
+			c.refreshInfo()
+		}()
+	}
 	return c
 }
 
@@ -193,8 +204,12 @@ func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func (c *Core) Present() bool { return fileExists(c.exePath()) }
 
+func (c *Core) installedInfo() CoreInfo {
+	return CoreInfo{Present: c.Present(), Cronet: fileExists(filepath.Join(c.coreDir(), cronetName()))}
+}
+
 func (c *Core) refreshInfo() {
-	info := CoreInfo{Present: c.Present(), Cronet: fileExists(filepath.Join(c.coreDir(), cronetName()))}
+	info := c.installedInfo()
 	if info.Present {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
@@ -335,6 +350,13 @@ func (c *Core) StartContext(opCtx context.Context, s *Settings) (err error) {
 		c.mu.Unlock()
 	}()
 
+	if c.initialInfo != nil {
+		select {
+		case <-c.initialInfo:
+		case <-opCtx.Done():
+			return opCtx.Err()
+		}
+	}
 	if !c.Present() {
 		return errors.New("Ядро sing-box не найдено. Скачайте его в «Настройках».")
 	}
@@ -576,7 +598,11 @@ func (c *Core) StartDownload() error {
 	c.mu.Unlock()
 
 	go func() {
+		if c.initialInfo != nil {
+			<-c.initialInfo
+		}
 		ver, err := c.download()
+		c.refreshInfo()
 		c.mu.Lock()
 		c.dl.Active = false
 		if err != nil {
@@ -590,7 +616,6 @@ func (c *Core) StartDownload() error {
 		} else {
 			c.logs.Add("[naivka] ядро обновлено до " + ver)
 		}
-		c.refreshInfo()
 	}()
 	return nil
 }

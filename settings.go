@@ -495,11 +495,54 @@ func SaveSettings(dir string, s *Settings) error {
 	return os.Rename(tmp, settingsPath(dir))
 }
 
+func cloneSlice[T any](src []T) []T {
+	if src == nil {
+		return nil
+	}
+	dst := make([]T, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func cloneSettingsMap[T any](src map[string]T) map[string]T {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]T, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+// Snapshot all mutable fields; ordinary strings and scalar options are values.
 func (s *Settings) clone() *Settings {
-	b, _ := json.Marshal(s)
-	c := &Settings{}
-	_ = json.Unmarshal(b, c)
-	return c
+	c := *s
+	c.Servers = cloneSlice(s.Servers)
+	for i := range c.Servers {
+		if opts := c.Servers[i].Mieru; opts != nil {
+			m := *opts
+			m.Bindings = cloneSlice(opts.Bindings)
+			c.Servers[i].Mieru = &m
+		}
+	}
+	c.Rules = cloneSlice(s.Rules)
+	c.Subscriptions = cloneSlice(s.Subscriptions)
+	c.RuleLists = cloneSlice(s.RuleLists)
+	c.Panels = cloneSlice(s.Panels)
+	c.OwnHosts = cloneSlice(s.OwnHosts)
+	c.PetSpot = cloneSlice(s.PetSpot)
+	c.Layout.Wide = cloneSlice(s.Layout.Wide)
+	c.Layout.Narrow = cloneSlice(s.Layout.Narrow)
+	c.Experience.PinnedPrograms = cloneSlice(s.Experience.PinnedPrograms)
+	c.Achv = cloneSettingsMap(s.Achv)
+	c.PetMemory.Events = cloneSettingsMap(s.PetMemory.Events)
+	c.PetMemory.Visits = cloneSettingsMap(s.PetMemory.Visits)
+	if s.Window != nil {
+		w := *s.Window
+		c.Window = &w
+	}
+	return &c
 }
 
 // needsAdmin — нужны ли Naivka права администратора: режиму TUN и zapret (драйвер WinDivert,

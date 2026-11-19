@@ -22,7 +22,7 @@ func (a *App) Processes() []ProcInfo {
 	}
 	a.mon.mu.Unlock()
 	winDir := strings.ToLower(filepath.Join(envOr("SystemRoot", `C:\Windows`)) + `\`)
-	for _, p := range listProcesses() {
+	for _, p := range listProcesses(nil) {
 		key := strings.ToLower(p.Name)
 		if e, ok := seen[key]; ok {
 			if e.Path == "" {

@@ -128,6 +128,15 @@ func main() {
 		return
 	}
 
+	// Уже запущены? Тогда просто показываем окно существующего экземпляра.
+	var checkedInstance instanceInfo
+	if !args["--replace"] {
+		checkedInstance, _ = readInstance(dir)
+		if showRunningInstance(checkedInstance) {
+			return
+		}
+	}
+
 	// Пароли шифруются всегда, и в портативном режиме тоже: на другом компьютере их придётся
 	// ввести заново (или перенести настройки резервной копией), зато папку с ними не прочитать.
 	encryptSecrets = runtime.GOOS == "windows"
@@ -148,15 +157,10 @@ func main() {
 	// Перезапуск с правами ждёт, пока прежний экземпляр закроется.
 	if args["--replace"] {
 		waitOldInstance(dir)
+	} else if inst, ok := readInstance(dir); ok && inst != checkedInstance && showRunningInstance(inst) {
+		// Another copy finished starting while this one was opening settings.
+		return
 	}
-	// Уже запущены? Тогда просто показываем окно существующего экземпляра.
-	if !args["--replace"] {
-		if inst, ok := readInstance(dir); ok && pingInstance(inst) {
-			_ = postInstance(inst, "/api/show")
-			return
-		}
-	}
-
 	initLog(dir)
 	if serr != nil {
 		log.Println(serr)
@@ -205,6 +209,7 @@ func main() {
 		log.Println("instance file:", err)
 	}
 
+	a.ui = newUI(a)
 	srv := &http.Server{Handler: a.routes(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -217,7 +222,6 @@ func main() {
 	go func() { <-sig; a.Quit() }()
 
 	autostart := args["--autostart"]
-	a.ui = newUI(a)
 	if !candidate {
 		go func() {
 			if a.startupReady() {
@@ -447,6 +451,14 @@ func instanceReq(inst instanceInfo, method, path string) error {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func showRunningInstance(inst instanceInfo) bool {
+	if inst.Port == 0 || !pingInstance(inst) {
+		return false
+	}
+	_ = postInstance(inst, "/api/show")
+	return true
 }
 
 func pingInstance(inst instanceInfo) bool            { return instanceReq(inst, "GET", "/api/ping") == nil }

@@ -673,7 +673,7 @@ function updateStatusNow() {
     WorkspaceUI.status(p);
     guard(renderTiles, 'renderTiles');
     guard(renderReady, 'renderReady');
-    const n = [ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null), JSON.stringify(APPUP)].join('|');
+    const n = [ST.error, ST.needsRestart, S.mode, ST.admin, ST.core.present, ST.core.checking, ST.core.naive, S.servers.length, ST.running, ST.blocked, JSON.stringify(ST.portIssue || null), S.dnsDirect, S.routing, sessionStorage.getItem('naivka-dns-ok'), JSON.stringify(ST.conflicts || []), JSON.stringify(ST.failover || null), JSON.stringify(APPUP)].join('|');
     patch('notices', n, buildNotices);
     guard(renderLanes, 'renderLanes');
   }
@@ -733,7 +733,7 @@ function buildNotices() {
   if (up) out.push(up);
   if (!S.servers.length && !zapretOnly()) out.push(notice('info', 'Сначала добавьте сервер.', h('button', { class: 'btn small', onclick: () => go('servers') }, 'Добавить сервер')));
   if (!ST.core.present) out.push(notice('warn', 'Ядро sing-box ещё не скачано.', h('button', { class: 'btn small', onclick: () => go('settings') }, 'Перейти к загрузке')));
-  if (ST.core.present && !ST.core.naive && S.servers.some(x => x.type === 'naive' && (x.uot || !externalReady('naive')))) {
+  if (ST.core.present && !ST.core.checking && !ST.core.naive && S.servers.some(x => x.type === 'naive' && (x.uot || !externalReady('naive')))) {
     out.push(notice('warn', 'Эта сборка ядра не поддерживает Naive (так бывает на Windows 7) — будут работать серверы остальных протоколов (Reality, Hysteria2 и другие).'));
   }
   if (S.mode === 'tun' && !ST.admin && ST.os === 'windows') out.push(notice('warn', 'Для режима TUN нужны права администратора.', h('button', { class: 'btn small', onclick: elevate }, 'Перезапустить с правами')));
@@ -2598,7 +2598,7 @@ function renderServers(force) {
   renderOwn();
   const running = ST && ST.running;
   const nowTag = PX && running ? (PX.selected === 'auto' ? PX.autoNow : PX.selected) : '';
-  const noNaive = ST && ST.core && ST.core.present && !ST.core.naive;
+  const noNaive = ST && ST.core && ST.core.present && !ST.core.checking && !ST.core.naive;
   const xr = xrayReady();
   // Перерисовываем, только если что-то видимое изменилось: иначе сбивались бы наведение и фокус.
   const query=($('#serverSearch')?.value||'').trim().toLowerCase();

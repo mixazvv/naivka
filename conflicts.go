@@ -44,6 +44,11 @@ type ConflictInfo struct {
 	Hint string `json:"hint"`
 }
 
+func conflictNeedsPath(name string) bool {
+	n := strings.ToLower(name)
+	return n == "sing-box.exe" || n == "xray.exe" || n == "mihomo.exe" || strings.HasPrefix(n, "mihomo-windows")
+}
+
 // findConflicts — чистая часть проверки: по списку запущенных программ.
 // ours — пути наших собственных sing-box и Xray: их не считаем чужими.
 func findConflicts(procs []procEntry, ours []string, zapretOn bool) []ConflictInfo {
@@ -52,7 +57,7 @@ func findConflicts(procs []procEntry, ours []string, zapretOn bool) []ConflictIn
 	for _, p := range procs {
 		n := strings.ToLower(p.Name)
 		running[n] = true
-		if n == "sing-box.exe" || n == "xray.exe" || n == "mihomo.exe" || strings.HasPrefix(n, "mihomo-windows") {
+		if conflictNeedsPath(n) {
 			mine := false
 			for _, o := range ours {
 				if p.Path != "" && samePath(p.Path, o) {
@@ -113,8 +118,10 @@ func (a *App) conflicts() []ConflictInfo {
 }
 
 func (a *App) scanConflicts() []ConflictInfo {
-	s := a.settingsCopy()
-	return findConflicts(listProcesses(), append(a.core.ownCoreExes(), a.xray.exePath()), s.Zapret.Enabled)
+	a.mu.Lock()
+	zapretOn := a.settings.Zapret.Enabled
+	a.mu.Unlock()
+	return findConflicts(listProcesses(conflictNeedsPath), append(a.core.ownCoreExes(), a.xray.exePath()), zapretOn)
 }
 
 // warnConflicts — при подключении: записать в ленту, что может мешать.

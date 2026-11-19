@@ -13,7 +13,7 @@ type procEntry struct {
 	Name, Path string
 }
 
-func listProcesses() []procEntry {
+func listProcesses(_ func(string) bool) []procEntry {
 	var out []procEntry
 	dirs, _ := filepath.Glob("/proc/[0-9]*")
 	for _, d := range dirs {
@@ -28,7 +28,7 @@ func listProcesses() []procEntry {
 }
 
 func killImage(path string) {
-	for _, p := range listProcesses() {
+	for _, p := range listProcesses(nil) {
 		if p.PID != os.Getpid() && p.Path == path {
 			if pr, err := os.FindProcess(p.PID); err == nil {
 				pr.Kill()
