@@ -55,6 +55,7 @@ type connSnap struct {
 type Monitor struct {
 	a *App
 
+	probeMu  sync.Mutex
 	mu       sync.Mutex
 	events   []Event
 	samples  []Sample
@@ -173,7 +174,7 @@ func (m *Monitor) run() {
 			continue
 		}
 		if s.Watchdog && n%20 == 0 {
-			go m.healthCheck(s, false)
+			go m.healthCheck(s)
 		}
 	}
 }
@@ -452,17 +453,23 @@ func (m *Monitor) checkNetwork(cl *Clash) {
 	if err != nil {
 		return
 	}
-	h := fnv.New64a()
+	var addresses []string
 	for _, ifc := range ifs {
 		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 || strings.Contains(strings.ToLower(ifc.Name), "naivka") {
 			continue
 		}
-		addrs, _ := ifc.Addrs()
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			return
+		}
 		for _, a := range addrs {
-			h.Write([]byte(ifc.Name + a.String()))
+			addresses = append(addresses, ifc.Name+"\x00"+a.String())
 		}
 	}
-	sum := h.Sum64()
+	if len(addresses) == 0 {
+		return
+	}
+	sum := networkSignature(addresses)
 	m.mu.Lock()
 	prev := m.lastNet
 	m.lastNet = sum
@@ -471,6 +478,16 @@ func (m *Monitor) checkNetwork(cl *Clash) {
 		m.Event("info", "Сеть изменилась — переподключаю соединения", false)
 		_ = cl.CloseAll()
 	}
+}
+
+func networkSignature(addresses []string) uint64 {
+	sort.Strings(addresses)
+	h := fnv.New64a()
+	for _, addr := range addresses {
+		h.Write([]byte(addr))
+		h.Write([]byte{0})
+	}
+	return h.Sum64()
 }
 
 // healthCheck: запрос к адресу проверки строго через сервер.
@@ -498,7 +515,11 @@ func probeVia(port int, u string) bool {
 	return err == nil && resp.StatusCode < 500
 }
 
-func (m *Monitor) healthCheck(s *Settings, force bool) {
+func (m *Monitor) healthCheck(s *Settings) {
+	if !m.probeMu.TryLock() {
+		return
+	}
+	defer m.probeMu.Unlock()
 	if m.a.repair.busy() {
 		return
 	}
@@ -512,19 +533,23 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 		return
 	}
 	ok := probeVia(proxyPort, s.TestURL) || probeVia(proxyPort, spareTestURL(s.TestURL))
-	if m.a.repair.busy() {
-		return
-	}
-	latest := m.a.settingsCopy()
-	live := m.a.core.Clash()
-	if gen != m.a.life.gen.Load() || !m.a.life.want.Load() || live == nil || live.secret != checkedCore.secret || latest.Selected != s.Selected || latest.fingerprint() != s.fingerprint() {
-		return
+	current := func() bool {
+		live := m.a.core.Clash()
+		if m.a.repair.busy() || gen != m.a.life.gen.Load() || !m.a.life.want.Load() || live == nil || live.secret != checkedCore.secret {
+			return false
+		}
+		latest := m.a.settingsCopy()
+		return latest.Watchdog && latest.Selected == s.Selected && latest.fingerprint() == s.fingerprint()
 	}
 	// Не открылось ничего, даже напрямую, — пропал сам интернет. Сервер тут ни при чём:
 	// не переходим на другой сервер и не перезапускаем ядро, а ждём сеть.
 	offline := !ok && !m.a.internetUp()
+	if !current() {
+		return
+	}
 	m.mu.Lock()
 	if offline {
+		m.fails = 0
 		if m.health != "offline" {
 			m.health = "offline"
 			m.mu.Unlock()
@@ -560,18 +585,23 @@ func (m *Monitor) healthCheck(s *Settings, force bool) {
 			m.mu.Unlock()
 			return
 		}
-		if m.a.repair.busy() {
+		if !current() {
 			return
 		}
 		m.Event("warn", "Нет связи через сервер — переподключаю соединения", true)
-		if cl := m.a.core.Clash(); cl != nil {
-			_ = cl.CloseAll()
+		_ = checkedCore.CloseAll()
+		if current() {
+			m.a.wl.engage()
 		}
-		go m.a.wl.engage()
-	case !ok && fails == 4 && !m.a.zapret.busy() && m.allowRestart():
+	case !ok && fails == 4 && !m.a.zapret.busy():
 		// (посреди подбора стратегии zapret ядро не трогаем: подбор проверяет сайты через него)
+		m.a.life.mu.Lock()
+		defer m.a.life.mu.Unlock()
+		if !current() || !m.allowRestart() {
+			return
+		}
 		m.Event("warn", "Связь не вернулась — перезапускаю ядро", false)
-		go m.a.restartCore()
+		m.a.restartLocked(gen)
 	}
 }
 

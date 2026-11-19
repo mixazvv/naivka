@@ -153,13 +153,17 @@ func (a *App) restartCore() {
 		if !a.life.want.Load() || a.life.gen.Load() != gen {
 			return
 		}
-		a.core.Stop()
-		if err := a.connectLocked(gen); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errLifecycleCancelled) {
-			a.mon.Event("error", "Перезапуск не удался: "+firstLine(err.Error()), true)
-		}
+		a.restartLocked(gen)
 	})
 	if a.ui != nil {
 		a.ui.Refresh()
+	}
+}
+
+func (a *App) restartLocked(gen int64) {
+	a.core.Stop()
+	if err := a.connectLocked(gen); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errLifecycleCancelled) {
+		a.mon.Event("error", "Перезапуск не удался: "+firstLine(err.Error()), true)
 	}
 }
 

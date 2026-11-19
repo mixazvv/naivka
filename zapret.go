@@ -576,6 +576,7 @@ func (z *Zapret) startStrategy(s *Settings, strategy string) error {
 	}()
 	done := make(chan struct{})
 	z.pmu.Lock()
+	z.fails, z.oks = 0, 0
 	z.cmd, z.done, z.running, z.stopping, z.strategy, z.startedAt, z.lastErr = cmd, done, true, false, strategy, time.Now(), ""
 	z.pmu.Unlock()
 	go func() {
@@ -719,15 +720,28 @@ func (z *Zapret) probeTargets(ts []target, timeout time.Duration) (ok, avgMs int
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
-			req, _ := http.NewRequestWithContext(ctx, "GET", t.url, nil)
+			req, err := http.NewRequestWithContext(ctx, "GET", t.url, nil)
+			if err != nil {
+				return
+			}
 			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36")
 			start := time.Now()
 			resp, err := hc.Do(req)
 			if err != nil {
 				return
 			}
-			_, _ = io.CopyN(io.Discard, resp.Body, 16<<10)
-			resp.Body.Close()
+			defer resp.Body.Close()
+			// CDN roots can legitimately return 403/404 even when TLS and the
+			// content path are working. Other probes need a successful response.
+			cdnRoot := resp.Request.URL.Path == "" || resp.Request.URL.Path == "/"
+			host := resp.Request.URL.Hostname()
+			cdnRoot = cdnRoot && (host == "cdn.discordapp.com" || host == "i.ytimg.com")
+			if !(resp.StatusCode >= 200 && resp.StatusCode < 300) && !(cdnRoot && (resp.StatusCode == 403 || resp.StatusCode == 404)) {
+				return
+			}
+			if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, 16<<10)); err != nil {
+				return
+			}
 			sites[i].OK, sites[i].Ms = true, int(time.Since(start)/time.Millisecond)
 		}(i, t)
 	}
@@ -781,9 +795,9 @@ func (z *Zapret) Pick(full bool) error {
 		set := func(f func(p *PickState)) { z.pmu.Lock(); f(&z.pick); z.pmu.Unlock() }
 		z.Stop()
 		set(func(p *PickState) { p.Current = "без обхода"; p.Index = 0 })
-		ok, ms, sites := z.probeTargets(ts, pickTimeout)
+		baseline, ms, sites := z.probeTargets(ts, pickTimeout)
 		set(func(p *PickState) {
-			p.Results = append(p.Results, PickResult{"без обхода", ok, len(ts), ms, sites})
+			p.Results = append(p.Results, PickResult{"без обхода", baseline, len(ts), ms, sites})
 		})
 		best, bestOK, bestMs := "", -1, 0
 		for i, st := range strats {
@@ -798,6 +812,9 @@ func (z *Zapret) Pick(full bool) error {
 			if err := z.startStrategy(s, st); err == nil {
 				time.Sleep(pickWarmup)
 				r.OK, r.Ms, r.Sites = z.probeTargets(ts, pickTimeout)
+				if !z.Running() {
+					r.OK, r.Ms, r.Sites = 0, 0, nil
+				}
 				z.a.core.logs.Add(fmt.Sprintf("[zapret] подбор: «%s» — открылось %d из %d", st, r.OK, r.Total))
 			} else {
 				z.a.core.logs.Add(fmt.Sprintf("[zapret] подбор: «%s» не запустилась: %s", st, firstLine(err.Error())))
@@ -812,8 +829,18 @@ func (z *Zapret) Pick(full bool) error {
 				break
 			}
 		}
-		set(func(p *PickState) { p.Active = false; p.Current = ""; p.Best = best })
-		if best != "" && bestOK > 0 {
+		z.pmu.Lock()
+		cancelled := z.cancel
+		z.pick.Current = ""
+		if !cancelled && bestOK > 0 && bestOK >= baseline {
+			z.pick.Best = best
+		} else {
+			best = ""
+		}
+		z.pmu.Unlock()
+		if cancelled {
+			z.a.mon.Event("info", "Подбор zapret отменён. Сохранена прежняя стратегия", false)
+		} else if best != "" {
 			z.a.mu.Lock()
 			z.a.settings.Zapret.Strategy = best
 			_ = SaveSettings(z.a.dir, z.a.settings)
@@ -821,7 +848,7 @@ func (z *Zapret) Pick(full bool) error {
 			z.a.mon.Event("ok", fmt.Sprintf("zapret: подобрана стратегия «%s» — открывается %d из %d адресов", best, bestOK, len(ts)), true)
 		} else {
 			set(func(p *PickState) {
-				p.Error = "Ни одна стратегия не помогла. Проверьте Secure DNS и попробуйте позже."
+				p.Error = fmt.Sprintf("Прежняя стратегия сохранена. Без обхода открыто %d из %d адресов, лучший результат со стратегией — %d.", baseline, len(ts), bestOK)
 			})
 			z.a.mon.Event("warn", "zapret: ни одна стратегия не помогла", true)
 		}
@@ -831,6 +858,7 @@ func (z *Zapret) Pick(full bool) error {
 				z.a.mon.Event("error", "zapret: "+err.Error(), false)
 			}
 		}
+		set(func(p *PickState) { p.Active = false })
 		z.a.applyZapretRoute() // заработал — его сайты снова напрямую, не заработал — через сервер
 	}()
 	return nil
@@ -856,16 +884,17 @@ func (z *Zapret) healthLoop() {
 		if time.Since(last) > 6*time.Minute || z.a.mon.SinceWake() < wakeGrace {
 			last = time.Now()
 			z.pmu.Lock()
-			z.fails = 0
+			z.fails, z.oks = 0, 0
 			z.pmu.Unlock()
 			continue
 		}
 		last = time.Now()
 		s := z.a.settingsCopy()
 		z.pmu.Lock()
-		busy := z.pick.Active || z.trial.Active
+		cmd := z.cmd
+		busy := z.pick.Active || z.trial.Active || !z.running
 		z.pmu.Unlock()
-		if !s.Zapret.Enabled || !z.Running() || busy {
+		if !s.Zapret.Enabled || busy {
 			continue
 		}
 		ts := z.targets()
@@ -873,16 +902,25 @@ func (z *Zapret) healthLoop() {
 			ts = ts[:4]
 		}
 		ok, _, _ := z.probeTargets(ts, 8*time.Second)
+		offline := false
 		if ok == 0 {
-			if c, _, _ := z.probeTargets(controlTargets, 8*time.Second); c == 0 {
-				continue // интернета нет совсем — zapret тут ни при чём
-			}
+			c, _, _ := z.probeTargets(controlTargets, 8*time.Second)
+			offline = c == 0
 		}
 		z.pmu.Lock()
-		if ok == 0 {
+		if z.cmd != cmd || !z.running || z.pick.Active || z.trial.Active {
+			z.pmu.Unlock()
+			continue
+		}
+		switch {
+		case offline:
+			z.fails, z.oks = 0, 0
+		case ok == 0:
 			z.fails, z.oks = z.fails+1, 0
-		} else {
+		case ok == len(ts):
 			z.fails, z.oks = 0, z.oks+1
+		default:
+			z.fails, z.oks = 0, 0
 		}
 		fails, oks, degraded := z.fails, z.oks, z.degraded
 		z.pmu.Unlock()
@@ -890,7 +928,7 @@ func (z *Zapret) healthLoop() {
 		case fails == 2 && !degraded:
 			z.setDegraded(true)
 			msg := "zapret перестал справляться: YouTube и Discord не открываются напрямую. Попробуйте подобрать стратегию заново"
-			if s.Zapret.Fallback {
+			if s.Zapret.Fallback && z.a.core.Running() {
 				msg += ". Пока они идут через сервер"
 			}
 			z.a.mon.Event("warn", msg, true)

@@ -35,6 +35,10 @@ func readRecoveryFile(path string, limit int64) ([]byte, error) {
 }
 
 func writeUpdateRecovery(path string, v updateRecoveryRecord) error {
+	return writeRecoveryJSON(path+".recovery", v)
+}
+
+func writeRecoveryJSON(path string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -55,7 +59,7 @@ func writeUpdateRecovery(path string, v updateRecoveryRecord) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(tmp, path+".recovery")
+	return os.Rename(tmp, path)
 }
 
 type updateRecoveryPlan struct {
@@ -65,15 +69,21 @@ type updateRecoveryPlan struct {
 	Reason   string `json:"reason"`
 	Revision string `json:"revision"`
 	files    []string
+	legacy   bool
 }
 
 func inspectUpdateRecovery(dir, exe string, alive func(int) bool) (updateRecoveryPlan, error) {
+	return inspectPreviousUpdate(dir, exe, alive, false)
+}
+
+func inspectPreviousUpdate(dir, exe string, alive func(int) bool, remember bool) (updateRecoveryPlan, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "update-intent-*.json"))
 	p := updateRecoveryPlan{Pending: len(files), Ready: len(files) > 0, files: files}
 	if err != nil {
 		return p, err
 	}
 	hash := sha256.New()
+	// A recreated legacy intent invalidates the observation from a previous boot.
 	for _, file := range files {
 		b, err := readRecoveryFile(file, 4096)
 		if err != nil {
@@ -86,10 +96,18 @@ func inspectUpdateRecovery(dir, exe string, alive func(int) bool) (updateRecover
 			if !os.IsNotExist(err) {
 				return p, err
 			}
-			p.Ready = false
-			p.Reason = "У операции старой версии нет сведений о процессах. Автоматическое завершение небезопасно; используйте проверенный архив релиза."
+			info, err := os.Lstat(file)
+			if err != nil {
+				return p, err
+			}
+			if !info.Mode().IsRegular() {
+				return p, errors.New("Файл операции обновления должен быть обычным файлом")
+			}
+			fmt.Fprintf(hash, "legacy:%d", info.ModTime().UnixNano())
+			p.legacy = true
 			continue
 		}
+		p.files = append(p.files, file+".recovery")
 		hash.Write(b)
 		var v updateRecoveryRecord
 		if json.Unmarshal(b, &v) != nil || v.Parent <= 0 || !sameUpdateFile(v.Exe, exe) {
@@ -109,7 +127,51 @@ func inspectUpdateRecovery(dir, exe string, alive func(int) bool) (updateRecover
 		}
 	}
 	p.Revision = hex.EncodeToString(hash.Sum(nil))
+	if p.legacy && p.Ready {
+		p.Ready = false
+		p.Reason = "Для восстановления используйте проверенный архив релиза."
+		if cache, err := os.UserCacheDir(); err == nil {
+			err = checkRecoveryBoot(&p, cache, dir, exe, recoveryBootID(), remember)
+			if err != nil {
+				return p, err
+			}
+		}
+	}
 	return p, nil
+}
+
+// Only a boot transition observed on this machine proves that a legacy
+// supervisor without a PID has exited. Read-only API calls never arm recovery.
+func checkRecoveryBoot(p *updateRecoveryPlan, cache, dir, exe, boot string, remember bool) error {
+	if boot == "" {
+		return nil
+	}
+	key := sha256.Sum256([]byte(filepath.Clean(dir) + "\x00" + filepath.Clean(exe)))
+	folder := filepath.Join(cache, "Naivka", "recovery")
+	path := filepath.Join(folder, hex.EncodeToString(key[:])+".json")
+	type witness struct{ Boot, Revision string }
+	b, err := readRecoveryFile(path, 4096)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var old witness
+	if json.Unmarshal(b, &old) == nil && old.Revision == p.Revision && old.Boot != "" {
+		if old.Boot != boot {
+			p.Ready, p.Reason = true, ""
+			return nil
+		}
+	} else if remember {
+		if err := os.MkdirAll(folder, 0700); err != nil {
+			return err
+		}
+		if err := writeRecoveryJSON(path, witness{boot, p.Revision}); err != nil {
+			return err
+		}
+	} else {
+		return nil
+	}
+	p.Reason = "Перезагрузите Windows через Пуск → Перезагрузка и откройте Naivka. Она перенесёт файлы старого обновления в резервную копию."
+	return nil
 }
 func (a *App) updateView() AppUpdateView {
 	v := a.self.view()
@@ -163,10 +225,7 @@ func archiveInterruptedUpdate(dir, exe, revision string, alive func(int) bool) e
 		}
 		return cause
 	}
-	paths := []string{}
-	for _, file := range p.files {
-		paths = append(paths, file, file+".recovery")
-	}
+	paths := p.files
 	if fileExists(exe + ".old") {
 		paths = append(paths, exe+".old")
 	}
@@ -191,7 +250,7 @@ func (a *App) settlePreviousUpdate(exe string) error {
 	}
 	updateFilesMu.Lock()
 	defer updateFilesMu.Unlock()
-	p, err := inspectUpdateRecovery(a.dir, exe, recoveryProcessAlive)
+	p, err := inspectPreviousUpdate(a.dir, exe, recoveryProcessAlive, true)
 	if err != nil || p.Pending == 0 {
 		return err
 	}
