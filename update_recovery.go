@@ -73,17 +73,13 @@ type updateRecoveryPlan struct {
 }
 
 func inspectUpdateRecovery(dir, exe string, alive func(int) bool) (updateRecoveryPlan, error) {
-	return inspectPreviousUpdate(dir, exe, alive, false)
-}
-
-func inspectPreviousUpdate(dir, exe string, alive func(int) bool, remember bool) (updateRecoveryPlan, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "update-intent-*.json"))
 	p := updateRecoveryPlan{Pending: len(files), Ready: len(files) > 0, files: files}
 	if err != nil {
 		return p, err
 	}
 	hash := sha256.New()
-	// A recreated legacy intent invalidates the observation from a previous boot.
+	// A recreated legacy intent invalidates the previous inspection.
 	for _, file := range files {
 		b, err := readRecoveryFile(file, 4096)
 		if err != nil {
@@ -127,52 +123,13 @@ func inspectPreviousUpdate(dir, exe string, alive func(int) bool, remember bool)
 		}
 	}
 	p.Revision = hex.EncodeToString(hash.Sum(nil))
-	if p.legacy && p.Ready {
-		p.Ready = false
-		p.Reason = "Для восстановления используйте проверенный архив релиза."
-		if cache, err := os.UserCacheDir(); err == nil {
-			err = checkRecoveryBoot(&p, cache, dir, exe, recoveryBootID(), remember)
-			if err != nil {
-				return p, err
-			}
-		}
+	if p.legacy && p.Ready && !legacyUpdateIdle(exe) {
+		p.Active, p.Ready = true, false
+		p.Reason = "Не удалось подтвердить завершение предыдущего установщика. Закройте другие экземпляры Naivka и повторите обновление."
 	}
 	return p, nil
 }
 
-// Only a boot transition observed on this machine proves that a legacy
-// supervisor without a PID has exited. Read-only API calls never arm recovery.
-func checkRecoveryBoot(p *updateRecoveryPlan, cache, dir, exe, boot string, remember bool) error {
-	if boot == "" {
-		return nil
-	}
-	key := sha256.Sum256([]byte(filepath.Clean(dir) + "\x00" + filepath.Clean(exe)))
-	folder := filepath.Join(cache, "Naivka", "recovery")
-	path := filepath.Join(folder, hex.EncodeToString(key[:])+".json")
-	type witness struct{ Boot, Revision string }
-	b, err := readRecoveryFile(path, 4096)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	var old witness
-	if json.Unmarshal(b, &old) == nil && old.Revision == p.Revision && old.Boot != "" {
-		if old.Boot != boot {
-			p.Ready, p.Reason = true, ""
-			return nil
-		}
-	} else if remember {
-		if err := os.MkdirAll(folder, 0700); err != nil {
-			return err
-		}
-		if err := writeRecoveryJSON(path, witness{boot, p.Revision}); err != nil {
-			return err
-		}
-	} else {
-		return nil
-	}
-	p.Reason = "Перезагрузите Windows через Пуск → Перезагрузка и откройте Naivka. Она перенесёт файлы старого обновления в резервную копию."
-	return nil
-}
 func (a *App) updateView() AppUpdateView {
 	v := a.self.view()
 	a.life.intentMu.Lock()
@@ -250,7 +207,7 @@ func (a *App) settlePreviousUpdate(exe string) error {
 	}
 	updateFilesMu.Lock()
 	defer updateFilesMu.Unlock()
-	p, err := inspectPreviousUpdate(a.dir, exe, recoveryProcessAlive, true)
+	p, err := inspectUpdateRecovery(a.dir, exe, recoveryProcessAlive)
 	if err != nil || p.Pending == 0 {
 		return err
 	}

@@ -3,30 +3,41 @@
 package main
 
 import (
-	"encoding/hex"
+	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 )
 
-var querySystemInformation = syscall.NewLazyDLL("ntdll.dll").NewProc("NtQuerySystemInformation")
-
-// SystemBootEnvironmentInformation starts with the GUID for this Windows boot.
-func recoveryBootID() string {
-	if querySystemInformation.Find() != nil {
-		return ""
+// Legacy supervisors execute the renamed .exe.old image. A parent that has
+// not yet renamed its executable must also be counted. Never terminate either.
+func legacyUpdateIdle(exe string) bool {
+	own, err := os.Executable()
+	if err != nil || !sameUpdateFile(own, exe) {
+		return false
 	}
-	var info struct {
-		ID       [16]byte
-		Firmware uint32
-		_        uint32
-		Flags    uint64
+	snap, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return false
 	}
-	var size uint32
-	status, _, _ := querySystemInformation.Call(90, uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info), uintptr(unsafe.Pointer(&size)))
-	if status != 0 || size < 16 || info.ID == [16]byte{} {
-		return ""
+	defer syscall.CloseHandle(snap)
+	var entry syscall.ProcessEntry32
+	entry.Size = uint32(unsafe.Sizeof(entry))
+	for err = syscall.Process32First(snap, &entry); err == nil; err = syscall.Process32Next(snap, &entry) {
+		name := strings.ToLower(syscall.UTF16ToString(entry.ExeFile[:]))
+		if int(entry.ProcessID) == os.Getpid() {
+			continue
+		}
+		if !strings.EqualFold(name, filepath.Base(exe)) && !strings.HasSuffix(name, ".exe.old") && !(strings.HasPrefix(name, "naivka") && strings.HasSuffix(name, ".exe")) {
+			continue
+		}
+		path := processPath(int(entry.ProcessID))
+		if path == "" || sameUpdateFile(filepath.Dir(path), filepath.Dir(exe)) || sameUpdateFile(path, exe) || sameUpdateFile(path, exe+".old") {
+			return false
+		}
 	}
-	return hex.EncodeToString(info.ID[:])
+	return err == syscall.ERROR_NO_MORE_FILES
 }
 
 func recoveryProcessAlive(pid int) bool {

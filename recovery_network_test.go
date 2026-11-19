@@ -1,62 +1,66 @@
 package main
 
 import (
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 )
 
-func TestUpdateLegacyBootRecovery(t *testing.T) {
-	cache, dir := t.TempDir(), t.TempDir()
-	exe := filepath.Join(dir, "Naivka.exe")
+func TestUpdateLegacyChild(t *testing.T) {
+	if os.Getenv("NAIVKA_TEST_LEGACY_CHILD") == "1" {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+	}
+}
+
+func TestUpdateLegacyArchiveWithoutReboot(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows updater")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
 	intent := filepath.Join(dir, "update-intent-test.json")
 	if err := os.WriteFile(intent, []byte(`{"commit":true}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	alive := func(int) bool { return false }
-	p, err := inspectUpdateRecovery(dir, exe, alive)
-	if err != nil || p.Ready {
-		t.Fatal(p, err)
-	}
-	check := func(plan updateRecoveryPlan, boot string, write, ready bool) {
-		t.Helper()
-		if err := checkRecoveryBoot(&plan, cache, dir, exe, boot, write); err != nil || plan.Ready != ready {
-			t.Fatal(plan, err)
-		}
-	}
-	check(p, "boot-a", false, false)
-	check(p, "boot-b", false, false)
-	check(p, "boot-a", true, false)
-	check(p, "boot-a", false, false)
-	check(p, "", false, false)
-	check(p, "boot-b", false, true)
-	if err := os.WriteFile(intent, []byte(`{"commit":false}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	changed, err := inspectUpdateRecovery(dir, exe, alive)
+	child := exec.Command(exe, "-test.run=^TestUpdateLegacyChild$")
+	child.Env = append(os.Environ(), "NAIVKA_TEST_LEGACY_CHILD=1")
+	wait, err := child.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	check(changed, "boot-b", false, false)
-	if runtime.GOOS == "windows" {
-		t.Setenv("LocalAppData", cache)
-		boot := recoveryBootID()
-		if boot == "" || recoveryBootID() != boot {
-			t.Fatal("no stable Windows boot GUID")
-		}
-		check(changed, "previous-test-boot", true, false)
-		if err := archiveInterruptedUpdate(dir, exe, changed.Revision, alive); err != nil {
-			t.Fatal(err)
-		}
-		files, _ := filepath.Glob(filepath.Join(dir, "version-backups", "recovered-*", filepath.Base(intent)))
-		if len(files) != 1 || fileExists(intent) {
-			t.Fatal("legacy transaction was not archived")
-		}
+	defer wait.Close()
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer child.Process.Kill()
+	busy, err := inspectUpdateRecovery(dir, exe, recoveryProcessAlive)
+	wait.Close()
+	if err := child.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err != nil || !busy.Active || busy.Ready {
+		t.Fatal("active process overlooked", busy, err)
+	}
+	p, err := inspectUpdateRecovery(dir, exe, recoveryProcessAlive)
+	if err != nil || !p.Ready {
+		t.Fatal(p, err)
+	}
+	if err := archiveInterruptedUpdate(dir, exe, p.Revision, recoveryProcessAlive); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "version-backups", "recovered-*", filepath.Base(intent)))
+	if len(files) != 1 || fileExists(intent) {
+		t.Fatal("missing archived intent")
 	}
 }
 

@@ -5172,7 +5172,6 @@ function selfBox() {
   return h('div', null,
     h('p', null, h('b', null, `Naivka ${SELF.version}`), '. ', state),
     u && u.error ? h('p', { class: 'err-text' }, u.error) : null,
-    u?.recoveryPending ? h('p',{class:'hint'},'Обнаружена прерванная операция. Откройте «Восстановление обновления», прежде чем устанавливать новую версию.') : null,
     h('div', { class: 'row' },
       u && u.newer
         ? h('button', { class: 'btn primary', disabled: !!u.busy, onclick: installAppUpdate }, `Обновить до ${u.latest}`)
@@ -5183,7 +5182,6 @@ function selfBox() {
           finally { e.target.disabled = false; refreshAppUpdate(); }
         } }, 'Проверить обновления'),
       h('button',{class:'btn',disabled:!!u?.busy,onclick:versionDialog},'Выбрать версию / откат'),
-      h('button',{class:'btn',disabled:!!u?.busy,onclick:()=>window.NaivkaReliability?.recovery()},'Восстановление обновления'),
       h('button', { class: 'btn', onclick: () => api('/api/open', { link: 'releases' }).catch(() => {}) }, 'Что нового')));
 }
 
