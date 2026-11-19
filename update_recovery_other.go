@@ -21,4 +21,4 @@ func recoveryProcessAlive(pid int) bool {
 	return !errors.Is(err, syscall.ESRCH) && !errors.Is(err, os.ErrProcessDone)
 }
 
-func recoveryBootID() string { return "" }
+func legacyUpdateIdle(string) bool { return false }
