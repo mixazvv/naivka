@@ -141,15 +141,15 @@ func (m *Monitor) run() {
 			m.resetSession()
 		}
 		wasRunning = running
-		s := m.a.settingsCopy() // один снимок настроек на секунду
 		if !running {
-			m.sample(nil, s) // только Telegram: tg-ws-proxy работает и без сервера
+			m.sample(nil, nil) // только Telegram: tg-ws-proxy работает и без сервера
 			continue
 		}
 		cl := m.a.core.Clash()
 		if cl == nil {
 			continue
 		}
+		s := m.a.settingsCopy()
 		m.sample(cl, s)
 		if n%5 == 0 {
 			m.checkAuto(cl)
@@ -262,7 +262,9 @@ func (m *Monitor) sample(cl *Clash, s *Settings) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.refreshZapretSet(s)
+	if cl != nil {
+		m.refreshZapretSet(s)
+	}
 	var d [8]int64
 	now := time.Now()
 	seen := make(map[string]bool, len(v.Connections))

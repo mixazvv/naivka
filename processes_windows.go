@@ -34,7 +34,7 @@ type procEntry struct {
 }
 
 // listProcesses — запущенные программы (снимок процессов Windows, без консольных утилит).
-func listProcesses() []procEntry {
+func listProcesses(needPath func(string) bool) []procEntry {
 	snap, _, _ := procCreateToolhelp32Snapshot.Call(2 /* TH32CS_SNAPPROCESS */, 0)
 	if snap == uintptr(syscall.InvalidHandle) {
 		return nil
@@ -46,7 +46,11 @@ func listProcesses() []procEntry {
 	for r, _, _ := procProcess32FirstW.Call(snap, uintptr(unsafe.Pointer(&e))); r != 0; r, _, _ = procProcess32NextW.Call(snap, uintptr(unsafe.Pointer(&e))) {
 		pid := int(e.ProcessID)
 		if pid > 4 {
-			out = append(out, procEntry{PID: pid, Name: syscall.UTF16ToString(e.ExeFile[:]), Path: processPath(pid)})
+			entry := procEntry{PID: pid, Name: syscall.UTF16ToString(e.ExeFile[:])}
+			if needPath == nil || needPath(entry.Name) {
+				entry.Path = processPath(pid)
+			}
+			out = append(out, entry)
 		}
 	}
 	return out
@@ -55,7 +59,7 @@ func listProcesses() []procEntry {
 // killImage закрывает все процессы, запущенные из файла path. Нужна программам, которые
 // запускают копию самих себя (tg-ws-proxy собран PyInstaller): дочерняя копия держит exe.
 func killImage(path string) {
-	for _, p := range listProcesses() {
+	for _, p := range listProcesses(nil) {
 		if p.PID == os.Getpid() || !strings.EqualFold(p.Path, path) {
 			continue
 		}
