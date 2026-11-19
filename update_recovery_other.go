@@ -20,3 +20,5 @@ func recoveryProcessAlive(pid int) bool {
 	err = p.Signal(syscall.Signal(0))
 	return !errors.Is(err, syscall.ESRCH) && !errors.Is(err, os.ErrProcessDone)
 }
+
+func recoveryBootID() string { return "" }

@@ -46,6 +46,10 @@ func (a *App) internetUp() bool {
 			}
 			if resp, err := hc.Do(req); err == nil {
 				resp.Body.Close()
+				// The local HTTP proxy can reply with a gateway error while offline.
+				if resp.StatusCode >= 500 || resp.StatusCode == http.StatusProxyAuthRequired {
+					return
+				}
 				ok.Store(true)
 				cancel() // ответил один — остальных не ждём
 			}
