@@ -37,6 +37,13 @@ const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local
   }
   await page.evaluate(()=>{ST.running=false;updateStatusNow();});
   assert(await page.locator('#idleConnect').isVisible());assert(!(await page.locator('#lanesCard').isVisible()));
+  await page.setViewportSize({width:1897,height:1031});
+  await page.evaluate(()=>{S.theme='gold';S.experience.home='full';applyTheme();updateStatusNow();});
+  assert(await page.locator('#homeConnect').isVisible());
+  const idle=await page.locator('#homeIdle').boundingBox(),header=await page.locator('.stage-head').boundingBox();
+  assert(idle.y-header.y-header.height<250,'idle layout reserves the hidden diagram row');
+  await page.evaluate(()=>{S.experience.home='compact';updateStatusNow();});
+  assert(await page.locator('#homePulse').getByText('Полный вид').isVisible());
   await page.evaluate(async()=>{await InterfacePolish.togglePin('Firefox.exe');await setProcRoute('firefox.exe','direct');S.rules.push({kind:'domain',value:'unrelated.test',action:'proxy'});});
   assert(await page.locator('.pin-program').isVisible());await page.locator('#routeUndo button').first().click();
   assert.deepEqual(await page.evaluate(()=>S.rules),[{kind:'domain',value:'unrelated.test',action:'proxy'}]);

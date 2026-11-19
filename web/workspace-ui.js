@@ -33,7 +33,7 @@ const WorkspaceUI=(()=>{
   }
   function status(p){
     window.InterfacePolish?.status(p);
-    apply();const summary=document.querySelector('.home-parameters>summary');if(summary)summary.textContent='Параметры подключения: '+(zapretOnly()?'только zapret':(S.mode==='tun'?'TUN':'Прокси')+' · '+(ROUTING[S.routing]||''));const b=document.querySelector('#homeConnect');if(b){b.textContent=powerLabel(p);b.disabled=busy||p==='wait';b.title=powerLabel(p)+' (Ctrl+Enter)';}
+    apply();const summary=document.querySelector('.home-parameters>summary');if(summary)summary.textContent='Параметры подключения: '+(zapretOnly()?'только zapret':(S.mode==='tun'?'TUN':'Прокси')+' · '+(ROUTING[S.routing]||''));const b=document.querySelector('#homeConnect');if(b){const add=p==='off'&&!zapretOnly()&&!S.servers.length&&!S.wl.enabled;b.textContent=add?'Добавить сервер':powerLabel(p);b.onclick=add?()=>go('servers'):toggleConnect;b.disabled=busy||p==='wait';b.title=b.textContent+' (Ctrl+Enter)';}
   }
   function pulse(on,sp,t){
     const metrics=document.querySelector('#homeMetrics'),a=document.querySelector('#homeAddress');
